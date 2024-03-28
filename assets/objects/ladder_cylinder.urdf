@@ -1,0 +1,188 @@
+<?xml version="1.0"?>
+<robot name="ladder_cylinder">
+
+  <!-- Material Definitions -->
+  <material name="silver">
+    <color rgba="0.8 0.8 0.8 1"/>
+  </material>
+
+  <!-- Side Rail Definitions -->
+  <link name="rails">
+    <visual>
+      <origin rpy="0 0 0" xyz="0 -0.25 0"/>
+      <geometry>
+        <cylinder length="2.0" radius="0.05"/>
+      </geometry>
+      <material name="silver"/>
+    </visual>
+    <collision>
+      <origin rpy="0 0 0" xyz="0 -0.25 0"/>
+      <geometry>
+        <cylinder length="2.0" radius="0.05"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="1000000"/>
+    </inertial>
+
+    <visual>
+      <origin rpy="0 0 0" xyz="0 0.25 0"/>
+      <geometry>
+        <cylinder length="2.0" radius="0.05"/>
+      </geometry>
+      <material name="silver"/>
+    </visual>
+    <collision>
+      <origin rpy="0 0 0" xyz="0 0.25 0"/>
+      <geometry>
+        <cylinder length="2.0" radius="0.05"/>
+      </geometry>
+    </collision>
+
+    <visual>
+      <origin rpy="1.57 0 0" xyz="0 0 0"/>
+      <geometry>
+        <cylinder length="0.5" radius="0.02"/>
+      </geometry>
+      <material name="silver"/>
+    </visual>
+
+    <collision>
+      <origin rpy="1.57 0 0" xyz="0 0 0"/>
+      <geometry>
+        <cylinder length="0.5" radius="0.02"/>
+      </geometry>
+      <material name="silver"/>
+    </collision>
+
+      <visual>
+      <origin rpy="1.57 0 0" xyz="0 0 0.2"/>
+      <geometry>
+        <cylinder length="0.5" radius="0.02"/>
+      </geometry>
+      <material name="silver"/>
+    </visual>
+
+    <collision>
+      <origin rpy="1.57 0 0" xyz="0 0 0.2"/>
+      <geometry>
+        <cylinder length="0.5" radius="0.02"/>
+      </geometry>
+      <material name="silver"/>
+    </collision>
+
+      <visual>
+      <origin rpy="1.57 0 0" xyz="0 0 -0.2"/>
+      <geometry>
+        <cylinder length="0.5" radius="0.02"/>
+      </geometry>
+      <material name="silver"/>
+    </visual>
+
+    <collision>
+      <origin rpy="1.57 0 0" xyz="0 0 -0.2"/>
+      <geometry>
+        <cylinder length="0.5" radius="0.02"/>
+      </geometry>
+      <material name="silver"/>
+    </collision>
+
+   <visual>
+      <origin rpy="1.57 0 0" xyz="0 0 -0.4"/>
+      <geometry>
+        <cylinder length="0.5" radius="0.02"/>
+      </geometry>
+      <material name="silver"/>
+    </visual>
+
+    <collision>
+      <origin rpy="1.57 0 0" xyz="0 0 -0.4"/>
+      <geometry>
+        <cylinder length="0.5" radius="0.02"/>
+      </geometry>
+      <material name="silver"/>
+    </collision>
+
+ <visual>
+      <origin rpy="1.57 0 0" xyz="0 0 -0.6"/>
+      <geometry>
+        <cylinder length="0.5" radius="0.02"/>
+      </geometry>
+      <material name="silver"/>
+    </visual>
+
+    <collision>
+      <origin rpy="1.57 0 0" xyz="0 0 -0.6"/>
+      <geometry>
+        <cylinder length="0.5" radius="0.02"/>
+      </geometry>
+      <material name="silver"/>
+    </collision>
+
+      <visual>
+      <origin rpy="1.57 0 0" xyz="0 0 -0.8"/>
+      <geometry>
+        <cylinder length="0.5" radius="0.02"/>
+      </geometry>
+      <material name="silver"/>
+    </visual>
+
+    <collision>
+      <origin rpy="1.57 0 0" xyz="0 0 -0.8"/>
+      <geometry>
+        <cylinder length="0.5" radius="0.02"/>
+      </geometry>
+      <material name="silver"/>
+    </collision>
+
+      <visual>
+      <origin rpy="1.57 0 0" xyz="0 0 0.4"/>
+      <geometry>
+        <cylinder length="0.5" radius="0.02"/>
+      </geometry>
+      <material name="silver"/>
+    </visual>
+
+    <collision>
+      <origin rpy="1.57 0 0" xyz="0 0 0.4"/>
+      <geometry>
+        <cylinder length="0.5" radius="0.02"/>
+      </geometry>
+      <material name="silver"/>
+    </collision>
+
+     <visual>
+      <origin rpy="1.57 0 0" xyz="0 0 0.6"/>
+      <geometry>
+        <cylinder length="0.5" radius="0.02"/>
+      </geometry>
+      <material name="silver"/>
+    </visual>
+
+    <collision>
+      <origin rpy="1.57 0 0" xyz="0 0 0.6"/>
+      <geometry>
+        <cylinder length="0.5" radius="0.02"/>
+      </geometry>
+      <material name="silver"/>
+    </collision>
+
+   <visual>
+      <origin rpy="1.57 0 0" xyz="0 0 0.8"/>
+      <geometry>
+        <cylinder length="0.5" radius="0.02"/>
+      </geometry>
+      <material name="silver"/>
+    </visual>
+
+    <collision>
+      <origin rpy="1.57 0 0" xyz="0 0 0.8"/>
+      <geometry>
+        <cylinder length="0.5" radius="0.02"/>
+      </geometry>
+      <material name="silver"/>
+    </collision>
+
+  </link>
+
+</robot>
