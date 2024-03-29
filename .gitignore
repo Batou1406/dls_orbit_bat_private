@@ -56,3 +56,6 @@ _build
 **/runs/*
 **/logs/*
 **/recordings/*
+
+# Bat
+**/batTuto/*
