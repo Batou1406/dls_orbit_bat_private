@@ -1,3 +1,7 @@
+# Copyright (c) 2022-2024, The ORBIT Project Developers.
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
 from omni.isaac.orbit.utils import configclass
 
 from omni.isaac.orbit_tasks.utils.wrappers.rsl_rl import (
@@ -8,11 +12,11 @@ from omni.isaac.orbit_tasks.utils.wrappers.rsl_rl import (
 
 
 @configclass
-class UnitreeAliengoRoughPPORunnerCfg(RslRlOnPolicyRunnerCfg):
+class UnitreeAliengoBasePPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
     max_iterations = 1500
     save_interval = 50
-    experiment_name = "unitree_aliengo_rough"
+    experiment_name = "aliengo_model_based_base"
     empirical_normalization = False
     policy = RslRlPpoActorCriticCfg(
         init_noise_std=1.0,

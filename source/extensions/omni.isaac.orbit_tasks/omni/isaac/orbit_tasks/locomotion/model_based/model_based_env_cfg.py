@@ -14,7 +14,7 @@
     - CurriculumCfg
 
     --- Environment ---
-    - ModelBasedEnvCfg
+    - LocomotionModelBasedEnvCfg
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ from omni.isaac.orbit.utils import configclass
 from omni.isaac.orbit.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
 # TODO re-Implements these
-import omni.isaac.orbit_tasks.locomotion.velocity.mdp as mdp
+import omni.isaac.orbit_tasks.locomotion.model_based.mdp as mdp
 
 
 
@@ -323,7 +323,7 @@ class CurriculumCfg:
     - terrain_levels - adapt the terrain difficulty to the performance - default off
     """
 
-    terrain_levels = CurrTerm(func=mdp.terrain_levels_vel)
+    terrain_levels = None   # CurrTerm(func=mdp.terrain_levels_vel)
 
 
 ##
@@ -332,8 +332,8 @@ class CurriculumCfg:
 
 
 @configclass
-class LocomotionVelocityRoughEnvCfg(RLTaskEnvCfg):
-    """Configuration for the locomotion velocity-tracking environment.
+class LocomotionModelBasedEnvCfg(RLTaskEnvCfg):
+    """Configuration for the locomotion velocity-tracking environment with model based control.
     - num_envs          : default 4096
     - env_spacing       : default 2.5
     - decimation        : default 4
