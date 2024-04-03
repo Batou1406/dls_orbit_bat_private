@@ -98,6 +98,9 @@ class ModelBaseAction(ActionTerm):
         self.F = torch.zeros(self.num_envs, self._num_legs, self._prevision_horizon, device=self.device)
         self.z = [self.f, self.d, self.p, self.F]
 
+        # Instance of control class. Gets Z and output u
+        self.controller = samplingController() 
+
         # create tensors for raw and processed actions
         self._raw_actions = torch.zeros(self.num_envs, self.action_dim, device=self.device)
         self._processed_actions = torch.zeros_like(self.raw_actions)
@@ -142,7 +145,7 @@ class ModelBaseAction(ActionTerm):
 
     @property
     def action_dim(self) -> int:
-        return self.f.shape[1:].numel() + self.d.shape[1:].numel() + self.p.shape[1:].numel() + self.F.shape[1:].numel()
+        return sum(variable.shape[1:].numel() for variable in self.z)
 
     @property
     def raw_actions(self) -> torch.Tensor:
@@ -167,6 +170,21 @@ class ModelBaseAction(ActionTerm):
 
         # apply the affine transformations
         self._processed_actions = self._raw_actions * self._scale + self._offset
+
+        # reconstruct the latent variable
+
+
+
+    def apply_actions2(self):
+        """Applies the actions to the asset managed by the term.
+        Note: This is called at every simulation step by the manager.
+        """
+
+        # Use model controller to compute the torques from the latent variable
+        output_torques = self.controller.compute_output(self.z)
+
+        # Apply the computed torques
+        # self._asset.set_joint_effort_target(output_torques, joint_ids=self._joint_ids)
 
     
     def apply_actions(self):
@@ -194,13 +212,24 @@ class ModelBaseAction(ActionTerm):
         # set joint effort targets (should be equivalent to torque) : Torque controlled robot
         self._asset.set_joint_effort_target(output_torques2, joint_ids=self._joint_ids)
 
-        # 1. Sample from law given by actions
 
+class samplingController():
+    """
+    Some Description
+    """
+    def __init__(self):
+        pass
+
+    def compute_output(self, z):
+
+        # 1. Sample from law given by actions
+        # f_collection = jax.random
+        
         # 2. Generate the trajectories from the samples
 
         # 3. evaluate the trajectories
 
         # 4. Pick the best trajectory 
-        
-        # 5. Apply the first action from the best trajectory
 
+        # 5. Return the first action from the best trajectory
+        pass
