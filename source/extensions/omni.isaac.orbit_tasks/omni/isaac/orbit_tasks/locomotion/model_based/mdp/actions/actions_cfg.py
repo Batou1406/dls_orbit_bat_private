@@ -29,5 +29,11 @@ class ModelBaseActionCfg(ActionTermCfg):
     joint_names: list[str] = MISSING
     """List of joint names or regex expressions that the action will be mapped to."""
 
+    scale: float | dict[str, float] = 1.0
+    """Scale factor for the action (float or dict of regex expressions). Defaults to 1.0."""
+    
+    offset: float | dict[str, float] = 0.0
+    """Offset factor for the action (float or dict of regex expressions). Defaults to 0.0."""
+
 
 
