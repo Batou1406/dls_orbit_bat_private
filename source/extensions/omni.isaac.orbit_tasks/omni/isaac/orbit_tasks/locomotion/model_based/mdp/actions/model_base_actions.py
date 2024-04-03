@@ -20,13 +20,18 @@ if TYPE_CHECKING:
 
     from . import actions_cfg
 
-# import jax
-# from jax import random
 
-# print("ALO alo ALO")
-# key = random.key(0)
-# x = random.normal(key, (10,))
-# print(x)
+import jax
+import jax.dlpack
+import torch
+import torch.utils.dlpack
+
+def jax_to_torch(x):
+    return torch.utils.dlpack.from_dlpack(jax.dlpack.to_dlpack(x))
+def torch_to_jax(x):
+    return jax.dlpack.from_dlpack(torch.utils.dlpack.to_dlpack(x))
+
+
 
 class ModelBaseAction(ActionTerm):
     """Base class for model base actions.
@@ -44,6 +49,7 @@ class ModelBaseAction(ActionTerm):
         cfg
         _env
         _asset
+        _scale, _offset
         num_env
         device
         action_dim
@@ -54,6 +60,7 @@ class ModelBaseAction(ActionTerm):
         p
         F
         z
+        _joint_ids, _joint_names, _num_joints
 
     Method :
         reset(env_ids: Sequence[int] | None = None) -> None:
@@ -96,13 +103,16 @@ class ModelBaseAction(ActionTerm):
         self._processed_actions = torch.zeros_like(self.raw_actions)
 
         # resolve the joints over which the action term is applied
-        self._joint_ids, self._joint_names = self._asset.find_joints(self.cfg.joint_names)
-        self._num_joints = len(self._joint_ids)
+        self._joint_ids, self._joint_names = self._asset.find_joints(self.cfg.joint_names)  # joint_ids = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+        self._num_joints = len(self._joint_ids)                                             # joint_names = ['FL_hip_joint', 'FR_hip_joint', 'RL_hip_joint', 'RR_hip_joint', 'FL_thigh_joint', 'FR_thigh_joint', 'RL_thigh_joint', 'RR_thigh_joint', 'FL_calf_joint', 'FR_calf_joint', 'RL_calf_joint', 'RR_calf_joint']
         # log the resolved joint names for debugging
         carb.log_info(
             f"Resolved joint names for the action term {self.__class__.__name__}:"
             f" {self._joint_names} [{self._joint_ids}]"
         )
+        # Avoid indexing across all joints for efficiency
+        if self._num_joints == self._asset.num_joints:
+            self._joint_ids = slice(None)
 
         # parse scale
         if isinstance(cfg.scale, (float, int)):
@@ -125,8 +135,7 @@ class ModelBaseAction(ActionTerm):
             self._offset[:, index_list] = torch.tensor(value_list, device=self.device)
         else:
             raise ValueError(f"Unsupported offset type: {type(cfg.offset)}. Supported types are float and dict.")
-
-
+        
     """
     Properties.
     """
@@ -164,6 +173,34 @@ class ModelBaseAction(ActionTerm):
         """Applies the actions to the asset managed by the term.
         Note: This is called at every simulation step by the manager.
         """
+        output_torques = (torch.rand(self.num_envs, self._num_joints, device=self.device))# * 80) - 40
+
+        print('--- Torch ---')
+        print('shape : ',output_torques.shape)
+        print('device : ',output_torques.device)
+        print('Type : ', type(output_torques))
+        
+        output_torques_jax = torch_to_jax(output_torques)
+        output_torques_jax = (output_torques_jax * 80) - 40
+
+        print('')
+        print('--- Jax ---')
+        print('Shape : ', output_torques_jax.shape)
+        print('device : ',output_torques_jax.devices())
+        print('Type : ', type(output_torques_jax))
+
+        output_torques2 = jax_to_torch(output_torques_jax)
+
         # set joint effort targets (should be equivalent to torque) : Torque controlled robot
-        self._asset.set_joint_effort_target(self.processed_actions, joint_ids=self._joint_ids)
-        raise NotImplementedError
+        self._asset.set_joint_effort_target(output_torques2, joint_ids=self._joint_ids)
+
+        # 1. Sample from law given by actions
+
+        # 2. Generate the trajectories from the samples
+
+        # 3. evaluate the trajectories
+
+        # 4. Pick the best trajectory 
+        
+        # 5. Apply the first action from the best trajectory
+
