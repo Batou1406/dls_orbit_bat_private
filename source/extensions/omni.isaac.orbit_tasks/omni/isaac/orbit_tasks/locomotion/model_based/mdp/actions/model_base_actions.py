@@ -172,22 +172,28 @@ class ModelBaseAction(ActionTerm):
         self._processed_actions = self._raw_actions * self._scale + self._offset
 
         # reconstruct the latent variable
+        self.z = actions
+
+        GRF, trajectory, c = self.controller.compute_output(self.z) # Contact sequence is generated inside
 
 
 
-    def apply_actions2(self):
+    def apply_actions(self):
         """Applies the actions to the asset managed by the term.
         Note: This is called at every simulation step by the manager.
         """
 
-        # Use model controller to compute the torques from the latent variable
-        output_torques = self.controller.compute_output(self.z)
+        output_torques_1 = stance_controller(GRF, q, c) # Update the jacobian with the new joint position. 
+        output_torques_2 = swing_controller(trajectory, q, q_dot, c) # Feedback lineraization control - trajectory computed with a spline to be followed - new updated joint controller. 
+
+        # # Use model controller to compute the torques from the latent variable
+        # output_torques = self.controller.compute_output(self.z)
 
         # Apply the computed torques
         # self._asset.set_joint_effort_target(output_torques, joint_ids=self._joint_ids)
 
     
-    def apply_actions(self):
+    def apply_actions2(self):
         """Applies the actions to the asset managed by the term.
         Note: This is called at every simulation step by the manager.
         """
