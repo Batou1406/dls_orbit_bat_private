@@ -22,6 +22,7 @@ from __future__ import annotations
 import math
 from dataclasses import MISSING
 
+from omni.isaac.orbit.controllers.differential_ik_cfg import DifferentialIKControllerCfg
 import omni.isaac.orbit.sim as sim_utils
 from omni.isaac.orbit.assets import ArticulationCfg, AssetBaseCfg
 from omni.isaac.orbit.envs import RLTaskEnvCfg
@@ -128,8 +129,14 @@ class ActionsCfg:
     """Action specifications for the MDP.
     - Robot joint position - dim=12
     """
+    model_base_variable = mdp.ModelBaseActionCfg(asset_name="robot", joint_names=[".*"])
 
-    joint_pos = mdp.JointPositionActionCfg(asset_name="robot", joint_names=[".*"], scale=0.5, use_default_offset=True)
+    # joint_pos = mdp.JointPositionActionCfg(asset_name="robot", joint_names=[".*"], scale=0.5, use_default_offset=True)
+    # RR_foot = mdp.DifferentialInverseKinematicsActionCfg(asset_name="robot", joint_names=["RR.*"], body_name="RR_foot", controller=DifferentialIKControllerCfg(command_type="position", use_relative_mode=False, ik_method="dls"))
+    # RL_foot = mdp.DifferentialInverseKinematicsActionCfg(asset_name="robot", joint_names=["RL.*"], body_name="RL_foot", controller=DifferentialIKControllerCfg(command_type="position", use_relative_mode=False, ik_method="dls"))
+    # FR_foot = mdp.DifferentialInverseKinematicsActionCfg(asset_name="robot", joint_names=["FR.*"], body_name="FR_foot", controller=DifferentialIKControllerCfg(command_type="position", use_relative_mode=False, ik_method="dls"))
+    # FL_foot = mdp.DifferentialInverseKinematicsActionCfg(asset_name="robot", joint_names=["FL.*"], body_name="FL_foot", controller=DifferentialIKControllerCfg(command_type="position", use_relative_mode=False, ik_method="dls"))
+
 
 
 @configclass
