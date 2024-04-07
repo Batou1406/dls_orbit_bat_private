@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 
     from . import actions_cfg
 
+from model_base_controller import modelBaseController, samplingController
 
 import jax
 import jax.dlpack
@@ -53,14 +54,22 @@ class ModelBaseAction(ActionTerm):
         num_env
         device
         action_dim
-        raw_actions, _raw_actions
-        processed_actions, _processed_actions
-        f
-        d
-        p
-        F
-        z
+        - raw_actions, _raw_actions
+              (torch.Tensor): Actions received from the RL policy   of shape (batch_size, action_dim)
+        - processed_actions, _processed_actions
+              (torch.Tensor): scaled and offseted actions from RL   of shape (batch_site, action_dim)
         _joint_ids, _joint_names, _num_joints
+        - f   (torch.Tensor): Prior leg frequency                   of shape (batch_size, num_legs)
+        - d   (torch.Tensor): Prior stepping duty cycle             of shape (batch_size, num_legs)
+        - p   (torch.Tensor): Prior foot pos. sequence              of shape (batch_size, num_legs, 3, time_horizon)
+        - F   (torch.Tensor): Prior Ground Reac. Forces (GRF) seq.  of shape (batch_size, num_legs, 3, time_horizon)
+        - p_star (th.Tensor): Optimizied foot pos sequence          of shape (batch_size, num_legs, 3, time_horizon)
+        - F_star (th.Tensor): Opt. Ground Reac. Forces (GRF) seq.   of shape (batch_size, num_legs, 3, time_horizon)
+        - c_star (th.Tensor): Optimizied foot contact sequence      of shape (batch_size, num_legs, time_horizon)
+        - pt_star(th.Tensor): Optimizied foot swing trajectory      of shape (batch_size, num_legs, 3, decimation)
+        - z   (tuple)       : Latent variable : z=(f,d,p,F)         of shape (...)
+        - u   (torch.Tensor): output joint torques                  of shaoe (batch_size, num_joints)
+        - controller (modelBaseController): controller instance that compute u from z 
 
     Method :
         reset(env_ids: Sequence[int] | None = None) -> None:
@@ -81,25 +90,36 @@ class ModelBaseAction(ActionTerm):
     _offset: torch.Tensor | float
     """The offset applied to the input action."""
 
-    _num_legs = 4
-    _prevision_horizon = 10
+    controller: modelBaseController
+    """Model base controller that compute u: output torques from z: latent variable""" 
+
+    _num_legs = 4           # Should get that from articulation or robot config
+    _prevision_horizon = 10 # Should get that from cfg
+    _decimation = 10        # Should get that from the env
 
 
     def __init__(self, cfg: actions_cfg.ModelBaseActionCfg, env: BaseEnv) -> None:
         # initialize the action term
         super().__init__(cfg, env)
 
-        """
-        Model Base Variable
-        """
+        # Latent variable
         self.f = torch.zeros(self.num_envs, self._num_legs, device=self.device)
         self.d = torch.zeros(self.num_envs, self._num_legs, device=self.device)
-        self.p = torch.zeros(self.num_envs, self._num_legs, self._prevision_horizon, device=self.device)
-        self.F = torch.zeros(self.num_envs, self._num_legs, self._prevision_horizon, device=self.device)
+        self.p = torch.zeros(self.num_envs, self._num_legs, 3, self._prevision_horizon, device=self.device)
+        self.F = torch.zeros(self.num_envs, self._num_legs, 3, self._prevision_horizon, device=self.device)
         self.z = [self.f, self.d, self.p, self.F]
 
+        # Model-based optimized latent variable
+        self.p_star = torch.zeros(self.num_envs, self._num_legs, 3, self._prevision_horizon, device=self.device)
+        self.F_star = torch.zeros(self.num_envs, self._num_legs, 3, self._prevision_horizon, device=self.device)
+        self.c_star = torch.zeros(self.num_envs, self._num_legs, self._prevision_horizon, device=self.device)
+        self.pt_star= torch.zeros(self.num_envs, self._num_legs, self._decimation, device=self.device)
+
+        # Control input u : joint torques
+        self.u = torch.zeros(self.num_envs, self._num_joints, device=self.device)
+
         # Instance of control class. Gets Z and output u
-        self.controller = samplingController() 
+        self.controller = cfg.controller
 
         # create tensors for raw and processed actions
         self._raw_actions = torch.zeros(self.num_envs, self.action_dim, device=self.device)
@@ -143,6 +163,7 @@ class ModelBaseAction(ActionTerm):
     Properties.
     """
 
+    # TODO : Faut-il modifier le 1 par un 0 ?
     @property
     def action_dim(self) -> int:
         return sum(variable.shape[1:].numel() for variable in self.z)
@@ -162,35 +183,49 @@ class ModelBaseAction(ActionTerm):
 
     def process_actions(self, actions: torch.Tensor):
         """Processes the actions sent to the environment.
-        Note: This function is called once per environment step by the manager.
-        Args: actions: The actions to process.
+
+        Note:
+            This function is called once per environment step. : Outer loop frequency
+            1. Apply affine transformation (scale and offset)
+            2. Reconstrut latent variable z = (f,d,p,F)
+            3. Optimize the latent variable (call controller.optimize_control_output)
+                and update optimizied solution p*, F*, c*, pt*
+
+        Args:
+            action (torch.Tensor): The actions received from RL policy of Shape (num_envs, total_action_dim)
         """
+
         # store the raw actions
         self._raw_actions[:] = actions
 
         # apply the affine transformations
         self._processed_actions = self._raw_actions * self._scale + self._offset
 
-        # reconstruct the latent variable
-        self.z = actions
+        # reconstruct the latent variable from the RL poliy actions
+        self.f = self._processed_actions[:, :self._num_legs] # 0:3 
+        self.d = self._processed_actions[:, self._num_legs:2*self._num_legs] # 4:7
+        self.p = self._processed_actions[:, 2*self._num_legs:(2*self._num_legs + 3*self._num_legs*self._prevision_horizon)].reshape([self.num_envs, self._num_legs, 3, self._prevision_horizon])
+        self.F = self._processed_actions[:, (2*self._num_legs + 3*self._num_legs*self._prevision_horizon):].reshape([self.num_envs, self._num_legs, 3, self._prevision_horizon])
+        self.z = [self.f, self.d, self.p, self.F]
 
-        GRF, trajectory, c = self.controller.compute_output(self.z) # Contact sequence is generated inside
-
+        # Optimize the latent variable with the model base controller
+        self.p_star, self.F_star, self.c_star, self.pt_star = self.controller.optimize_latent_variable(f=self.f, d=self.d, p=self.p, F=self.F)
 
 
     def apply_actions(self):
         """Applies the actions to the asset managed by the term.
-        Note: This is called at every simulation step by the manager.
+
+        Note: 
+            This is called at every simulation step by the manager. : Inner loop frequency
+            1. Extract optimized latent variable p0*, F0*, c0*, pt01*
+            2. Compute joint torque to be applied (call controller.compute_control_output) and update u
+            3. Apply joint torque to simulation 
         """
-
-        output_torques_1 = stance_controller(GRF, q, c) # Update the jacobian with the new joint position. 
-        output_torques_2 = swing_controller(trajectory, q, q_dot, c) # Feedback lineraization control - trajectory computed with a spline to be followed - new updated joint controller. 
-
-        # # Use model controller to compute the torques from the latent variable
-        # output_torques = self.controller.compute_output(self.z)
+        # Use model controller to compute the torques from the latent variable
+        self.u = self.controller.compute_control_output(F0_star=self.F_star[:,:,:,0], c0_star=self.c_star[:,:,0], pt01_star=self.pt_star[:,:,:,0])
 
         # Apply the computed torques
-        # self._asset.set_joint_effort_target(output_torques, joint_ids=self._joint_ids)
+        self._asset.set_joint_effort_target(self.u, joint_ids=self._joint_ids)
 
     
     def apply_actions2(self):
@@ -217,25 +252,3 @@ class ModelBaseAction(ActionTerm):
 
         # set joint effort targets (should be equivalent to torque) : Torque controlled robot
         self._asset.set_joint_effort_target(output_torques2, joint_ids=self._joint_ids)
-
-
-class samplingController():
-    """
-    Some Description
-    """
-    def __init__(self):
-        pass
-
-    def compute_output(self, z):
-
-        # 1. Sample from law given by actions
-        # f_collection = jax.random
-        
-        # 2. Generate the trajectories from the samples
-
-        # 3. evaluate the trajectories
-
-        # 4. Pick the best trajectory 
-
-        # 5. Return the first action from the best trajectory
-        pass

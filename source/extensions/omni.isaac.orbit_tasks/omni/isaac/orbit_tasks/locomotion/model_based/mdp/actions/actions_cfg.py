@@ -12,6 +12,8 @@ from omni.isaac.orbit.utils import configclass
 
 from . import model_base_actions
 
+from model_base_controller import modelBaseController
+
 
 ##
 # Model-base Latent space actions.
@@ -34,6 +36,10 @@ class ModelBaseActionCfg(ActionTermCfg):
     
     offset: float | dict[str, float] = 0.0
     """Offset factor for the action (float or dict of regex expressions). Defaults to 0.0."""
+
+    controller: modelBaseController = MISSING
+    """Model base controller that compute u: output torques from z: latent variable""" 
+
 
 
 
