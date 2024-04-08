@@ -12,7 +12,7 @@ class modelBaseController(ABC):
     Method :
         - optimize_latent_variable(f, d, p, F) -> p*, F*, c*, pt*
         - compute_control_output(F0*, c0*, pt01*) -> T
-        - gait_generator(f, d) -> c
+        - gait_generator(f, d, phase) -> c, new_phase
 
     """
 
@@ -72,7 +72,7 @@ class modelBaseController(ABC):
             - time_horizon (int): Time horizon for the contact sequence
 
         Returns:
-            - c     (torch.bool): Foot contact sequence                 of shape(batch_size, num_legs, time_horizon, parallel_rollout)
+            - c     (torch.bool): Foot contact sequence                 of shape(batch_size, num_legs, parallel_rollout, time_horizon)
             - phase (tch.Tensor): The phase updated by one time steps   of shape(batch_size, num_legs, parallel_rollout)
         """
         raise NotImplementedError
@@ -80,7 +80,25 @@ class modelBaseController(ABC):
     
 class samplingController(modelBaseController):
     """
-    Some Description
+    Implement a model based controller based on the latent variable z = [f,d,p,F]
+
+    - Gait Generator :
+        From the latent variables f and d (leg frequency & duty cycle) and the phase property, compute the next leg
+        phases and contact sequence.
+
+    - Sampling Controller :
+        Optimize the latent variable z. Generates samples, simulate the samples, evaluate them and return the best one.
+
+    Properties : 
+        - 
+
+    Method :
+        - optimize_latent_variable(f, d, p, F) -> p*, F*, c*, pt*   # Inherited
+        - compute_control_output(F0*, c0*, pt01*) -> T              # Inherited
+        - gait_generator(f, d, phase) -> c, new_phase               # Inherited
+        - swing_trajectory_generator(p, c, decimation) -> pt
+        - swing_leg_controller(c0*, pt01*) -> T_swing
+        - stance_leg_controller(F0*, c0*) -> T_stance
     """
 
     def __init__(self):
@@ -102,30 +120,32 @@ class samplingController(modelBaseController):
             - time_horizon (int): Time horizon for the contact sequence
 
         Returns:
-            - c     (torch.bool): Foot contact sequence                 of shape(batch_size, num_legs, time_horizon, parallel_rollout)
+            - c     (torch.bool): Foot contact sequence                 of shape(batch_size, num_legs, parallel_rollout, time_horizon)
             - phase (tch.Tensor): The phase updated by one time steps   of shape(batch_size, num_legs, parallel_rollout)
         """
         
-        # Increment phase : phases[0] : incremented of 1 step, phases[1] incremented of 2 steps, etc. without a for loop.
-        phases = phase + f*(torch.linespace(time_horizon)*dt) 
+        # Increment phase of f*dt: new_phases[0] : incremented of 1 step, new_phases[1] incremented of 2 steps, etc. without a for loop.
+        # new_phases = phase + f*dt*[1,2,...,time_horizon]
+        new_phases = phase.unsqueeze(-1).expand(*[-1] * len(phase.shape),time_horizon) + f.unsqueeze(-1).expand(*[-1] * len(f.shape),time_horizon)*torch.linspace(start=1, end=time_horizon, steps=time_horizon)*dt
+
         
         # Make the phases circular (like sine) (% is modulo operation)
-        phases = phases%1
+        new_phases = new_phases%1
 
         # Save first phase
-        phase = phases[:,0]
+        new_phase = new_phases[..., 0]
 
         # Make comparaison to return discret contat sequence
-        c = phases > d
+        c = new_phases > d.unsqueeze(-1).expand(*[-1] * len(d.shape), time_horizon)
 
-        return c, phase
+        return c, new_phase
 
     def swing_trajectory_generator(self, p: torch.Tensor, c: torch.Tensor, decimation: int) -> torch.Tensor:
         """ Given feet position and contact sequence -> compute swing trajectories
 
         Args:
-            - p   (torch.Tensor): Foot position sequence                of shape(batch_size, num_legs, 3, time_horizon, parallel_rollout)
-            - c   (torch.Tensor): Foot contact sequence                 of shape(batch_size, num_legs, time_horizon, parallel_rollout)
+            - p   (torch.Tensor): Foot position sequence                of shape(batch_size, num_legs, 3, parallel_rollout, time_horizon)
+            - c   (torch.Tensor): Foot contact sequence                 of shape(batch_size, num_legs, parallel_rollout, time_horizon)
             - decimation   (int): Number of timestep for the traj.
 
         Returns:
@@ -142,6 +162,18 @@ class samplingController(modelBaseController):
         raise NotImplementedError
 
 
+    def swing_leg_controller(self, c0_star: torch.Tensor, pt01_star: torch.Tensor) -> torch.Tensor:
+        """ Given feet contact, and desired feet trajectory : compute joint torque with feedback linearization control
+        Args:
+            - c0*   (torch.bool): Optimized foot contact sequence       of shape(batch_size, num_legs)
+            - pt01* (tch.Tensor): Opt. Foot trajectory in swing phase   of shape(batch_size, num_legs, 3, decimation)
+
+        Returns:
+            - T_swing (t.Tensor): Swing Leg joint torques               of shape(batch_size, num_joints)
+        """
+        raise NotImplementedError
+    
+
     def stance_leg_controller(self, F0_star: torch.Tensor, c0_star: torch.Tensor) -> torch.Tensor:
         """ Given GRF and contact sequence -> compute joint torques using the jacobian : T = J*F
 
@@ -151,18 +183,6 @@ class samplingController(modelBaseController):
 
         Returns:
             - T_stance(t.Tensor): Stance Leg joint Torques              of shape(batch_size, num_joints)
-        """
-        raise NotImplementedError
-
-
-    def swing_leg_controller(self, c0_star: torch.Tensor, pt01_star: torch.Tensor) -> torch.Tensor:
-        """ Given feet contact, and desired feet trajectory : compute joint torque with feedback linearization control
-        Args:
-            - c0*   (torch.bool): Optimized foot contact sequence       of shape(batch_size, num_legs)
-            - pt01* (tch.Tensor): Opt. Foot trajectory in swing phase   of shape(batch_size, num_legs, 3, decimation)
-
-        Returns:
-            - T_swing (t.Tensor): Swing Leg joint torques               of shape(batch_size, num_joints)
         """
         raise NotImplementedError
 
