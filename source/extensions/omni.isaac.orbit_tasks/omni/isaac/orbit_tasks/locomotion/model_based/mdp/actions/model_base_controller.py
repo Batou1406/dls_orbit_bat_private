@@ -17,7 +17,7 @@ class modelBaseController(ABC):
     """
 
     def __init__(self):
-        pass
+        super().__init__()
 
 
     def optimize_latent_variable(self, f: torch.Tensor, d: torch.Tensor, p: torch.Tensor, F: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -104,6 +104,7 @@ class samplingController(modelBaseController):
     def __init__(self):
         super().__init__()
 
+
     def gait_generator(self, f: torch.Tensor, d: torch.Tensor, phase: torch.tensor, time_horizon: int, dt) -> tuple[torch.Tensor, torch.Tensor]:
         """ Implement a gait generator that return a contact sequence given a leg frequency and a leg duty cycle
         Increment phase by dt*f 
@@ -128,7 +129,6 @@ class samplingController(modelBaseController):
         # new_phases = phase + f*dt*[1,2,...,time_horizon]
         new_phases = phase.unsqueeze(-1).expand(*[-1] * len(phase.shape),time_horizon) + f.unsqueeze(-1).expand(*[-1] * len(f.shape),time_horizon)*torch.linspace(start=1, end=time_horizon, steps=time_horizon)*dt
 
-        
         # Make the phases circular (like sine) (% is modulo operation)
         new_phases = new_phases%1
 
@@ -139,6 +139,7 @@ class samplingController(modelBaseController):
         c = new_phases > d.unsqueeze(-1).expand(*[-1] * len(d.shape), time_horizon)
 
         return c, new_phase
+    
 
     def swing_trajectory_generator(self, p: torch.Tensor, c: torch.Tensor, decimation: int) -> torch.Tensor:
         """ Given feet position and contact sequence -> compute swing trajectories
@@ -175,7 +176,9 @@ class samplingController(modelBaseController):
     
 
     def stance_leg_controller(self, F0_star: torch.Tensor, c0_star: torch.Tensor) -> torch.Tensor:
-        """ Given GRF and contact sequence -> compute joint torques using the jacobian : T = J*F
+        """ Given GRF and contact sequence -> compute joint torques using the jacobian : T = -J*F
+        1. compute the jacobian using the simulation tool : end effector jacobian wrt to robot base
+        2. compute the stance torque : T = -J*F
 
         Args:
             - F0* (torch.Tensor): Opt. Ground Reac. Forces (GRF)        of shape(batch_size, num_legs, 3)
@@ -184,6 +187,9 @@ class samplingController(modelBaseController):
         Returns:
             - T_stance(t.Tensor): Stance Leg joint Torques              of shape(batch_size, num_joints)
         """
+
+
+
         raise NotImplementedError
 
 
