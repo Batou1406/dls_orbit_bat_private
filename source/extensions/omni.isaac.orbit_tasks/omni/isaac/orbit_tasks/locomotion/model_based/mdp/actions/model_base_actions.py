@@ -2,6 +2,7 @@
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
+# ./orbit.sh -p source/standalone/workflows/rsl_rl/train.py --task Isaac-Model-Based-Base-Aliengo-v0  --num_envs 32
 
 from __future__ import annotations
 
@@ -11,6 +12,7 @@ from typing import TYPE_CHECKING
 
 import carb
 
+import omni.isaac.orbit.utils.math as math_utils
 import omni.isaac.orbit.utils.string as string_utils
 from omni.isaac.orbit.assets.articulation import Articulation
 from omni.isaac.orbit.managers.action_manager import ActionTerm
@@ -20,15 +22,16 @@ if TYPE_CHECKING:
 
     from . import actions_cfg
 
-from model_base_controller import modelBaseController, samplingController
+from . import model_base_controller #import modelBaseController, samplingController
 
 import jax
 import jax.dlpack
 import torch
 import torch.utils.dlpack
 
-def jax_to_torch(x):
-    return torch.utils.dlpack.from_dlpack(jax.dlpack.to_dlpack(x))
+def jax_to_torch(x: jax.Array):
+    return torch.utils.dlpack.from_dlpack(x.__dlpack__)
+    # return torch.utils.dlpack.from_dlpack(jax.dlpack.to_dlpack(x))
 def torch_to_jax(x):
     return jax.dlpack.from_dlpack(torch.utils.dlpack.to_dlpack(x))
 
@@ -90,7 +93,7 @@ class ModelBaseAction(ActionTerm):
     _offset: torch.Tensor | float
     """The offset applied to the input action."""
 
-    controller: modelBaseController
+    controller: model_base_controller.modelBaseController
     """Model base controller that compute u: output torques from z: latent variable""" 
 
     _num_legs = 4           # Should get that from articulation or robot config
@@ -101,6 +104,18 @@ class ModelBaseAction(ActionTerm):
     def __init__(self, cfg: actions_cfg.ModelBaseActionCfg, env: BaseEnv) -> None:
         # initialize the action term
         super().__init__(cfg, env)
+
+        # resolve the joints over which the action term is applied
+        self._joint_ids, self._joint_names = self._asset.find_joints(self.cfg.joint_names)  # joint_ids = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+        self._num_joints = len(self._joint_ids)                                             # joint_names = ['FL_hip_joint', 'FR_hip_joint', 'RL_hip_joint', 'RR_hip_joint', 'FL_thigh_joint', 'FR_thigh_joint', 'RL_thigh_joint', 'RR_thigh_joint', 'FL_calf_joint', 'FR_calf_joint', 'RL_calf_joint', 'RR_calf_joint']
+        # log the resolved joint names for debugging
+        carb.log_info(
+            f"Resolved joint names for the action term {self.__class__.__name__}:"
+            f" {self._joint_names} [{self._joint_ids}]"
+        )
+        # Avoid indexing across all joints for efficiency
+        if self._num_joints == self._asset.num_joints:
+            self._joint_ids = slice(None)
 
         # Latent variable
         self.f = torch.zeros(self.num_envs, self._num_legs, device=self.device)
@@ -125,18 +140,6 @@ class ModelBaseAction(ActionTerm):
         self._raw_actions = torch.zeros(self.num_envs, self.action_dim, device=self.device)
         self._processed_actions = torch.zeros_like(self.raw_actions)
 
-        # resolve the joints over which the action term is applied
-        self._joint_ids, self._joint_names = self._asset.find_joints(self.cfg.joint_names)  # joint_ids = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
-        self._num_joints = len(self._joint_ids)                                             # joint_names = ['FL_hip_joint', 'FR_hip_joint', 'RL_hip_joint', 'RR_hip_joint', 'FL_thigh_joint', 'FR_thigh_joint', 'RL_thigh_joint', 'RR_thigh_joint', 'FL_calf_joint', 'FR_calf_joint', 'RL_calf_joint', 'RR_calf_joint']
-        # log the resolved joint names for debugging
-        carb.log_info(
-            f"Resolved joint names for the action term {self.__class__.__name__}:"
-            f" {self._joint_names} [{self._joint_ids}]"
-        )
-        # Avoid indexing across all joints for efficiency
-        if self._num_joints == self._asset.num_joints:
-            self._joint_ids = slice(None)
-
         # parse scale
         if isinstance(cfg.scale, (float, int)):
             self._scale = float(cfg.scale)
@@ -159,6 +162,33 @@ class ModelBaseAction(ActionTerm):
         else:
             raise ValueError(f"Unsupported offset type: {type(cfg.offset)}. Supported types are float and dict.")
         
+        # parse the body index
+        body_ids, body_names = self._asset.find_bodies(self.cfg.body_name)
+        if len(body_ids) != 1:
+            raise ValueError(
+                f"Expected one match for the body name: {self.cfg.body_name}. Found {len(body_ids)}: {body_names}."
+            )
+        # save only the first body index
+        self._body_idx = body_ids[0]
+        self._body_name = body_names[0]
+        # check if articulation is fixed-base
+        # if fixed-base then the jacobian for the base is not computed
+        # this means that number of bodies is one less than the articulation's number of bodies
+        if self._asset.is_fixed_base:
+            self._jacobi_body_idx = self._body_idx - 1
+        else:
+            self._jacobi_body_idx = self._body_idx
+        carb.log_info(  # log info for debugging
+            f"Resolved body name for the action term {self.__class__.__name__}: {self._body_name} [{self._body_idx}]"
+        )
+
+        # convert the fixed offsets to torch tensors of batched shape
+        if self.cfg.body_offset is not None:
+            self._offset_pos = torch.tensor(self.cfg.body_offset.pos, device=self.device).repeat(self.num_envs, 1)
+            self._offset_rot = torch.tensor(self.cfg.body_offset.rot, device=self.device).repeat(self.num_envs, 1)
+        else:
+            self._offset_pos, self._offset_rot = None, None
+
     """
     Properties.
     """
@@ -209,10 +239,10 @@ class ModelBaseAction(ActionTerm):
         self.z = [self.f, self.d, self.p, self.F]
 
         # Optimize the latent variable with the model base controller
-        self.p_star, self.F_star, self.c_star, self.pt_star = self.controller.optimize_latent_variable(f=self.f, d=self.d, p=self.p, F=self.F)
+        # self.p_star, self.F_star, self.c_star, self.pt_star = self.controller.optimize_latent_variable(f=self.f, d=self.d, p=self.p, F=self.F)
 
 
-    def apply_actions(self):
+    def apply_actions2(self):
         """Applies the actions to the asset managed by the term.
 
         Note: 
@@ -227,28 +257,66 @@ class ModelBaseAction(ActionTerm):
         # Apply the computed torques
         self._asset.set_joint_effort_target(self.u, joint_ids=self._joint_ids)
 
-    
-    def apply_actions2(self):
+
+    # Stolen from DifferentialInverseKinematicsAction
+    def _compute_frame_jacobian(self):
+        """Computes the geometric Jacobian of the target frame in the root frame.
+
+        This function accounts for the target frame offset and applies the necessary transformations to obtain
+        the right Jacobian from the parent body Jacobian.
+        """
+        # read the parent jacobian
+        jacobian = self._asset.root_physx_view.get_jacobians()[:, self._jacobi_body_idx, :, self._joint_ids]
+
+        jacobian = self._asset.root_physx_view.get_jacobians()
+
+        """Ordered names of bodies in articulation (through rigid body view)."""
+        prim_paths = self._asset.body_physx_view.prim_paths[: self._asset.num_bodies]
+        body_names = [path.split("/")[-1] for path in prim_paths]
+        print("Link names through body view: ", body_names)
+
+        """Ordered names of bodies in articulation (through articulation view)."""
+        body_names = self._asset.root_physx_view.shared_metatype.link_names
+        print("Link names through articulation view: ", body_names)
+
+        # account for the offset
+        if self.cfg.body_offset is not None:
+            # Modify the jacobian to account for the offset
+            # -- translational part
+            # v_link = v_ee + w_ee x r_link_ee = v_J_ee * q + w_J_ee * q x r_link_ee
+            #        = (v_J_ee + w_J_ee x r_link_ee ) * q
+            #        = (v_J_ee - r_link_ee_[x] @ w_J_ee) * q
+            jacobian[:, 0:3, :] += torch.bmm(-math_utils.skew_symmetric_matrix(self._offset_pos), jacobian[:, 3:, :])
+            # -- rotational part
+            # w_link = R_link_ee @ w_ee
+            jacobian[:, 3:, :] = torch.bmm(math_utils.matrix_from_quat(self._offset_rot), jacobian[:, 3:, :])
+
+        return jacobian
+
+
+    def apply_actions(self):
         """Applies the actions to the asset managed by the term.
         Note: This is called at every simulation step by the manager.
         """
         output_torques = (torch.rand(self.num_envs, self._num_joints, device=self.device))# * 80) - 40
 
-        print('--- Torch ---')
-        print('shape : ',output_torques.shape)
-        print('device : ',output_torques.device)
-        print('Type : ', type(output_torques))
+        # print('--- Torch ---')
+        # print('shape : ',output_torques.shape)
+        # print('device : ',output_torques.device)
+        # print('Type : ', type(output_torques))
         
         output_torques_jax = torch_to_jax(output_torques)
         output_torques_jax = (output_torques_jax * 80) - 40
 
-        print('')
-        print('--- Jax ---')
-        print('Shape : ', output_torques_jax.shape)
-        print('device : ',output_torques_jax.devices())
-        print('Type : ', type(output_torques_jax))
+        # print('')
+        # print('--- Jax ---')
+        # print('Shape : ', output_torques_jax.shape)
+        # print('device : ',output_torques_jax.devices())
+        # print('Type : ', type(output_torques_jax))
 
         output_torques2 = jax_to_torch(output_torques_jax)
 
         # set joint effort targets (should be equivalent to torque) : Torque controlled robot
         self._asset.set_joint_effort_target(output_torques2, joint_ids=self._joint_ids)
+
+        self._compute_frame_jacobian()
