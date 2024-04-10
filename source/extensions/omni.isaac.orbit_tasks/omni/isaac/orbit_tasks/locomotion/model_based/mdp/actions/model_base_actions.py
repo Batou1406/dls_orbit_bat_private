@@ -162,32 +162,32 @@ class ModelBaseAction(ActionTerm):
         else:
             raise ValueError(f"Unsupported offset type: {type(cfg.offset)}. Supported types are float and dict.")
         
-        # parse the body index
-        body_ids, body_names = self._asset.find_bodies(self.cfg.body_name)
-        if len(body_ids) != 1:
-            raise ValueError(
-                f"Expected one match for the body name: {self.cfg.body_name}. Found {len(body_ids)}: {body_names}."
-            )
-        # save only the first body index
-        self._body_idx = body_ids[0]
-        self._body_name = body_names[0]
-        # check if articulation is fixed-base
-        # if fixed-base then the jacobian for the base is not computed
-        # this means that number of bodies is one less than the articulation's number of bodies
-        if self._asset.is_fixed_base:
-            self._jacobi_body_idx = self._body_idx - 1
-        else:
-            self._jacobi_body_idx = self._body_idx
-        carb.log_info(  # log info for debugging
-            f"Resolved body name for the action term {self.__class__.__name__}: {self._body_name} [{self._body_idx}]"
-        )
+        # # parse the body index
+        # body_ids, body_names = self._asset.find_bodies(self.cfg.body_name)
+        # if len(body_ids) != 1:
+        #     raise ValueError(
+        #         f"Expected one match for the body name: {self.cfg.body_name}. Found {len(body_ids)}: {body_names}."
+        #     )
+        # # save only the first body index
+        # self._body_idx = body_ids[0]
+        # self._body_name = body_names[0]
+        # # check if articulation is fixed-base
+        # # if fixed-base then the jacobian for the base is not computed
+        # # this means that number of bodies is one less than the articulation's number of bodies
+        # if self._asset.is_fixed_base:
+        #     self._jacobi_body_idx = self._body_idx - 1
+        # else:
+        #     self._jacobi_body_idx = self._body_idx
+        # carb.log_info(  # log info for debugging
+        #     f"Resolved body name for the action term {self.__class__.__name__}: {self._body_name} [{self._body_idx}]"
+        # )
 
-        # convert the fixed offsets to torch tensors of batched shape
-        if self.cfg.body_offset is not None:
-            self._offset_pos = torch.tensor(self.cfg.body_offset.pos, device=self.device).repeat(self.num_envs, 1)
-            self._offset_rot = torch.tensor(self.cfg.body_offset.rot, device=self.device).repeat(self.num_envs, 1)
-        else:
-            self._offset_pos, self._offset_rot = None, None
+        # # convert the fixed offsets to torch tensors of batched shape
+        # if self.cfg.body_offset is not None:
+        #     self._offset_pos = torch.tensor(self.cfg.body_offset.pos, device=self.device).repeat(self.num_envs, 1)
+        #     self._offset_rot = torch.tensor(self.cfg.body_offset.rot, device=self.device).repeat(self.num_envs, 1)
+        # else:
+        #     self._offset_pos, self._offset_rot = None, None
 
     """
     Properties.
@@ -258,42 +258,6 @@ class ModelBaseAction(ActionTerm):
         self._asset.set_joint_effort_target(self.u, joint_ids=self._joint_ids)
 
 
-    # Stolen from DifferentialInverseKinematicsAction
-    def _compute_frame_jacobian(self):
-        """Computes the geometric Jacobian of the target frame in the root frame.
-
-        This function accounts for the target frame offset and applies the necessary transformations to obtain
-        the right Jacobian from the parent body Jacobian.
-        """
-        # read the parent jacobian
-        jacobian = self._asset.root_physx_view.get_jacobians()[:, self._jacobi_body_idx, :, self._joint_ids]
-
-        jacobian = self._asset.root_physx_view.get_jacobians()
-
-        """Ordered names of bodies in articulation (through rigid body view)."""
-        prim_paths = self._asset.body_physx_view.prim_paths[: self._asset.num_bodies]
-        body_names = [path.split("/")[-1] for path in prim_paths]
-        print("Link names through body view: ", body_names)
-
-        """Ordered names of bodies in articulation (through articulation view)."""
-        body_names = self._asset.root_physx_view.shared_metatype.link_names
-        print("Link names through articulation view: ", body_names)
-
-        # account for the offset
-        if self.cfg.body_offset is not None:
-            # Modify the jacobian to account for the offset
-            # -- translational part
-            # v_link = v_ee + w_ee x r_link_ee = v_J_ee * q + w_J_ee * q x r_link_ee
-            #        = (v_J_ee + w_J_ee x r_link_ee ) * q
-            #        = (v_J_ee - r_link_ee_[x] @ w_J_ee) * q
-            jacobian[:, 0:3, :] += torch.bmm(-math_utils.skew_symmetric_matrix(self._offset_pos), jacobian[:, 3:, :])
-            # -- rotational part
-            # w_link = R_link_ee @ w_ee
-            jacobian[:, 3:, :] = torch.bmm(math_utils.matrix_from_quat(self._offset_rot), jacobian[:, 3:, :])
-
-        return jacobian
-
-
     def apply_actions(self):
         """Applies the actions to the asset managed by the term.
         Note: This is called at every simulation step by the manager.
@@ -316,7 +280,61 @@ class ModelBaseAction(ActionTerm):
 
         output_torques2 = jax_to_torch(output_torques_jax)
 
+        self.get_robot_state()
+
         # set joint effort targets (should be equivalent to torque) : Torque controlled robot
         self._asset.set_joint_effort_target(output_torques2, joint_ids=self._joint_ids)
 
-        self._compute_frame_jacobian()
+
+    def get_robot_state(self):
+        """ TODO Write description
+        """
+
+        fl_joints = self._asset.find_joints("FL.*")[0]
+        fr_joints = self._asset.find_joints("FR.*")[0]
+        rl_joints = self._asset.find_joints("RL.*")[0]
+        rr_joints = self._asset.find_joints("RR.*")[0]
+
+        foot_idx = self._asset.find_bodies(".*foot")[0]
+
+        # 'FL_foot', 'FR_foot', 'RL_foot', 'RR_foot'
+        fl_jacobian = self._asset.root_physx_view.get_jacobians()[:, foot_idx[0], 0:3, fl_joints]# + 6]
+        fr_jacobian = self._asset.root_physx_view.get_jacobians()[:, foot_idx[1], 0:3, fr_joints]# + 6]
+        rl_jacobian = self._asset.root_physx_view.get_jacobians()[:, foot_idx[2], 0:3, rl_joints]# + 6]
+        rr_jacobian = self._asset.root_physx_view.get_jacobians()[:, foot_idx[3], 0:3, rr_joints]# + 6]
+
+        # foot position in wf
+        fl_foot_pos_w = self._asset.data.body_state_w[:, foot_idx[0], 0:3]
+        fr_foot_pos_w = self._asset.data.body_state_w[:, foot_idx[1], 0:3]
+        rl_foot_pos_w = self._asset.data.body_state_w[:, foot_idx[2], 0:3]
+        rr_foot_pos_w = self._asset.data.body_state_w[:, foot_idx[3], 0:3]
+
+        # foot orientation in wf
+        fl_foot_orient_w = self._asset.data.body_state_w[:, foot_idx[0], 3:7]
+        fr_foot_orient_w = self._asset.data.body_state_w[:, foot_idx[1], 3:7]
+        rl_foot_orient_w = self._asset.data.body_state_w[:, foot_idx[2], 3:7]
+        rr_foot_orient_w = self._asset.data.body_state_w[:, foot_idx[3], 3:7]
+
+        base_pose_w = self._asset.data.root_state_w[:, 0:3]
+        base_orient_w = self._asset.data.root_state_w[:, 3:7]
+
+        base_lin_vel_w = self._asset.data.root_state_w[:, 7:10]
+        base_ang_vel_w = self._asset.data.root_state_w[:, 10:13]
+
+        # foot position, orientation in bf
+        fl_foot_pos_b, fl_foot_orient_b = math_utils.subtract_frame_transforms(base_pose_w, base_orient_w, fl_foot_pos_w, fl_foot_orient_w)
+        fr_foot_pos_b, fr_foot_orient_b = math_utils.subtract_frame_transforms(base_pose_w, base_orient_w, fr_foot_pos_w, fr_foot_orient_w)
+        rl_foot_pos_b, rl_foot_orient_b = math_utils.subtract_frame_transforms(base_pose_w, base_orient_w, rl_foot_pos_w, rl_foot_orient_w)
+        rr_foot_pos_b, rr_foot_orient_b = math_utils.subtract_frame_transforms(base_pose_w, base_orient_w, rr_foot_pos_w, rr_foot_orient_w)
+
+        # foot joint position
+        fl_joint_pos = self._asset.data.joint_pos[:, fl_joints]
+        fr_joint_pos = self._asset.data.joint_pos[:, fr_joints]
+        rl_joint_pos = self._asset.data.joint_pos[:, rl_joints]
+        rr_joint_pos = self._asset.data.joint_pos[:, rr_joints]
+
+        # foot joint velocity
+        fl_joint_vel = self._asset.data.joint_vel[:, fl_joints]
+        fr_joint_vel = self._asset.data.joint_vel[:, fr_joints]
+        rl_joint_vel = self._asset.data.joint_vel[:, rl_joints]
+        rr_joint_vel = self._asset.data.joint_vel[:, rr_joints]
