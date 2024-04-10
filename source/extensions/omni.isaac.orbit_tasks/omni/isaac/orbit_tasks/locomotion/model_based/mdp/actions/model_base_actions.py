@@ -29,9 +29,9 @@ import jax.dlpack
 import torch
 import torch.utils.dlpack
 
+
 def jax_to_torch(x: jax.Array):
-    return torch.utils.dlpack.from_dlpack(x.__dlpack__)
-    # return torch.utils.dlpack.from_dlpack(jax.dlpack.to_dlpack(x))
+    return torch.utils.dlpack.from_dlpack(jax.dlpack.to_dlpack(x))
 def torch_to_jax(x):
     return jax.dlpack.from_dlpack(torch.utils.dlpack.to_dlpack(x))
 
