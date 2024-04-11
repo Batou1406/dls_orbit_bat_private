@@ -101,8 +101,11 @@ class samplingController(modelBaseController):
         - stance_leg_controller(F0*, c0*) -> T_stance
     """
 
-    def __init__(self):
+    def __init__(self, swing_ctrl_pos_gain_fb = 1, swing_ctrl_vel_gain_fb=1):
         super().__init__()
+
+        self.swing_ctrl_pos_gain_fb = swing_ctrl_pos_gain_fb
+        self.swing_ctrl_vel_gain_fb = swing_ctrl_vel_gain_fb
 
 
     def gait_generator(self, f: torch.Tensor, d: torch.Tensor, phase: torch.tensor, time_horizon: int, dt) -> tuple[torch.Tensor, torch.Tensor]:
@@ -164,16 +167,56 @@ class samplingController(modelBaseController):
         raise NotImplementedError
 
 
-    def swing_leg_controller(self, c0_star: torch.Tensor, pt01_star: torch.Tensor) -> torch.Tensor:
+    def swing_leg_controller(self, c0_star: torch.Tensor, pt01_star: torch.Tensor, p:torch.Tensor, p_dot:torch.Tensor, q_dot: torch.Tensor,
+                             jacobian: torch.Tensor, jacobian_dot: torch.Tensor, mass_matrix: torch.Tensor, h: torch.Tensor) -> torch.Tensor:
         """ Given feet contact, and desired feet trajectory : compute joint torque with feedback linearization control
+        T = M(q)*J⁻¹[p_dot_dot - J(q)*q_dot] + C(q,q_dot) + G(q)
+
         Args:
             - c0*   (torch.bool): Optimized foot contact sequence       of shape(batch_size, num_legs)
-            - pt01* (tch.Tensor): Opt. Foot trajectory in swing phase   of shape(batch_size, num_legs, 3, decimation)
+            - pt01* (tch.Tensor): Opt. Foot trajectory in swing phase   of shape(batch_size, num_legs, 9) (9 = pos, vel, acc)
+            - p   (torch.Tensor): Feet Position                         of shape(batch_size, num_legs, 3)
+            - p_dot (tch.Tensor): Feet velocity                         of shape(batch_size, num_legs, 3)
+            - q_dot (tch.Tensor): Joint velocity                        of shape(batch_size, num_legs, num_joints_per_leg)
+            - jacobian  (Tensor): Jacobian -> joint frame to foot frame of shape(batch_size, num_legs, 3, num_joints_per_leg)
+            - jacobian_dot (Tsr): Jacobian derivative (forward euler)   of shape(batch_size, num_legs, 3, num_joints_per_leg)
+            - mass_matrix (Tsor): Mass Matrix in joint space            of shape(batch_size, num_legs, num_joints_per_leg, num_joints_per_leg)
+            - h   (torch.Tensor): C(q,q_dot) + G(q) (corr. and grav F.) of shape(batch_size, num_legs, num_joints_per_leg)
 
         Returns:
-            - T_swing (t.Tensor): Swing Leg joint torques               of shape(batch_size, num_joints)
+            - T_swing (t.Tensor): Swing Leg joint torques               of shape(batch_size, num_legs, num_joints_per_leg)
         """
-        raise NotImplementedError
+
+        # Compute the desired acceleration : with a PD controller thanks to the feedback linearization
+        # Intermediate variables
+        pos_err = pt01_star[:,:,0:3] - p
+        vel_err = pt01_star[:,:,3:6] - p_dot
+        des_foot_acc = pt01_star[:,:,6:9]
+        accelleration = des_foot_acc + self.swing_ctrl_pos_gain_fb * (pos_err) + self.swing_ctrl_vel_gain_fb * (vel_err)
+
+        # Compute  the inverse jacobian. This synchronise CPU and GPU
+        # Compute pseudo-inverse -> to be resilient to any number of joint per legs (not restricted to square matrix)
+        jacobian_inv = torch.linalg.pinv(jacobian)
+        
+        # Must unsqueeze q_dot to perform matmul (ie add a singleton dimension on last position)
+        # change q_dot shape from (batch_size, num_legs, num_joints_per_leg) to (batch_size, num_legs, num_joints_per_leg, 1)
+        # J_dot_x_q_dot is of shape (batch_size, num_legs, 3) (The singleton dim is dropped by the squeeze operation)
+        J_dot_x_q_dot = torch.matmul(jacobian_dot, q_dot.unsqueeze(-1)).squeeze(-1)
+
+        # Intermediary step : J⁻¹[p_dot_dot - J(q)*q_dot]
+        J_inv_p_dot_dot_min_J_dot_x_q_dot = torch.matmul(jacobian_inv, J_dot_x_q_dot.unsqueeze(-1)).squeeze(-1)
+
+        # Intermediary step : M(q)*J⁻¹[p_dot_dot - J(q)*q_dot]
+        M_J_inv_p_dot_dot_min_J_dot_x_q_dot = torch.matmul(mass_matrix, J_inv_p_dot_dot_min_J_dot_x_q_dot.unsqueeze(-1)).squeeze(-1)
+
+        # Final step
+        T = torch.add(M_J_inv_p_dot_dot_min_J_dot_x_q_dot, h)
+
+        # Keep torques only for leg in contact
+        # C0_star must be expanded to perform operation : shape(batch_size, num_legs) -> shape(batch_size, num_legs, num_joints_per_leg)
+        T_swing = T * c0_star.unsqueeze(-1).expand(*[-1] * len(c0_star.shape), T.shape[-1])
+
+        return T_swing
     
 
     def stance_leg_controller(self, F0_star: torch.Tensor, c0_star: torch.Tensor, jacobian: torch.Tensor) -> torch.Tensor:
