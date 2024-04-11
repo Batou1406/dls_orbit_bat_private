@@ -290,11 +290,13 @@ class ModelBaseAction(ActionTerm):
         """ TODO Write description
         """
 
-        fl_joints = self._asset.find_joints("FL.*")[0]
-        fr_joints = self._asset.find_joints("FR.*")[0]
-        rl_joints = self._asset.find_joints("RL.*")[0]
-        rr_joints = self._asset.find_joints("RR.*")[0]
+        # Joint Index
+        fl_joints = self._asset.find_joints("FL.*")[0]		# list [0, 4,  8]
+        fr_joints = self._asset.find_joints("FR.*")[0]		# list [1, 5,  9]
+        rl_joints = self._asset.find_joints("RL.*")[0]		# list [2, 6, 10]
+        rr_joints = self._asset.find_joints("RR.*")[0]		# list [3, 7, 11]
 
+        # Body Index
         foot_idx = self._asset.find_bodies(".*foot")[0]
 
         # 'FL_foot', 'FR_foot', 'RL_foot', 'RR_foot'
@@ -315,9 +317,9 @@ class ModelBaseAction(ActionTerm):
         rl_foot_orient_w = self._asset.data.body_state_w[:, foot_idx[2], 3:7]
         rr_foot_orient_w = self._asset.data.body_state_w[:, foot_idx[3], 3:7]
 
+        # Root state ``[pos, quat, lin_vel, ang_vel]`` in simulation world frame. Shape is (num_instances, 13)
         base_pose_w = self._asset.data.root_state_w[:, 0:3]
         base_orient_w = self._asset.data.root_state_w[:, 3:7]
-
         base_lin_vel_w = self._asset.data.root_state_w[:, 7:10]
         base_ang_vel_w = self._asset.data.root_state_w[:, 10:13]
 

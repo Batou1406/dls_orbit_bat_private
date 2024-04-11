@@ -127,6 +127,7 @@ class samplingController(modelBaseController):
         
         # Increment phase of f*dt: new_phases[0] : incremented of 1 step, new_phases[1] incremented of 2 steps, etc. without a for loop.
         # new_phases = phase + f*dt*[1,2,...,time_horizon]
+        # phase and f must be exanded from (batch_size, num_legs, parallel_rollout) to (batch_size, num_legs, parallel_rollout, time_horizon) in order to perform the operations
         new_phases = phase.unsqueeze(-1).expand(*[-1] * len(phase.shape),time_horizon) + f.unsqueeze(-1).expand(*[-1] * len(f.shape),time_horizon)*torch.linspace(start=1, end=time_horizon, steps=time_horizon)*dt
 
         # Make the phases circular (like sine) (% is modulo operation)
@@ -175,22 +176,41 @@ class samplingController(modelBaseController):
         raise NotImplementedError
     
 
-    def stance_leg_controller(self, F0_star: torch.Tensor, c0_star: torch.Tensor) -> torch.Tensor:
+    def stance_leg_controller(self, F0_star: torch.Tensor, c0_star: torch.Tensor, jacobian: torch.Tensor) -> torch.Tensor:
         """ Given GRF and contact sequence -> compute joint torques using the jacobian : T = -J*F
         1. compute the jacobian using the simulation tool : end effector jacobian wrt to robot base
         2. compute the stance torque : T = -J*F
 
         Args:
             - F0* (torch.Tensor): Opt. Ground Reac. Forces (GRF)        of shape(batch_size, num_legs, 3)
-            - c0* (torch.bool)  : Optimized foot contact sequence       of shape(batch_size, num_legs)
+            - c0* (torch.bool)  : Optimized foot contact 1st el. seq.   of shape(batch_size, num_legs)
+            - jacobian          : Jacobian                              of shape(batch_size, num_legs, 3, num_joints_per_leg)
 
         Returns:
-            - T_stance(t.Tensor): Stance Leg joint Torques              of shape(batch_size, num_joints)
+            - T_stance(t.Tensor): Stance Leg joint Torques              of shape(batch_size, num_legs, num_joints_per_leg)
         """
+        
+        # Transpose the jacobian -> In batch operation : permut the last two dimensions 
+        # shape(batch_size, num_legs, 3, num_joints_per_leg) -> shape(batch_size, num_legs, num_joints_per_leg, 3)
+        jacobian_T = jacobian.transpose(-1,-2)
 
+        # Add a singleton dimension on last position to enable matmul operation 
+        # shape(batch_size, num_legs, 3) -> shape(batch_size, num_legs, 3, 1)
+        F0_star_unsqueezed = F0_star.unsqueeze(-1)
 
+        # Perform the matrix multiplication T = - J^T * F
+        # shape(batch_size, num_legs, num_joints_per_leg, 1)
+        T_unsqueezed= -torch.matmul(jacobian_T, F0_star_unsqueezed)
 
-        raise NotImplementedError
+        # Supress the singleton dimension added for the matmul operation
+        # shape(batch_size, num_legs, num_joints_per_leg, 1) -> shape(batch_size, num_legs, num_joints_per_leg)
+        T = T_unsqueezed.squeeze(-1)
+
+        # Keep torques only for leg in contact
+        # C0_star must be expanded to perform operation : shape(batch_size, num_legs) -> shape(batch_size, num_legs, num_joints_per_leg)
+        T_stance = T * c0_star.unsqueeze(-1).expand(*[-1] * len(c0_star.shape), T.shape[-1])
+
+        return T_stance
 
 
     def optimize_gait(self):
