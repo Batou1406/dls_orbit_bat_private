@@ -39,7 +39,7 @@ class modelBaseController(ABC):
         raise NotImplementedError
 
 
-    def compute_control_output(self, F0_star: torch.Tensor, c0_star: torch.Tensor, pt01_star: torch.Tensor) -> torch.Tensor:
+    def compute_control_output(self, F0_star: torch.Tensor, c0_star: torch.Tensor, pt_i_star: torch.Tensor) -> torch.Tensor:
         """ Compute the output torque to be applied to the system
         typically, it would compute :
             - T_stance_phase = stance_leg_controller(GRF, q, c) # Update the jacobian with the new joint position.
@@ -50,8 +50,8 @@ class modelBaseController(ABC):
         Args:
             - F0* (torch.Tensor): Opt. Ground Reac. Forces (GRF)        of shape(batch_size, num_legs, 3)
             - c0* (torch.bool)  : Optimized foot contact sequence       of shape(batch_size, num_legs)
-            - pt01* (tch.Tensor): Opt. Foot trajectory in swing phase   of shape(batch_size, num_legs, 3, decimation)
-            - TODO p0  (torch.Tensor): last foot position (from sim.)        of shape(batch_size, num_legs, 3)
+            - pt_i* (tch.Tensor): Opt. Foot point in swing phase        of shape(batch_size, num_legs, 9) (9 = pos, vel, acc)
+            - ...
 
         Returns:
             - T   (torch.Tensor): control output (ie. Joint Torques)    of shape(batch_size, num_joints)
@@ -106,7 +106,6 @@ class samplingController(modelBaseController):
 
         self.swing_ctrl_pos_gain_fb = swing_ctrl_pos_gain_fb
         self.swing_ctrl_vel_gain_fb = swing_ctrl_vel_gain_fb
-        self.inner_loop = 0
 
 # ----------------------------------- Outer Loop ------------------------------
 
@@ -170,7 +169,7 @@ class samplingController(modelBaseController):
 
 
 # ----------------------------------- Inner Loop ------------------------------
-    def compute_control_output(self, F0_star: torch.Tensor, c0_star: torch.Tensor, pt01_star: torch.Tensor, p:torch.Tensor, p_dot:torch.Tensor, q_dot: torch.Tensor, jacobian: torch.Tensor, jacobian_dot: torch.Tensor, mass_matrix: torch.Tensor, h: torch.Tensor) -> torch.Tensor:
+    def compute_control_output(self, F0_star: torch.Tensor, c0_star: torch.Tensor, pt_i_star: torch.Tensor, p:torch.Tensor, p_dot:torch.Tensor, q_dot: torch.Tensor, jacobian: torch.Tensor, jacobian_dot: torch.Tensor, mass_matrix: torch.Tensor, h: torch.Tensor) -> torch.Tensor:
         """ Compute the output torque to be applied to the system
         typically, it would compute :
             - T_stance_phase = stance_leg_controller(GRF, q, c) # Update the jacobian with the new joint position.
@@ -181,7 +180,7 @@ class samplingController(modelBaseController):
         Args:
             - F0* (torch.Tensor): Opt. Ground Reac. Forces (GRF)        of shape(batch_size, num_legs, 3)
             - c0* (torch.bool)  : Optimized foot contact sequence       of shape(batch_size, num_legs)
-            - pt01* (tch.Tensor): Opt. Foot trajectory in swing phase   of shape(batch_size, num_legs, 9, decimation) (9 = pos, vel, acc)
+            - pt_i* (tch.Tensor): Opt. Foot point in swing phase        of shape(batch_size, num_legs, 9) (9 = pos, vel, acc)
             - p   (torch.Tensor): Feet Position  (latest from sim)      of shape(batch_size, num_legs, 3)
             - p_dot (tch.Tensor): Feet velocity  (latest from sim)      of shape(batch_size, num_legs, 3)
             - q_dot (tch.Tensor): Joint velocity (latest from sim)      of shape(batch_size, num_legs, num_joints_per_leg)
@@ -193,10 +192,6 @@ class samplingController(modelBaseController):
         Returns:
             - T   (torch.Tensor): control output (ie. Joint Torques)    of shape(batch_size, num_joints)
         """
-        # Extract the optimal swing point out of the swing trajectory (and increment the time in the trajectory)
-        # from shape(batch_size, num_legs, 9, decimation) to shape(batch_size, num_legs, 9)
-        pt_i_star = pt01_star[:,:,:,self.inner_loop]
-        self.inner_loop += 1
 
         # Get the swing torque from the swing controller : swing torque has already been filered by C0* (ie. T_swing = T * ~c0*)
         # T_swing Shape (batch_size, num_legs, num_joints_per_leg)

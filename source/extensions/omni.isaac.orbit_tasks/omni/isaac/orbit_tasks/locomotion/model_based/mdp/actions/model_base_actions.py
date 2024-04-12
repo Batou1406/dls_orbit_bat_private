@@ -29,6 +29,8 @@ import jax.dlpack
 import torch
 import torch.utils.dlpack
 
+import numpy as np
+
 
 def jax_to_torch(x: jax.Array):
     return torch.utils.dlpack.from_dlpack(jax.dlpack.to_dlpack(x))
@@ -69,10 +71,16 @@ class ModelBaseAction(ActionTerm):
         - p_star (th.Tensor): Optimizied foot pos sequence          of shape (batch_size, num_legs, 3, time_horizon)
         - F_star (th.Tensor): Opt. Ground Reac. Forces (GRF) seq.   of shape (batch_size, num_legs, 3, time_horizon)
         - c_star (th.Tensor): Optimizied foot contact sequence      of shape (batch_size, num_legs, time_horizon)
-        - pt_star(th.Tensor): Optimizied foot swing trajectory      of shape (batch_size, num_legs, 3, decimation)
+        - pt_star(th.Tensor): Optimizied foot swing trajectory      of shape (batch_size, num_legs, 9, decimation)  (9 = pos, vel, acc)
         - z   (tuple)       : Latent variable : z=(f,d,p,F)         of shape (...)
-        - u   (torch.Tensor): output joint torques                  of shaoe (batch_size, num_joints)
+        - u   (torch.Tensor): output joint torques                  of shape (batch_size, num_joints)
         - controller (modelBaseController): controller instance that compute u from z 
+        - _foot_idx         : List of index of the feet
+        - _num_legs         : Number of legs of the robot  : useful for dimension definition
+        - _num_joints_per_leg: Number of joints per leg    : useful for dimension definition
+        - _joint_idx        : List of list of joints [FL_joints, FR_joints, ...]
+        - jacobian_prev (ts): jacobian from prev. dt for jac_dot    of shape (batch_size, num_leg, 3, num_joints_per_leg) 
+        - inner_loop        : Counter of inner loop wrt. outer loop
 
     Method :
         reset(env_ids: Sequence[int] | None = None) -> None:
@@ -117,6 +125,22 @@ class ModelBaseAction(ActionTerm):
         if self._num_joints == self._asset.num_joints:
             self._joint_ids = slice(None)
 
+        # Retrieve series of information usefull for computation and generalisation
+        # Feet Index in body, list [13, 14, 15, 16]
+        self._foot_idx = self._asset.find_bodies(".*foot")[0]
+        self._num_legs = len(self._foot_idx)
+        self._num_joints_per_leg = self._num_joints // self._num_legs
+
+        # variable to count the number of inner loop with respect to outer loop
+        self.inner_loop = 0
+
+        # Joint Index
+        fl_joints = self._asset.find_joints("FL.*")[0]		# list [0, 4,  8]
+        fr_joints = self._asset.find_joints("FR.*")[0]		# list [1, 5,  9]
+        rl_joints = self._asset.find_joints("RL.*")[0]		# list [2, 6, 10]
+        rr_joints = self._asset.find_joints("RR.*")[0]		# list [3, 7, 11]
+        self._joints_idx = [fl_joints, fr_joints, rl_joints, rr_joints]
+
         # Latent variable
         self.f = torch.zeros(self.num_envs, self._num_legs, device=self.device)
         self.d = torch.zeros(self.num_envs, self._num_legs, device=self.device)
@@ -128,10 +152,13 @@ class ModelBaseAction(ActionTerm):
         self.p_star = torch.zeros(self.num_envs, self._num_legs, 3, self._prevision_horizon, device=self.device)
         self.F_star = torch.zeros(self.num_envs, self._num_legs, 3, self._prevision_horizon, device=self.device)
         self.c_star = torch.zeros(self.num_envs, self._num_legs, self._prevision_horizon, device=self.device)
-        self.pt_star= torch.zeros(self.num_envs, self._num_legs, self._decimation, device=self.device)
+        self.pt_star= torch.zeros(self.num_envs, self._num_legs, 9, self._decimation, device=self.device)
 
         # Control input u : joint torques
         self.u = torch.zeros(self.num_envs, self._num_joints, device=self.device)
+
+        # Variable for intermediary computaion
+        self.jacobian_prev = torch.zeros(self.num_envs, self._num_legs, 3, self._num_joints_per_leg, device=self.device)
 
         # Instance of control class. Gets Z and output u
         self.controller = cfg.controller
@@ -241,8 +268,11 @@ class ModelBaseAction(ActionTerm):
         # Optimize the latent variable with the model base controller
         # self.p_star, self.F_star, self.c_star, self.pt_star = self.controller.optimize_latent_variable(f=self.f, d=self.d, p=self.p, F=self.F)
 
+        # Reset the inner loop counter
+        self.inner_loop = 0
 
-    def apply_actions2(self):
+
+    def apply_actions(self):
         """Applies the actions to the asset managed by the term.
 
         Note: 
@@ -253,16 +283,22 @@ class ModelBaseAction(ActionTerm):
         """
         
         # Retrieve the robot states 
+        p, p_dot, q_dot, jacobian, jacobian_dot, mass_matrix, h = self.get_robot_state() 
 
+        # Extract optimal variables
+        F0_star = self.F_star[:,:,:,0]
+        c0_star = self.c_star[:,:,0]
+        pt_i_star = self.pt_star[:,:,:,self.inner_loop]
+        self.inner_loop += 1
 
         # Use model controller to compute the torques from the latent variable
-        self.u = self.controller.compute_control_output(F0_star=self.F_star[:,:,:,0], c0_star=self.c_star[:,:,0], pt01_star=self.pt_star[:,:,:,0])
+        self.u = self.controller.compute_control_output(F0_star=F0_star, c0_star=c0_star, pt_i_star=pt_i_star, p=p, p_dot=p_dot, q_dot=q_dot, jacobian=jacobian, jacobian_dot=jacobian_dot, mass_matrix=mass_matrix, h=h)
 
         # Apply the computed torques
         self._asset.set_joint_effort_target(self.u, joint_ids=self._joint_ids)
 
 
-    def apply_actions(self):
+    def apply_actions2(self):
         """Applies the actions to the asset managed by the term.
         Note: This is called at every simulation step by the manager.
         """
@@ -290,7 +326,7 @@ class ModelBaseAction(ActionTerm):
         self._asset.set_joint_effort_target(output_torques2, joint_ids=self._joint_ids)
 
 
-    def get_robot_state2(self):
+    def get_robot_state(self):
         """ Retrieve the Robot states from the simulator
 
         Return :
@@ -302,20 +338,72 @@ class ModelBaseAction(ActionTerm):
             - mass_matrix (Tsor): Mass Matrix in joint space            of shape(batch_size, num_legs, num_joints_per_leg, num_joints_per_leg)
             - h   (torch.Tensor): C(q,q_dot) + G(q) (corr. and grav F.) of shape(batch_size, num_legs, num_joints_per_leg)
         """
-        p = self._asset.data.body_state_w
-        p_dot = ...
 
-        # Retrieve Joint velocities [num_instances, num_joints]
-        q_dot = self._asset.data.joint_vel[:]
+        # Retrieve robot base position and orientation in order to compute world->base frame transformation
+        robot_pos_w = self._asset.data.root_pos_w       # shape (batch_size, 3) (xyz)
+        robot_orientation_w = self._asset.data.root_quat_w # shape (batch_size, 4) (quaternions)
+        robot_vel_w = self._asset.data.root_lin_vel_w
+        # robot_ang_vel_w = self._asset.data.root_ang_vel_w
+
+        # Retrieve Feet position in world frame : [num_instances, num_bodies, 3] select right indexes to get 
+        # shape(batch_size, num_legs, 3)
+        # Finally apply frame transformation to get feet position in body frame
+        p_w = self._asset.data.body_pos_w[:, self._foot_idx,:]
+        p_orientation_w = self._asset.data.body_quat_w[:, self._foot_idx,:]
+        p_b_0, _ = math_utils.subtract_frame_transforms(robot_pos_w, robot_orientation_w, p_w[:,0,:], p_orientation_w[:,0,:])
+        p_b_1, _ = math_utils.subtract_frame_transforms(robot_pos_w, robot_orientation_w, p_w[:,1,:], p_orientation_w[:,1,:])
+        p_b_2, _ = math_utils.subtract_frame_transforms(robot_pos_w, robot_orientation_w, p_w[:,2,:], p_orientation_w[:,2,:])
+        p_b_3, _ = math_utils.subtract_frame_transforms(robot_pos_w, robot_orientation_w, p_w[:,3,:], p_orientation_w[:,3,:])
+        p_b = torch.cat((p_b_0.unsqueeze(1), p_b_1.unsqueeze(1), p_b_2.unsqueeze(1), p_b_3.unsqueeze(1)), dim=1)
+
+        # Retrieve Feet velocity in world frame : [num_instances, num_bodies, 3] select right indexes to get 
+        # shape(batch_size, num_legs, 3)
+        # Finally apply frame transformation to get feet position in body frame
+        p_dot_w = self._asset.data.body_lin_vel_w[:, self._foot_idx,:]
+        # p_dot_orientation_w = self._asset.data.body_ang_vel_w[:, self._foot_idx, :]
+        p_dot_b_0, _ = math_utils.subtract_frame_transforms(robot_vel_w, robot_orientation_w, p_dot_w[:,0,:], p_orientation_w[:,0,:])
+        p_dot_b_1, _ = math_utils.subtract_frame_transforms(robot_vel_w, robot_orientation_w, p_dot_w[:,1,:], p_orientation_w[:,1,:])
+        p_dot_b_2, _ = math_utils.subtract_frame_transforms(robot_vel_w, robot_orientation_w, p_dot_w[:,2,:], p_orientation_w[:,2,:])
+        p_dot_b_3, _ = math_utils.subtract_frame_transforms(robot_vel_w, robot_orientation_w, p_dot_w[:,3,:], p_orientation_w[:,3,:])
+        p_dot_b = torch.cat((p_dot_b_0.unsqueeze(1), p_dot_b_1.unsqueeze(1), p_dot_b_2.unsqueeze(1), p_dot_b_3.unsqueeze(1)), dim=1)
+
+        # Retrieve Joint velocities [num_instances, num_joints] -> reorganise the view and permute to get the
+        # shape(batch_size, num_legs, num_joints_per_leg) : This is in joint space, no transformation required
+        q_dot = self._asset.data.joint_vel.view(-1,self._num_joints_per_leg,self._num_legs).permute(0,2,1)
         
-        jacobian = ...
-        jacobian_dot = ...
-        mass_matrix = ...
-        h = ...
+        # Retrieve Jacobian from sim
+        # shape(batch_size, num_legs, 3, num_joints_per_leg)
+        # Intermediary step : extract feet jacobian [batch_size, num_bodies=17, 6, num_joints+6=18] -> [..., 4, 3, 18]
+        # Shift from 6 due to an offset. This is due to how the model is define I think
+        jacobian_feet_full = self._asset.root_physx_view.get_jacobians()[:, self._foot_idx, :3, :]
+        jacobian = torch.cat((jacobian_feet_full[:, 0, :, 6+np.asarray(self._joints_idx[0])].unsqueeze(1),
+                              jacobian_feet_full[:, 1, :, 6+np.asarray(self._joints_idx[1])].unsqueeze(1),
+                              jacobian_feet_full[:, 2, :, 6+np.asarray(self._joints_idx[2])].unsqueeze(1),
+                              jacobian_feet_full[:, 3, :, 6+np.asarray(self._joints_idx[3])].unsqueeze(1)), dim=1)
+        
+
+        # Compute jacobian derivative, using forward euler. 
+        jacobian_dot = ((jacobian - self.jacobian_prev) / self._env.physics_dt)
+        self.jacobian_prev = jacobian
+
+        # Retrieve the mass Matrix
+        # Shape is (batch_size, num_joints, num_joints) (ie. 144 element), we have to extract num leg sub matrices from that to have 
+        # shape (batch_size, num_leg, num_joints_per_leg, num_joints_per_leg) (ie. 36 elements)
+        # This is done with complex indexing operations
+        # mass_matrix_full = self._asset.root_physx_view.get_mass_matrices()
+        # mass_matrix_FL = mass_matrix_full[:,[0,4,8],:][:, [0,4,8]]
+        joints_idx_tensor = torch.Tensor(self._joints_idx).unsqueeze(2).unsqueeze(3).long() # long to use it to access indexes -> float trow an error
+        mass_matrix = self._asset.root_physx_view.get_mass_matrices()[:, joints_idx_tensor, joints_idx_tensor.transpose(1,2)].squeeze(-1)
+        
+        # Retrieve Corriolis, centrifugial and gravitationnal term
+        # get_coriolis_and_centrifugal_forces -> (batch_size, num_joints)
+        # get_generalized_gravity_forces -> (batch_size, num_joints)
+        h = self._asset.root_physx_view.get_coriolis_and_centrifugal_forces() + self._asset.root_physx_view.get_generalized_gravity_forces()
+
+        return p_b, p_dot_b, q_dot, jacobian, jacobian_dot, mass_matrix, h
 
 
-
-    def get_robot_state(self):
+    def get_robot_state2(self):
         """ TODO Write description
         """
 
@@ -369,3 +457,5 @@ class ModelBaseAction(ActionTerm):
         fr_joint_vel = self._asset.data.joint_vel[:, fr_joints]
         rl_joint_vel = self._asset.data.joint_vel[:, rl_joints]
         rr_joint_vel = self._asset.data.joint_vel[:, rr_joints]
+
+        print('alo')
