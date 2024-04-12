@@ -251,6 +251,10 @@ class ModelBaseAction(ActionTerm):
             2. Compute joint torque to be applied (call controller.compute_control_output) and update u
             3. Apply joint torque to simulation 
         """
+        
+        # Retrieve the robot states 
+
+
         # Use model controller to compute the torques from the latent variable
         self.u = self.controller.compute_control_output(F0_star=self.F_star[:,:,:,0], c0_star=self.c_star[:,:,0], pt01_star=self.pt_star[:,:,:,0])
 
@@ -280,10 +284,35 @@ class ModelBaseAction(ActionTerm):
 
         output_torques2 = jax_to_torch(output_torques_jax)
 
-        self.get_robot_state()
+        self.get_robot_state2()
 
         # set joint effort targets (should be equivalent to torque) : Torque controlled robot
         self._asset.set_joint_effort_target(output_torques2, joint_ids=self._joint_ids)
+
+
+    def get_robot_state2(self):
+        """ Retrieve the Robot states from the simulator
+
+        Return :
+            - p   (torch.Tensor): Feet Position  (latest from sim)      of shape(batch_size, num_legs, 3)
+            - p_dot (tch.Tensor): Feet velocity  (latest from sim)      of shape(batch_size, num_legs, 3)
+            - q_dot (tch.Tensor): Joint velocity (latest from sim)      of shape(batch_size, num_legs, num_joints_per_leg)
+            - jacobian  (Tensor): Jacobian -> joint frame to foot frame of shape(batch_size, num_legs, 3, num_joints_per_leg)
+            - jacobian_dot (Tsr): Jacobian derivative (forward euler)   of shape(batch_size, num_legs, 3, num_joints_per_leg)
+            - mass_matrix (Tsor): Mass Matrix in joint space            of shape(batch_size, num_legs, num_joints_per_leg, num_joints_per_leg)
+            - h   (torch.Tensor): C(q,q_dot) + G(q) (corr. and grav F.) of shape(batch_size, num_legs, num_joints_per_leg)
+        """
+        p = self._asset.data.body_state_w
+        p_dot = ...
+
+        # Retrieve Joint velocities [num_instances, num_joints]
+        q_dot = self._asset.data.joint_vel[:]
+        
+        jacobian = ...
+        jacobian_dot = ...
+        mass_matrix = ...
+        h = ...
+
 
 
     def get_robot_state(self):
