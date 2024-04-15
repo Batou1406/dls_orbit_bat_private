@@ -61,13 +61,13 @@ class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
         }
 
         # rewards
-        self.rewards.feet_air_time.params["sensor_cfg"].body_names = ".*_foot"                                          # Changed regex expression
-        self.rewards.feet_air_time.weight = 0.01                                                                        # default was 0.125
-        self.rewards.undesired_contacts = None                                                                          # default was activated
-        self.rewards.dof_torques_l2.weight = -0.0002                                                                    # default was 0.00001
-        self.rewards.track_lin_vel_xy_exp.weight = 1.5                                                                  # default was 1
-        self.rewards.track_ang_vel_z_exp.weight = 0.75                                                                  # default was 0.5
-        self.rewards.dof_acc_l2.weight = -2.5e-7                                                                        # Unnecessary : already default 
+        # self.rewards.feet_air_time.params["sensor_cfg"].body_names = ".*_foot"                                          # Changed regex expression
+        # self.rewards.feet_air_time.weight = 0.01                                                                        # default was 0.125
+        # self.rewards.undesired_contacts = None                                                                          # default was activated
+        # self.rewards.dof_torques_l2.weight = -0.0002                                                                    # default was 0.00001
+        # self.rewards.track_lin_vel_xy_exp.weight = 1.5                                                                  # default was 1
+        # self.rewards.track_ang_vel_z_exp.weight = 0.75                                                                  # default was 0.5
+        # self.rewards.dof_acc_l2.weight = -2.5e-7                                                                        # Unnecessary : already default 
 
         # terminations
         self.terminations.base_contact.params["sensor_cfg"].body_names = "base"                                         # Unnecessary : already default 

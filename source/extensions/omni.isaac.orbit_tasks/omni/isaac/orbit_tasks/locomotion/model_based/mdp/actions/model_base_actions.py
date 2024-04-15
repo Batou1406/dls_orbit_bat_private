@@ -64,6 +64,8 @@ class ModelBaseAction(ActionTerm):
         - processed_actions, _processed_actions
               (torch.Tensor): scaled and offseted actions from RL   of shape (batch_site, action_dim)
         _joint_ids, _joint_names, _num_joints
+        - _decimation
+        - _prevision_horizon: Outer Loop prediction time horizon
         - f   (torch.Tensor): Prior leg frequency                   of shape (batch_size, num_legs)
         - d   (torch.Tensor): Prior stepping duty cycle             of shape (batch_size, num_legs)
         - p   (torch.Tensor): Prior foot pos. sequence              of shape (batch_size, num_legs, 3, time_horizon)
@@ -104,9 +106,8 @@ class ModelBaseAction(ActionTerm):
     controller: model_base_controller.modelBaseController
     """Model base controller that compute u: output torques from z: latent variable""" 
 
-    _num_legs = 4           # Should get that from articulation or robot config
     _prevision_horizon = 10 # Should get that from cfg
-    _decimation = 10        # Should get that from the env
+    # _decimation = 10        # Should get that from the env
 
 
     def __init__(self, cfg: actions_cfg.ModelBaseActionCfg, env: BaseEnv) -> None:
@@ -130,6 +131,7 @@ class ModelBaseAction(ActionTerm):
         self._foot_idx = self._asset.find_bodies(".*foot")[0]
         self._num_legs = len(self._foot_idx)
         self._num_joints_per_leg = self._num_joints // self._num_legs
+        self._decimation = self._env.cfg.decimation
 
         # variable to count the number of inner loop with respect to outer loop
         self.inner_loop = 0
@@ -162,6 +164,7 @@ class ModelBaseAction(ActionTerm):
 
         # Instance of control class. Gets Z and output u
         self.controller = cfg.controller
+        self.controller.late_init(device=self.device, num_envs=self.num_envs, num_legs=self._num_legs, time_horizon=self._prevision_horizon, dt_out=self._decimation*self._env.physics_dt)
 
         # create tensors for raw and processed actions
         self._raw_actions = torch.zeros(self.num_envs, self.action_dim, device=self.device)
@@ -237,10 +240,10 @@ class ModelBaseAction(ActionTerm):
         self.d = self._processed_actions[:, self._num_legs:2*self._num_legs] # 4:7
         self.p = self._processed_actions[:, 2*self._num_legs:(2*self._num_legs + 3*self._num_legs*self._prevision_horizon)].reshape([self.num_envs, self._num_legs, 3, self._prevision_horizon])
         self.F = self._processed_actions[:, (2*self._num_legs + 3*self._num_legs*self._prevision_horizon):].reshape([self.num_envs, self._num_legs, 3, self._prevision_horizon])
-        self.z = [self.f, self.d, self.p, self.F]
+        # self.z = [self.f, self.d, self.p, self.F]
 
         # Optimize the latent variable with the model base controller
-        # self.p_star, self.F_star, self.c_star, self.pt_star = self.controller.optimize_latent_variable(f=self.f, d=self.d, p=self.p, F=self.F)
+        self.p_star, self.F_star, self.c_star, self.pt_star = self.controller.optimize_latent_variable(f=self.f, d=self.d, p=self.p, F=self.F)
 
         # Reset the inner loop counter
         self.inner_loop = 0

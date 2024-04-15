@@ -7,9 +7,14 @@ class modelBaseController(ABC):
     Abstract controller class for model base control implementation
     
     Properties : 
-        - 
+        - _device
+        - _num_envs
+        - _num_legs
+        - _time_horizon : Outer Loop prediction time horizon
+        - _dt_out       : Outer Loop time step 
 
     Method :
+        - late_init(device, num_envs, num_legs) : save environment variable and allow for lazy initialisation of variables
         - optimize_latent_variable(f, d, p, F) -> p*, F*, c*, pt*
         - compute_control_output(F0*, c0*, pt01*) -> T
         - gait_generator(f, d, phase) -> c, new_phase
@@ -18,6 +23,14 @@ class modelBaseController(ABC):
 
     def __init__(self):
         super().__init__()
+
+
+    def late_init(self, device, num_envs, num_legs, time_horizon, dt_out):
+        self._num_envs = num_envs
+        self._device = device
+        self._num_legs = num_legs
+        self._time_horizon = time_horizon
+        self._dt_out = dt_out
 
 
     def optimize_latent_variable(self, f: torch.Tensor, d: torch.Tensor, p: torch.Tensor, F: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -63,7 +76,7 @@ class modelBaseController(ABC):
         """ Implement a gait generator that return a contact sequence given a leg frequency and a leg duty cycle
         Increment phase by dt*f 
         restart if needed
-        return contact : 1 if phase > duty cyle, 0 otherwise 
+        return contact : 1 if phase < duty cyle, 0 otherwise 
 
         Args:
             - f   (torch.Tensor): Leg frequency                         of shape(batch_size, num_legs, parallel_rollout)
@@ -90,9 +103,15 @@ class samplingController(modelBaseController):
         Optimize the latent variable z. Generates samples, simulate the samples, evaluate them and return the best one.
 
     Properties : 
-        - 
+        - _device
+        - _num_envs
+        - _num_legs
+        - _time_horizon : Outer Loop prediction time horizon
+        - _dt_out       : Outer Loop time step 
+        - phase   (torch.Tensor): Leg phase                            of shape (batch_size, num_legs)
 
     Method :
+        - late_init(device, num_envs, num_legs) : save environment variable and allow for lazy initialisation of variables # Inherited
         - optimize_latent_variable(f, d, p, F) -> p*, F*, c*, pt*   # Inherited
         - compute_control_output(F0*, c0*, pt01*) -> T              # Inherited
         - gait_generator(f, d, phase) -> c, new_phase               # Inherited
@@ -107,13 +126,49 @@ class samplingController(modelBaseController):
         self.swing_ctrl_pos_gain_fb = swing_ctrl_pos_gain_fb
         self.swing_ctrl_vel_gain_fb = swing_ctrl_vel_gain_fb
 
+        # Late init
+        self.phase = None
+
+
+    def late_init(self, device, num_envs, num_legs, time_horizon, dt_out):
+        super().late_init(device, num_envs, num_legs, time_horizon, dt_out)
+        self.phase = torch.zeros(num_envs, num_legs, device=device)
+
 # ----------------------------------- Outer Loop ------------------------------
+    def optimize_latent_variable(self, f: torch.Tensor, d: torch.Tensor, p: torch.Tensor, F: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """ Given the latent variable z=[f,d,p,F], return the optimized latent variable p*, F*, c*, pt*
+
+        Args:
+            - f   (torch.Tensor): Prior leg frequency                   of shape (batch_size, num_legs)
+            - d   (torch.Tensor): Prior stepping duty cycle             of shape (batch_size, num_legs)
+            - p   (torch.Tensor): Prior foot pos. sequence              of shape (batch_size, num_legs, 3, time_horizon)
+            - F   (torch.Tensor): Prior Ground Reac. Forces (GRF) seq.  of shape (batch_size, num_legs, 3, time_horizon)
+
+        Returns:
+            - p*  (torch.Tensor): Optimized foot position sequence      of shape (batch_size, num_legs, 3, time_horizon)
+            - F*  (torch.Tensor): Opt. Ground Reac. Forces (GRF) seq.   of shape (batch_size, num_legs, 3, time_horizon)
+            - c*  (torch.Tensor): Optimized foot contact sequence       of shape (batch_size, num_legs, time_horizon)
+            - pt* (torch.Tensor): Optimized foot swing trajectory       of shape (batch_size, num_legs, 9, decimation)  (9 = pos, vel, acc)
+        """
+
+        # Compute the contact sequence and update the phase
+        c, self.phase = self.gait_generator(f=f, d=d, phase=self.phase, time_horizon=self._time_horizon, dt=self._dt_out)
+
+        pt = self.swing_trajectory_generator(p=p, c=c, decimation=10)
+
+        p_star = p
+        F_star = F
+        c_star = c
+        pt_star = torch.zeros(self._num_envs, self._num_legs, 9, 10, device=self._device)
+
+        return p_star, F_star, c_star, pt_star
+    
 
     def gait_generator(self, f: torch.Tensor, d: torch.Tensor, phase: torch.tensor, time_horizon: int, dt) -> tuple[torch.Tensor, torch.Tensor]:
         """ Implement a gait generator that return a contact sequence given a leg frequency and a leg duty cycle
         Increment phase by dt*f 
         restart if needed
-        return contact : 1 if phase > duty cyle, 0 otherwise 
+        return contact : 1 if phase < duty cyle, 0 otherwise 
 
         Note:
             No properties used, no for loop : purely functional -> made to be jitted
@@ -132,7 +187,7 @@ class samplingController(modelBaseController):
         # Increment phase of f*dt: new_phases[0] : incremented of 1 step, new_phases[1] incremented of 2 steps, etc. without a for loop.
         # new_phases = phase + f*dt*[1,2,...,time_horizon]
         # phase and f must be exanded from (batch_size, num_legs, parallel_rollout) to (batch_size, num_legs, parallel_rollout, time_horizon) in order to perform the operations
-        new_phases = phase.unsqueeze(-1).expand(*[-1] * len(phase.shape),time_horizon) + f.unsqueeze(-1).expand(*[-1] * len(f.shape),time_horizon)*torch.linspace(start=1, end=time_horizon, steps=time_horizon)*dt
+        new_phases = phase.unsqueeze(-1).expand(*[-1] * len(phase.shape),time_horizon) + f.unsqueeze(-1).expand(*[-1] * len(f.shape),time_horizon)*torch.linspace(start=1, end=time_horizon, steps=time_horizon, device=self._device)*dt
 
         # Make the phases circular (like sine) (% is modulo operation)
         new_phases = new_phases%1
@@ -141,7 +196,7 @@ class samplingController(modelBaseController):
         new_phase = new_phases[..., 0]
 
         # Make comparaison to return discret contat sequence
-        c = new_phases > d.unsqueeze(-1).expand(*[-1] * len(d.shape), time_horizon)
+        c = new_phases < d.unsqueeze(-1).expand(*[-1] * len(d.shape), time_horizon)
 
         return c, new_phase
     
@@ -155,7 +210,7 @@ class samplingController(modelBaseController):
             - decimation   (int): Number of timestep for the traj.
 
         Returns:
-            - pt  (torch.Tensor): Swing Leg trajectories                of shape(batch_size, num_legs, 3, decimation)
+            - pt  (torch.Tensor): Swing Leg trajectories                of shape(batch_size, num_legs, 9, decimation)   (9 = pos, vel, acc)
         """
         # Utiliser une convolution sur c (contact sequence) pour trouver le point de départ et d'arriver du pied.
         # Avec un filtre genre f = [0, 1], pour ne garder que les flancs montants
@@ -165,7 +220,7 @@ class samplingController(modelBaseController):
         # Il faudrait retourner qqch comme 
         #        key =  [1,   0,  0,  0,  0,  1,  0,  0,  0,   1]
         # Qui permetrait d'extraire facilement [p1, p6, p10] avec p[key]
-        raise NotImplementedError
+        pass
 
 
 # ----------------------------------- Inner Loop ------------------------------
@@ -264,7 +319,7 @@ class samplingController(modelBaseController):
 
         # Keep torques only for leg in swing (~ operator inverse c0*)
         # C0_star must be expanded to perform operation : shape(batch_size, num_legs) -> shape(batch_size, num_legs, num_joints_per_leg)
-        T_swing = T * (1-c0_star.unsqueeze(-1).expand(*[-1] * len(c0_star.shape), T.shape[-1]))
+        T_swing = T * (~c0_star.unsqueeze(-1).expand(*[-1] * len(c0_star.shape), T.shape[-1]))
 
         return T_swing
     
