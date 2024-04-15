@@ -225,7 +225,12 @@ class samplingController(modelBaseController):
         # shape (batch_size, num_legs, 3) 
         first_non_zero_indx = torch.argmax((c!=0).float(), dim=-1)
         touch_down_pos = torch.gather(p, -1, first_non_zero_indx.unsqueeze(-1)).squeeze(-1)
-        
+
+        desired_foot_pos_traj = ...
+        desired_foot_vel_traj = ...
+        desired_foot_acc_traj = ...
+        # pt = torch.cat((desired_foot_pos_traj, desired_foot_vel_traj, desired_foot_acc_traj), dim=2)
+
         return torch.zeros(self._num_envs, self._num_legs, 9, 10, device=self._device)
 
 
