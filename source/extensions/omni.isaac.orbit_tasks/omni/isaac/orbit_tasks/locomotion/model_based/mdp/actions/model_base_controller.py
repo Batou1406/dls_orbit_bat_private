@@ -154,12 +154,12 @@ class samplingController(modelBaseController):
         # Compute the contact sequence and update the phase
         c, self.phase = self.gait_generator(f=f, d=d, phase=self.phase, time_horizon=self._time_horizon, dt=self._dt_out)
 
-        pt = self.swing_trajectory_generator(p=p, c=c, decimation=10)
+        pt = self.swing_trajectory_generator(p=p, c=c, decimation=10, d=d, f=f)
 
         p_star = p
         F_star = F
         c_star = c
-        pt_star = torch.zeros(self._num_envs, self._num_legs, 9, 10, device=self._device)
+        pt_star = pt
 
         return p_star, F_star, c_star, pt_star
     
@@ -201,26 +201,32 @@ class samplingController(modelBaseController):
         return c, new_phase
     
 
-    def swing_trajectory_generator(self, p: torch.Tensor, c: torch.Tensor, decimation: int) -> torch.Tensor:
+    def swing_trajectory_generator(self, p: torch.Tensor, c: torch.Tensor, decimation: int, d, f) -> torch.Tensor:
         """ Given feet position and contact sequence -> compute swing trajectories
 
         Args:
-            - p   (torch.Tensor): Foot position sequence                of shape(batch_size, num_legs, 3, parallel_rollout, time_horizon)
-            - c   (torch.Tensor): Foot contact sequence                 of shape(batch_size, num_legs, parallel_rollout, time_horizon)
+            - p   (torch.Tensor): Foot position sequence                of shape(batch_size, num_legs, 3, time_horizon)
+            - c   (torch.Tensor): Foot contact sequence                 of shape(batch_size, num_legs, time_horizon)
             - decimation   (int): Number of timestep for the traj.
 
         Returns:
-            - pt  (torch.Tensor): Swing Leg trajectories                of shape(batch_size, num_legs, 9, decimation)   (9 = pos, vel, acc)
+            - pt  (torch.Tensor): Swing Leg trajectories                of shape(batch_size, num_legs, 9, decimation)   (9 = xyz_pos, xzy_vel, xyz_acc)
         """
-        # Utiliser une convolution sur c (contact sequence) pour trouver le point de départ et d'arriver du pied.
-        # Avec un filtre genre f = [0, 1], pour ne garder que les flancs montants
-        # Imaginons p = [p1, p2, p3, p4, p5, p6, p7, p8, p9, p10]
-        #           c = [ 1,  1,  0,  0,  0,  1,  1,  0,  0,   1]
-        # Les points de départ serait p1, p6 et p10 les points d'arrivé p6 et p10
-        # Il faudrait retourner qqch comme 
-        #        key =  [1,   0,  0,  0,  0,  1,  0,  0,  0,   1]
-        # Qui permetrait d'extraire facilement [p1, p6, p10] avec p[key]
-        pass
+
+        # Heuristic TODO Save that on the right place, could also be a RL variable
+        step_height = 0.05
+
+        # Time during wich the leg is in swing. 
+        swing_period = ((1-d) / (f)) + 0.07
+        
+        # Retrieve the index of the touch down in the contact sequence 
+        # TODO Set the last value of c as ONE to avoid the case of only 0 in the contact sequence, wich return the first element (make more sense to retrun the last)
+        # With the touch_down index, retrieve the touch down foot position
+        # shape (batch_size, num_legs, 3) 
+        first_non_zero_indx = torch.argmax((c!=0).float(), dim=-1)
+        touch_down_pos = torch.gather(p, -1, first_non_zero_indx.unsqueeze(-1)).squeeze(-1)
+        
+        return torch.zeros(self._num_envs, self._num_legs, 9, 10, device=self._device)
 
 
 # ----------------------------------- Inner Loop ------------------------------
