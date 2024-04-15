@@ -190,7 +190,7 @@ class samplingController(modelBaseController):
             - h   (torch.Tensor): C(q,q_dot) + G(q) (corr. and grav F.) of shape(batch_size, num_legs, num_joints_per_leg)
 
         Returns:
-            - T   (torch.Tensor): control output (ie. Joint Torques)    of shape(batch_size, num_joints)
+            - T   (torch.Tensor): control output (ie. Joint Torques)    of shape(batch_size, num_legs, num_joints_per_leg)
         """
 
         # Get the swing torque from the swing controller : swing torque has already been filered by C0* (ie. T_swing = T * ~c0*)
@@ -204,7 +204,6 @@ class samplingController(modelBaseController):
         # T shape = (batch_size, num_legs, num_joints_per_leg)
         T = T_swing + T_stance 
 
-        # TODO, flatten T correctly 
         return T
 
 
@@ -265,7 +264,7 @@ class samplingController(modelBaseController):
 
         # Keep torques only for leg in swing (~ operator inverse c0*)
         # C0_star must be expanded to perform operation : shape(batch_size, num_legs) -> shape(batch_size, num_legs, num_joints_per_leg)
-        T_swing = T * ~c0_star.unsqueeze(-1).expand(*[-1] * len(c0_star.shape), T.shape[-1])
+        T_swing = T * (1-c0_star.unsqueeze(-1).expand(*[-1] * len(c0_star.shape), T.shape[-1]))
 
         return T_swing
     

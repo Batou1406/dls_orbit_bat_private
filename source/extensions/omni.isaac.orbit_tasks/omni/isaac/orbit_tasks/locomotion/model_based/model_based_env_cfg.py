@@ -131,7 +131,7 @@ class ActionsCfg:
     """Action specifications for the MDP.
     - Robot joint position - dim=12
     """
-    model_base_variable = mdp.ModelBaseActionCfg(asset_name="robot", joint_names=[".*"], controller=model_base_controller.samplingController)#, body_name='base')
+    model_base_variable = mdp.ModelBaseActionCfg(asset_name="robot", joint_names=[".*"], controller=model_base_controller.samplingController())#, body_name='base')
 
     # joint_pos = mdp.JointPositionActionCfg(asset_name="robot", joint_names=[".*"], scale=0.5, use_default_offset=True)
     # RR_foot = mdp.DifferentialInverseKinematicsActionCfg(asset_name="robot", joint_names=["RR.*"], body_name="RR_foot", controller=DifferentialIKControllerCfg(command_type="position", use_relative_mode=False, ik_method="dls"))

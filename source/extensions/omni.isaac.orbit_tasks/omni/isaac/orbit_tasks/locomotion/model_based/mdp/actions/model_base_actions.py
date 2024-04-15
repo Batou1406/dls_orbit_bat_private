@@ -189,32 +189,6 @@ class ModelBaseAction(ActionTerm):
         else:
             raise ValueError(f"Unsupported offset type: {type(cfg.offset)}. Supported types are float and dict.")
         
-        # # parse the body index
-        # body_ids, body_names = self._asset.find_bodies(self.cfg.body_name)
-        # if len(body_ids) != 1:
-        #     raise ValueError(
-        #         f"Expected one match for the body name: {self.cfg.body_name}. Found {len(body_ids)}: {body_names}."
-        #     )
-        # # save only the first body index
-        # self._body_idx = body_ids[0]
-        # self._body_name = body_names[0]
-        # # check if articulation is fixed-base
-        # # if fixed-base then the jacobian for the base is not computed
-        # # this means that number of bodies is one less than the articulation's number of bodies
-        # if self._asset.is_fixed_base:
-        #     self._jacobi_body_idx = self._body_idx - 1
-        # else:
-        #     self._jacobi_body_idx = self._body_idx
-        # carb.log_info(  # log info for debugging
-        #     f"Resolved body name for the action term {self.__class__.__name__}: {self._body_name} [{self._body_idx}]"
-        # )
-
-        # # convert the fixed offsets to torch tensors of batched shape
-        # if self.cfg.body_offset is not None:
-        #     self._offset_pos = torch.tensor(self.cfg.body_offset.pos, device=self.device).repeat(self.num_envs, 1)
-        #     self._offset_rot = torch.tensor(self.cfg.body_offset.rot, device=self.device).repeat(self.num_envs, 1)
-        # else:
-        #     self._offset_pos, self._offset_rot = None, None
 
     """
     Properties.
@@ -292,38 +266,11 @@ class ModelBaseAction(ActionTerm):
         self.inner_loop += 1
 
         # Use model controller to compute the torques from the latent variable
-        self.u = self.controller.compute_control_output(F0_star=F0_star, c0_star=c0_star, pt_i_star=pt_i_star, p=p, p_dot=p_dot, q_dot=q_dot, jacobian=jacobian, jacobian_dot=jacobian_dot, mass_matrix=mass_matrix, h=h)
+        # Transform the shape from (batch_size, num_legs, num_joints_per_leg) to (batch_size, num_joints)
+        self.u = (self.controller.compute_control_output(F0_star=F0_star, c0_star=c0_star, pt_i_star=pt_i_star, p=p, p_dot=p_dot, q_dot=q_dot, jacobian=jacobian, jacobian_dot=jacobian_dot, mass_matrix=mass_matrix, h=h)).permute(0,2,1).reshape(self.num_envs,self._num_joints)
 
         # Apply the computed torques
         self._asset.set_joint_effort_target(self.u, joint_ids=self._joint_ids)
-
-
-    def apply_actions2(self):
-        """Applies the actions to the asset managed by the term.
-        Note: This is called at every simulation step by the manager.
-        """
-        output_torques = (torch.rand(self.num_envs, self._num_joints, device=self.device))# * 80) - 40
-
-        # print('--- Torch ---')
-        # print('shape : ',output_torques.shape)
-        # print('device : ',output_torques.device)
-        # print('Type : ', type(output_torques))
-        
-        output_torques_jax = torch_to_jax(output_torques)
-        output_torques_jax = (output_torques_jax * 80) - 40
-
-        # print('')
-        # print('--- Jax ---')
-        # print('Shape : ', output_torques_jax.shape)
-        # print('device : ',output_torques_jax.devices())
-        # print('Type : ', type(output_torques_jax))
-
-        output_torques2 = jax_to_torch(output_torques_jax)
-
-        self.get_robot_state2()
-
-        # set joint effort targets (should be equivalent to torque) : Torque controlled robot
-        self._asset.set_joint_effort_target(output_torques2, joint_ids=self._joint_ids)
 
 
     def get_robot_state(self):
@@ -398,64 +345,7 @@ class ModelBaseAction(ActionTerm):
         # Retrieve Corriolis, centrifugial and gravitationnal term
         # get_coriolis_and_centrifugal_forces -> (batch_size, num_joints)
         # get_generalized_gravity_forces -> (batch_size, num_joints)
-        h = self._asset.root_physx_view.get_coriolis_and_centrifugal_forces() + self._asset.root_physx_view.get_generalized_gravity_forces()
+        # Reshape and tranpose to get the correct shape in correct joint order-> (batch_size, num_legs, num_joints_per_leg)
+        h = (self._asset.root_physx_view.get_coriolis_and_centrifugal_forces() + self._asset.root_physx_view.get_generalized_gravity_forces()).view(self.num_envs, self._num_joints_per_leg, self._num_legs).permute(0,2,1)
 
         return p_b, p_dot_b, q_dot, jacobian, jacobian_dot, mass_matrix, h
-
-
-    def get_robot_state2(self):
-        """ TODO Write description
-        """
-
-        # Joint Index
-        fl_joints = self._asset.find_joints("FL.*")[0]		# list [0, 4,  8]
-        fr_joints = self._asset.find_joints("FR.*")[0]		# list [1, 5,  9]
-        rl_joints = self._asset.find_joints("RL.*")[0]		# list [2, 6, 10]
-        rr_joints = self._asset.find_joints("RR.*")[0]		# list [3, 7, 11]
-
-        # Body Index
-        foot_idx = self._asset.find_bodies(".*foot")[0]
-
-        # 'FL_foot', 'FR_foot', 'RL_foot', 'RR_foot'
-        fl_jacobian = self._asset.root_physx_view.get_jacobians()[:, foot_idx[0], 0:3, fl_joints]# + 6]
-        fr_jacobian = self._asset.root_physx_view.get_jacobians()[:, foot_idx[1], 0:3, fr_joints]# + 6]
-        rl_jacobian = self._asset.root_physx_view.get_jacobians()[:, foot_idx[2], 0:3, rl_joints]# + 6]
-        rr_jacobian = self._asset.root_physx_view.get_jacobians()[:, foot_idx[3], 0:3, rr_joints]# + 6]
-
-        # foot position in wf
-        fl_foot_pos_w = self._asset.data.body_state_w[:, foot_idx[0], 0:3]
-        fr_foot_pos_w = self._asset.data.body_state_w[:, foot_idx[1], 0:3]
-        rl_foot_pos_w = self._asset.data.body_state_w[:, foot_idx[2], 0:3]
-        rr_foot_pos_w = self._asset.data.body_state_w[:, foot_idx[3], 0:3]
-
-        # foot orientation in wf
-        fl_foot_orient_w = self._asset.data.body_state_w[:, foot_idx[0], 3:7]
-        fr_foot_orient_w = self._asset.data.body_state_w[:, foot_idx[1], 3:7]
-        rl_foot_orient_w = self._asset.data.body_state_w[:, foot_idx[2], 3:7]
-        rr_foot_orient_w = self._asset.data.body_state_w[:, foot_idx[3], 3:7]
-
-        # Root state ``[pos, quat, lin_vel, ang_vel]`` in simulation world frame. Shape is (num_instances, 13)
-        base_pose_w = self._asset.data.root_state_w[:, 0:3]
-        base_orient_w = self._asset.data.root_state_w[:, 3:7]
-        base_lin_vel_w = self._asset.data.root_state_w[:, 7:10]
-        base_ang_vel_w = self._asset.data.root_state_w[:, 10:13]
-
-        # foot position, orientation in bf
-        fl_foot_pos_b, fl_foot_orient_b = math_utils.subtract_frame_transforms(base_pose_w, base_orient_w, fl_foot_pos_w, fl_foot_orient_w)
-        fr_foot_pos_b, fr_foot_orient_b = math_utils.subtract_frame_transforms(base_pose_w, base_orient_w, fr_foot_pos_w, fr_foot_orient_w)
-        rl_foot_pos_b, rl_foot_orient_b = math_utils.subtract_frame_transforms(base_pose_w, base_orient_w, rl_foot_pos_w, rl_foot_orient_w)
-        rr_foot_pos_b, rr_foot_orient_b = math_utils.subtract_frame_transforms(base_pose_w, base_orient_w, rr_foot_pos_w, rr_foot_orient_w)
-
-        # foot joint position
-        fl_joint_pos = self._asset.data.joint_pos[:, fl_joints]
-        fr_joint_pos = self._asset.data.joint_pos[:, fr_joints]
-        rl_joint_pos = self._asset.data.joint_pos[:, rl_joints]
-        rr_joint_pos = self._asset.data.joint_pos[:, rr_joints]
-
-        # foot joint velocity
-        fl_joint_vel = self._asset.data.joint_vel[:, fl_joints]
-        fr_joint_vel = self._asset.data.joint_vel[:, fr_joints]
-        rl_joint_vel = self._asset.data.joint_vel[:, rl_joints]
-        rr_joint_vel = self._asset.data.joint_vel[:, rr_joints]
-
-        print('alo')
