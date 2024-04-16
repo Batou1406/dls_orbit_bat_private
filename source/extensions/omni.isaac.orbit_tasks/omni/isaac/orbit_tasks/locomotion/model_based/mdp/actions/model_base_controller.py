@@ -108,7 +108,9 @@ class samplingController(modelBaseController):
         - _num_legs
         - _time_horizon : Outer Loop prediction time horizon
         - _dt_out       : Outer Loop time step 
-        - phase   (torch.Tensor): Leg phase                            of shape (batch_size, num_legs)
+        - phase (Tensor): Leg phase                                     of shape (batch_size, num_legs)
+        - p0 (th.Tensor): Lift-off position                             of shape (batch_size, num_legs, 3)
+        - c_prev (Tnsor): Previous contact value                        of shape (batch_size, num_legs)
 
     Method :
         - late_init(device, num_envs, num_legs) : save environment variable and allow for lazy initialisation of variables # Inherited
@@ -128,11 +130,15 @@ class samplingController(modelBaseController):
 
         # Late init
         self.phase = None
+        self.p0 = None
+        self.c_prev = None
 
 
     def late_init(self, device, num_envs, num_legs, time_horizon, dt_out):
         super().late_init(device, num_envs, num_legs, time_horizon, dt_out)
         self.phase = torch.zeros(num_envs, num_legs, device=device)
+        self.p0 = torch.zeros(num_envs, num_legs, 3, device=device) # TODO Should initialise with the reset foot position
+        self.c_prev = torch.zeros(num_envs, num_legs, device=device)
 
 # ----------------------------------- Outer Loop ------------------------------
     def optimize_latent_variable(self, f: torch.Tensor, d: torch.Tensor, p: torch.Tensor, F: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -201,30 +207,56 @@ class samplingController(modelBaseController):
         return c, new_phase
     
 
-    def swing_trajectory_generator(self, p: torch.Tensor, c: torch.Tensor, decimation: int, d, f) -> torch.Tensor:
-        """ Given feet position and contact sequence -> compute swing trajectories
+    def swing_trajectory_generator(self, p: torch.Tensor, c: torch.Tensor, f: torch.Tensor, d: torch.Tensor, decimation: int) -> torch.Tensor:
+        """ Given feet position sequence and contact sequence -> compute swing trajectories by fitting a cubic spline between
+        the lift-off and the touch down define in the contact sequence. 
+        - Swing frequency and duty cycle are used to compute the swing period
+        - A middle point is used for the interpolation : which is heuristically defined. It defines the step height
+        - p1 (middle point) and p2 (touch-down) are updated each time, while p0 is conserved (always the same lift off position)
 
         Args:
             - p   (torch.Tensor): Foot position sequence                of shape(batch_size, num_legs, 3, time_horizon)
             - c   (torch.Tensor): Foot contact sequence                 of shape(batch_size, num_legs, time_horizon)
+            - f   (torch.Tensor): Leg frequency                         of shape(batch_size, num_legs)
+            - d   (torch.Tensor): Stepping duty cycle                   of shape(batch_size, num_legs)
             - decimation   (int): Number of timestep for the traj.
 
         Returns:
-            - pt  (torch.Tensor): Swing Leg trajectories                of shape(batch_size, num_legs, 9, decimation)   (9 = xyz_pos, xzy_vel, xyz_acc)
+            - pt  (torch.Tensor): Desired Swing Leg trajectories        of shape(batch_size, num_legs, 9, decimation)   (9 = xyz_pos, xzy_vel, xyz_acc)
         """
+
+        # Step 0. Define and Compute usefull variables
 
         # Heuristic TODO Save that on the right place, could also be a RL variable
         step_height = 0.05
 
-        # Time during wich the leg is in swing. 
-        swing_period = ((1-d) / (f)) + 0.07
-        
-        # Retrieve the index of the touch down in the contact sequence 
-        # TODO Set the last value of c as ONE to avoid the case of only 0 in the contact sequence, wich return the first element (make more sense to retrun the last)
-        # With the touch_down index, retrieve the touch down foot position
+        # Time during wich the leg is in swing. TODO Why +0.07 ? Is it an heuristic also ?
+        # Shape (batch_size, num_legs)
+        swing_period = ((1-d) / f) + 0.07
+
+
+        # Step 1. Retrieve the three interpolation points : p0, p1, p2 (lift-off, middle point, touch down)
+
+        # Retrieve p0 : If c(0)=0 and c(-1)=1 : The leg lift-off -> p0 = p(0) # TODO p(0) or must it be from simulation data ? TODO Must it be p(0) or p(-1)
+        # Update only the p0 that are new lift off positions
+        lifting_off = (c[:,:,0]==0) * (self.c_prev == 1)
+        self.p0 = (p[:,:,:,0] * lifting_off) + (self.p0 * ~lifting_off)  
+
+        # Retrieve p2 : Retrieve the index of the touch down in the contact sequence : First Non-zero Index
+        # Set the last value of c as ONE to avoid the case of only 0 in the contact sequence, wich return the first element (make more sense to retrun the last)
+        # With the touch_down index, retrieve the touch down foot position : p2
         # shape (batch_size, num_legs, 3) 
+        c[:,:,-1] = 1 # TODO Does it modify c also outside this function ?
         first_non_zero_indx = torch.argmax((c!=0).float(), dim=-1)
-        touch_down_pos = torch.gather(p, -1, first_non_zero_indx.unsqueeze(-1)).squeeze(-1)
+        p2 = torch.gather(p, -1, first_non_zero_indx.unsqueeze(-1)).squeeze(-1)
+
+        # Retrieve p1 : (x,y) position are define as the middle point between p0 and p1 (lift-off and touch-down). z is heuristcally define
+        # shape (batch_size, num_legs, 3)
+        p1 = (self.p0[:,:,:2] + p2[:,:,:2]) / 2     # p1(x,y) is in the middle of p0 and p2
+        p1 = torch.cat((p1, step_height*torch.ones_like(p1[:,:,:1])), dim=2) # Append a third dimension z : defined as step_height
+
+
+        # Step 2. Compute
 
         desired_foot_pos_traj = ...
         desired_foot_vel_traj = ...
