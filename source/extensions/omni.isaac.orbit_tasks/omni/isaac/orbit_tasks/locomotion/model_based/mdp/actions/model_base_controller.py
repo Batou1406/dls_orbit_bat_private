@@ -111,6 +111,7 @@ class samplingController(modelBaseController):
         - phase (Tensor): Leg phase                                     of shape (batch_size, num_legs)
         - p0 (th.Tensor): Lift-off position                             of shape (batch_size, num_legs, 3)
         - c_prev (Tnsor): Previous contact value                        of shape (batch_size, num_legs)
+        - swing_time (T): time progression of the leg in swing phase    of shape (batch_size, num_legs)  
 
     Method :
         - late_init(device, num_envs, num_legs) : save environment variable and allow for lazy initialisation of variables # Inherited
@@ -132,6 +133,7 @@ class samplingController(modelBaseController):
         self.phase = None
         self.p0 = None
         self.c_prev = None
+        self.swing_time = None
 
 
     def late_init(self, device, num_envs, num_legs, time_horizon, dt_out):
@@ -139,6 +141,7 @@ class samplingController(modelBaseController):
         self.phase = torch.zeros(num_envs, num_legs, device=device)
         self.p0 = torch.zeros(num_envs, num_legs, 3, device=device) # TODO Should initialise with the reset foot position
         self.c_prev = torch.zeros(num_envs, num_legs, device=device)
+        self.swing_time = torch.zeros(num_envs, num_legs, device=device)
 
 # ----------------------------------- Outer Loop ------------------------------
     def optimize_latent_variable(self, f: torch.Tensor, d: torch.Tensor, p: torch.Tensor, F: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -234,6 +237,9 @@ class samplingController(modelBaseController):
         # Shape (batch_size, num_legs)
         swing_period = ((1-d) / f) + 0.07
 
+        half_swing_period = swing_period / 2
+        time_fac = 1 / (swing_period / 2) #bezier_time_factor
+
 
         # Step 1. Retrieve the three interpolation points : p0, p1, p2 (lift-off, middle point, touch down)
 
@@ -255,13 +261,28 @@ class samplingController(modelBaseController):
         p1 = (self.p0[:,:,:2] + p2[:,:,:2]) / 2     # p1(x,y) is in the middle of p0 and p2
         p1 = torch.cat((p1, step_height*torch.ones_like(p1[:,:,:1])), dim=2) # Append a third dimension z : defined as step_height
 
+        # Step 2. Compute the parameters for the interpolation
 
-        # Step 2. Compute
+        # Swing time : reset if lifting off, then increment by one time step (outer loop)
+        # then compute t in [0, Delta_t/2], which would be use for the spline interpolation
+        # shape (batch_size, num_legs)
+        self.swing_time = (self.swing_time * ~lifting_off) + self._dt_out
+        t = self.swing_time % half_swing_period  # Swing time (half)
 
-        desired_foot_pos_traj = ...
-        desired_foot_vel_traj = ...
-        desired_foot_acc_traj = ...
-        # pt = torch.cat((desired_foot_pos_traj, desired_foot_vel_traj, desired_foot_acc_traj), dim=2)
+        # Compute the a,b,c,d polynimial coefficient for the cubic interpolation S(t) = a*t^3 + b*t^2 + c*t + d
+        # If swing_time < swing period/2 -> S_0(t) (ie. first interpolation), otherwise -> S_1(t - delta_t/2) (ie. second interpolation)
+        # cp_x shape (batch_size, num_legs, 3)
+        is_S0 = (self.swing_time <=  half_swing_period).unsqueeze(-1).expand(*[-1] * len(self.swing_time.shape), 3)  # shape (batch_size, num_legs, 3)
+        cp1 = (self.p0 * is_S0)                                         + (p1 * ~is_S0)
+        cp2 = (self.p0 * is_S0)                                         + (torch.cat((p2[:,:,:2], p1[:,:,2:]), dim=2)* ~is_S0)
+        cp3 = (torch.cat((self.p0[:,:,:2], p1[:,:,2:]), dim=2) * is_S0) + (p2 * ~is_S0)
+        cp4 = (p1 * is_S0)                                              + (p2 * ~is_S0)
+
+        # Step 3. Compute the interpolation trajectory
+        desired_foot_pos_traj = cp1*(1 - time_fac*t)**3 + 3*cp2*(time_fac*t)*(1 - time_fac*t)**2 + 3*cp3*((time_fac*t)**2)*(1 - time_fac*t) + cp4*(time_fac*t)**3
+        desired_foot_vel_traj = 3*(cp2 - cp1)*(1 - time_fac*t)**2 + 6*(cp3 - cp2)*(1 - time_fac*t)*(time_fac*t) + 3*(cp4 - cp3)*(time_fac*t)**2
+        desired_foot_acc_traj = 6*(1 - time_fac*t) * (cp3 - 2*cp2 + cp1) + 6 * (time_fac*t) * (cp4 - 2*cp3 + cp2)
+        pt = torch.cat((desired_foot_pos_traj, desired_foot_vel_traj, desired_foot_acc_traj), dim=2)
 
         return torch.zeros(self._num_envs, self._num_legs, 9, 10, device=self._device)
 
