@@ -273,7 +273,7 @@ class samplingController(modelBaseController):
         # then compute t in [0, Delta_t/2], which would be use for the spline interpolation
         # t & swing_time shape (batch_size, num_legs)
         self.swing_time = (self.swing_time * ~lifting_off.squeeze(-1)) + self._dt_out
-        t = self.swing_time % half_swing_period  # Swing time (half)
+        t = self.swing_time % (half_swing_period.abs() + 1e-10)  # Swing time (half) : add small numerical value to avoid nan when % 0
 
         # Compute the a,b,c,d polynimial coefficient for the cubic interpolation S(t) = a*t^3 + b*t^2 + c*t + d
         # If swing_time < swing period/2 -> S_0(t) (ie. first interpolation), otherwise -> S_1(t - delta_t/2) (ie. second interpolation)
@@ -311,6 +311,8 @@ class samplingController(modelBaseController):
         # shape (batch_size, num_legs, 9, decimation) (9 = xyz_pos, xzy_vel, xyz_acc)
         pt = torch.cat((desired_foot_pos_traj, desired_foot_vel_traj, desired_foot_acc_traj), dim=2)
 
+        if(pt.isnan().any()):
+            print('alo')
         return pt
 
 
