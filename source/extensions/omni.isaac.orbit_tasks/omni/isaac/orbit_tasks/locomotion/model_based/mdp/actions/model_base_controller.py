@@ -210,8 +210,8 @@ class samplingController(modelBaseController):
         # Save first phase
         new_phase = new_phases[..., 0]
 
-        # Make comparaison to return discret contat sequence
-        c = new_phases < d.unsqueeze(-1).expand(*[-1] * len(d.shape), time_horizon)
+        # Make comparaison to return discret contat sequence : c = 1 if phase < d, 0 otherwise
+        c = new_phases <= d.unsqueeze(-1).expand(*[-1] * len(d.shape), time_horizon)
 
         return c, new_phase
     
