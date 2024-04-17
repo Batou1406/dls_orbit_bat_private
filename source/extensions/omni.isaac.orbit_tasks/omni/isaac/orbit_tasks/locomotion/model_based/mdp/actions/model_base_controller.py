@@ -148,7 +148,7 @@ class samplingController(modelBaseController):
         super().late_init(device, num_envs, num_legs, time_horizon, dt_out, decimation, dt_in)
         self.phase = torch.zeros(num_envs, num_legs, device=device)
         self.p0 = torch.zeros(num_envs, num_legs, 3, device=device) # TODO Should initialise with the reset foot position
-        self.c_prev = torch.zeros(num_envs, num_legs, device=device)
+        self.c_prev = torch.ones(num_envs, num_legs, device=device)
         self.swing_time = torch.zeros(num_envs, num_legs, device=device)
         self.p_sim_prev = torch.zeros(num_envs, num_legs, 3, device=device) # TODO Should initialise with the reset foot position
 
@@ -181,7 +181,7 @@ class samplingController(modelBaseController):
         pt_star = pt
 
         # update saved variable
-        self.c_prev = c
+        self.c_prev = c[:,:,0]
 
         return p_star, F_star, c_star, pt_star
     

@@ -153,7 +153,7 @@ class ModelBaseAction(ActionTerm):
         # Model-based optimized latent variable
         self.p_star = torch.zeros(self.num_envs, self._num_legs, 3, self._prevision_horizon, device=self.device)
         self.F_star = torch.zeros(self.num_envs, self._num_legs, 3, self._prevision_horizon, device=self.device)
-        self.c_star = torch.zeros(self.num_envs, self._num_legs, self._prevision_horizon, device=self.device)
+        self.c_star = torch.ones(self.num_envs, self._num_legs, self._prevision_horizon, device=self.device)
         self.pt_star= torch.zeros(self.num_envs, self._num_legs, 9, self._decimation, device=self.device)
 
         # Control input u : joint torques
