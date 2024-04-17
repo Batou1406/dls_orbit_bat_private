@@ -238,11 +238,11 @@ class samplingController(modelBaseController):
         # Heuristic TODO Save that on the right place, could also be a RL variable
         step_height = 0.05
 
-        # Time during wich the leg is in swing.
+        # Time during wich the leg is in swing.(add small numerical value to denominator to avoid division by 0)
         # Shape (batch_size, num_legs)
-        swing_period = ((1-d) / f)
+        swing_period = ((1-d) / (f.abs()+1e-10))
         half_swing_period = swing_period / 2
-        time_fac = 1 / (swing_period / 2) #bezier_time_factor
+        time_fac = 1 / ((swing_period.abs()+1e-10) / 2) #bezier_time_factor
 
 
         # Step 1. Retrieve the three interpolation points : p0, p1, p2 (lift-off, middle point, touch down)
