@@ -245,6 +245,7 @@ class samplingController(modelBaseController):
 
         # Retrieve p0 : If c(0)=0 and c(-1)=1 : The leg lift-off -> p0 = p(0) # TODO p(0) or must it be from simulation data ? TODO Must it be p(0) or p(-1)
         # Update only the p0 that are new lift off positions
+        # Shape (batch_size, num_legs, 3)
         lifting_off = (c[:,:,0]==0) * (self.c_prev == 1)
         self.p0 = (p[:,:,:,0] * lifting_off) + (self.p0 * ~lifting_off)  
 
