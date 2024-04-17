@@ -12,6 +12,8 @@ class modelBaseController(ABC):
         - _num_legs
         - _time_horizon : Outer Loop prediction time horizon
         - _dt_out       : Outer Loop time step 
+        - _decimation   : Inner Loop time horizon
+        - _dt_in        : Inner Loop time step
 
     Method :
         - late_init(device, num_envs, num_legs) : save environment variable and allow for lazy initialisation of variables
@@ -25,12 +27,14 @@ class modelBaseController(ABC):
         super().__init__()
 
 
-    def late_init(self, device, num_envs, num_legs, time_horizon, dt_out):
+    def late_init(self, device, num_envs, num_legs, time_horizon, dt_out, decimation, dt_in):
         self._num_envs = num_envs
         self._device = device
         self._num_legs = num_legs
         self._time_horizon = time_horizon
         self._dt_out = dt_out
+        self._decimation = decimation
+        self._dt_in = dt_in
 
 
     def optimize_latent_variable(self, f: torch.Tensor, d: torch.Tensor, p: torch.Tensor, F: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -108,6 +112,8 @@ class samplingController(modelBaseController):
         - _num_legs
         - _time_horizon : Outer Loop prediction time horizon
         - _dt_out       : Outer Loop time step 
+        - _decimation   : Inner Loop time horizon
+        - _dt_in        : Inner Loop time step
         - phase (Tensor): Leg phase                                     of shape (batch_size, num_legs)
         - p0 (th.Tensor): Lift-off position                             of shape (batch_size, num_legs, 3)
         - c_prev (Tnsor): Previous contact value                        of shape (batch_size, num_legs)
@@ -136,8 +142,8 @@ class samplingController(modelBaseController):
         self.swing_time = None
 
 
-    def late_init(self, device, num_envs, num_legs, time_horizon, dt_out):
-        super().late_init(device, num_envs, num_legs, time_horizon, dt_out)
+    def late_init(self, device, num_envs, num_legs, time_horizon, dt_out, decimation, dt_in):
+        super().late_init(device, num_envs, num_legs, time_horizon, dt_out, decimation, dt_in)
         self.phase = torch.zeros(num_envs, num_legs, device=device)
         self.p0 = torch.zeros(num_envs, num_legs, 3, device=device) # TODO Should initialise with the reset foot position
         self.c_prev = torch.zeros(num_envs, num_legs, device=device)
@@ -163,7 +169,7 @@ class samplingController(modelBaseController):
         # Compute the contact sequence and update the phase
         c, self.phase = self.gait_generator(f=f, d=d, phase=self.phase, time_horizon=self._time_horizon, dt=self._dt_out)
 
-        pt = self.swing_trajectory_generator(p=p, c=c, decimation=10, d=d, f=f)
+        pt = self.swing_trajectory_generator(p=p, c=c, d=d, f=f)
 
         p_star = p
         F_star = F
@@ -210,7 +216,7 @@ class samplingController(modelBaseController):
         return c, new_phase
     
 
-    def swing_trajectory_generator(self, p: torch.Tensor, c: torch.Tensor, f: torch.Tensor, d: torch.Tensor, decimation: int) -> torch.Tensor:
+    def swing_trajectory_generator(self, p: torch.Tensor, c: torch.Tensor, f: torch.Tensor, d: torch.Tensor) -> torch.Tensor:
         """ Given feet position sequence and contact sequence -> compute swing trajectories by fitting a cubic spline between
         the lift-off and the touch down define in the contact sequence. 
         - Swing frequency and duty cycle are used to compute the swing period
@@ -222,7 +228,6 @@ class samplingController(modelBaseController):
             - c   (torch.Tensor): Foot contact sequence                 of shape(batch_size, num_legs, time_horizon)
             - f   (torch.Tensor): Leg frequency                         of shape(batch_size, num_legs)
             - d   (torch.Tensor): Stepping duty cycle                   of shape(batch_size, num_legs)
-            - decimation   (int): Number of timestep for the traj.
 
         Returns:
             - pt  (torch.Tensor): Desired Swing Leg trajectories        of shape(batch_size, num_legs, 9, decimation)   (9 = xyz_pos, xzy_vel, xyz_acc)
@@ -233,10 +238,9 @@ class samplingController(modelBaseController):
         # Heuristic TODO Save that on the right place, could also be a RL variable
         step_height = 0.05
 
-        # Time during wich the leg is in swing. TODO Why +0.07 ? Is it an heuristic also ?
+        # Time during wich the leg is in swing.
         # Shape (batch_size, num_legs)
-        swing_period = ((1-d) / f) + 0.07
-
+        swing_period = ((1-d) / f)
         half_swing_period = swing_period / 2
         time_fac = 1 / (swing_period / 2) #bezier_time_factor
 
@@ -244,30 +248,31 @@ class samplingController(modelBaseController):
         # Step 1. Retrieve the three interpolation points : p0, p1, p2 (lift-off, middle point, touch down)
 
         # Retrieve p0 : If c(0)=0 and c(-1)=1 : The leg lift-off -> p0 = p(0) # TODO p(0) or must it be from simulation data ? TODO Must it be p(0) or p(-1)
-        # Update only the p0 that are new lift off positions
-        # Shape (batch_size, num_legs, 3)
-        lifting_off = (c[:,:,0]==0) * (self.c_prev == 1)
+        # Update only the p0 that are new lift off positions (unsqueeze lifting off -> shape(batc_size, num_legs, 1) to make it compatible for multiplication with p shape)
+        # p0 shape (batch_size, num_legs, 3) 
+        lifting_off = ((c[:,:,0]==0) * (self.c_prev == 1)).unsqueeze(-1)
         self.p0 = (p[:,:,:,0] * lifting_off) + (self.p0 * ~lifting_off)  
 
-        # Retrieve p2 : Retrieve the index of the touch down in the contact sequence : First Non-zero Index
+        # Retrieve p2 : Retrieve the index of the touch down in the contact sequence : First Non-zero Index : shape(batch_size, num_legs)
         # Set the last value of c as ONE to avoid the case of only 0 in the contact sequence, wich return the first element (make more sense to retrun the last)
         # With the touch_down index, retrieve the touch down foot position : p2
-        # shape (batch_size, num_legs, 3) 
+        # Idx shape : (batch_size, num_legs) -> must transform to (batch_size, num_legs, 3, 1) to retrieve position from p of shape (batch_size, num_legs, 3, time_horizon)
+        # p2 shape (batch_size, num_legs, 3) 
         c[:,:,-1] = 1 # TODO Does it modify c also outside this function ?
         first_non_zero_indx = torch.argmax((c!=0).float(), dim=-1)
-        p2 = torch.gather(p, -1, first_non_zero_indx.unsqueeze(-1)).squeeze(-1)
+        p2 = torch.gather(p, -1, first_non_zero_indx.unsqueeze(-1).expand(-1,-1,3).unsqueeze(-1)).squeeze(-1)
 
         # Retrieve p1 : (x,y) position are define as the middle point between p0 and p1 (lift-off and touch-down). z is heuristcally define
-        # shape (batch_size, num_legs, 3)
+        # p1 shape (batch_size, num_legs, 3)
         p1 = (self.p0[:,:,:2] + p2[:,:,:2]) / 2     # p1(x,y) is in the middle of p0 and p2
         p1 = torch.cat((p1, step_height*torch.ones_like(p1[:,:,:1])), dim=2) # Append a third dimension z : defined as step_height
 
         # Step 2. Compute the parameters for the interpolation
 
-        # Swing time : reset if lifting off, then increment by one time step (outer loop)
+        # Swing time : reset if lifting off, then increment by one time step (outer loop)  (squeeze lifting_off : (batch_size, num_legs, 1)->(batch_size, num_legs))
         # then compute t in [0, Delta_t/2], which would be use for the spline interpolation
-        # shape (batch_size, num_legs)
-        self.swing_time = (self.swing_time * ~lifting_off) + self._dt_out
+        # t & swing_time shape (batch_size, num_legs)
+        self.swing_time = (self.swing_time * ~lifting_off.squeeze(-1)) + self._dt_out
         t = self.swing_time % half_swing_period  # Swing time (half)
 
         # Compute the a,b,c,d polynimial coefficient for the cubic interpolation S(t) = a*t^3 + b*t^2 + c*t + d
@@ -279,13 +284,34 @@ class samplingController(modelBaseController):
         cp3 = (torch.cat((self.p0[:,:,:2], p1[:,:,2:]), dim=2) * is_S0) + (p2 * ~is_S0)
         cp4 = (p1 * is_S0)                                              + (p2 * ~is_S0)
 
-        # Step 3. Compute the interpolation trajectory
-        desired_foot_pos_traj = cp1*(1 - time_fac*t)**3 + 3*cp2*(time_fac*t)*(1 - time_fac*t)**2 + 3*cp3*((time_fac*t)**2)*(1 - time_fac*t) + cp4*(time_fac*t)**3
-        desired_foot_vel_traj = 3*(cp2 - cp1)*(1 - time_fac*t)**2 + 6*(cp3 - cp2)*(1 - time_fac*t)*(time_fac*t) + 3*(cp4 - cp3)*(time_fac*t)**2
-        desired_foot_acc_traj = 6*(1 - time_fac*t) * (cp3 - 2*cp2 + cp1) + 6 * (time_fac*t) * (cp4 - 2*cp3 + cp2)
+        # Step 3. Prepare parameters to compute interpolation trajectory in one operation -> matrix multiplication
+        
+        # Generate the time trajectory t -> [t, t + dt, t+ 2*dt,...]
+        # time_fac, t : shape(batch_size, num_legs) -> unsqueezed(-1) -> Shape (batch_size, num_legs, 1)
+        # (arrange = [0,1,2,...])*dt.unsqueeze(0).unsqueeze(-1)       -> Shape (1, 1, decimation)
+        # time traj : Shape (batch_size, num_legs, decimation)
+        t_traj = (time_fac*t).unsqueeze(-1) + (torch.arange(self._decimation, device=self._device)*self._dt_in).unsqueeze(0).unsqueeze(0)
+
+        # Prepare cp_x to be mutltiplied by the time traj :  shape(batch_size, num_leg, 3) -> (batch_size, num_leg, 3, 1)
+        cp1 = cp1.unsqueeze(-1)
+        cp2 = cp2.unsqueeze(-1)
+        cp3 = cp3.unsqueeze(-1)
+        cp4 = cp4.unsqueeze(-1)
+
+        # Prepare time traj to be multplied by cp_x : shape(batch_size, num_leg, decimation) -> (batch_size, num_leg, 1, decimation)
+        t_traj = t_traj.unsqueeze(2)
+
+
+        # Step 4. Compute the interpolation trajectory
+        # shape (batch_size, num_legs, 3, decimation)
+        desired_foot_pos_traj = cp1*(1 - t_traj)**3 + 3*cp2*(t_traj)*(1 - t_traj)**2 + 3*cp3*((t_traj)**2)*(1 - t_traj) + cp4*(t_traj)**3
+        desired_foot_vel_traj = 3*(cp2 - cp1)*(1 - t_traj)**2 + 6*(cp3 - cp2)*(1 - t_traj)*(t_traj) + 3*(cp4 - cp3)*(t_traj)**2
+        desired_foot_acc_traj = 6*(1 - t_traj) * (cp3 - 2*cp2 + cp1) + 6 * (t_traj) * (cp4 - 2*cp3 + cp2)
+
+        # shape (batch_size, num_legs, 9, decimation) (9 = xyz_pos, xzy_vel, xyz_acc)
         pt = torch.cat((desired_foot_pos_traj, desired_foot_vel_traj, desired_foot_acc_traj), dim=2)
 
-        return torch.zeros(self._num_envs, self._num_legs, 9, 10, device=self._device)
+        return pt
 
 
 # ----------------------------------- Inner Loop ------------------------------
