@@ -116,8 +116,9 @@ class samplingController(modelBaseController):
         - _dt_in        : Inner Loop time step
         - phase (Tensor): Leg phase                                     of shape (batch_size, num_legs)
         - p0 (th.Tensor): Lift-off position                             of shape (batch_size, num_legs, 3)
-        - c_prev (Tnsor): Previous contact value                        of shape (batch_size, num_legs)
+        - c_prev (Tnsor): Previous contact value  updated in opt_lat_v  of shape (batch_size, num_legs)
         - swing_time (T): time progression of the leg in swing phase    of shape (batch_size, num_legs)  
+        - p_sim_prev (T): Last foot position from sim. upd in comp_ctrl of shape (batch_size, num_legs, 3)
 
     Method :
         - late_init(device, num_envs, num_legs) : save environment variable and allow for lazy initialisation of variables # Inherited
@@ -140,6 +141,7 @@ class samplingController(modelBaseController):
         self.p0 = None
         self.c_prev = None
         self.swing_time = None
+        self.p_sim_prev = None
 
 
     def late_init(self, device, num_envs, num_legs, time_horizon, dt_out, decimation, dt_in):
@@ -148,6 +150,7 @@ class samplingController(modelBaseController):
         self.p0 = torch.zeros(num_envs, num_legs, 3, device=device) # TODO Should initialise with the reset foot position
         self.c_prev = torch.zeros(num_envs, num_legs, device=device)
         self.swing_time = torch.zeros(num_envs, num_legs, device=device)
+        self.p_sim_prev = torch.zeros(num_envs, num_legs, 3, device=device) # TODO Should initialise with the reset foot position
 
 # ----------------------------------- Outer Loop ------------------------------
     def optimize_latent_variable(self, f: torch.Tensor, d: torch.Tensor, p: torch.Tensor, F: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -169,12 +172,16 @@ class samplingController(modelBaseController):
         # Compute the contact sequence and update the phase
         c, self.phase = self.gait_generator(f=f, d=d, phase=self.phase, time_horizon=self._time_horizon, dt=self._dt_out)
 
+        # Generate the swing trajectory
         pt = self.swing_trajectory_generator(p=p, c=c, d=d, f=f)
 
         p_star = p
         F_star = F
         c_star = c
         pt_star = pt
+
+        # update saved variable
+        self.c_prev = c
 
         return p_star, F_star, c_star, pt_star
     
@@ -247,11 +254,11 @@ class samplingController(modelBaseController):
 
         # Step 1. Retrieve the three interpolation points : p0, p1, p2 (lift-off, middle point, touch down)
 
-        # Retrieve p0 : If c(0)=0 and c(-1)=1 : The leg lift-off -> p0 = p(0) # TODO p(0) or must it be from simulation data ? TODO Must it be p(0) or p(-1)
+        # Retrieve p0 : If c(0)=0 and c(-1)=1 : The leg lift-off -> p0 = p(-1) (value from simulation : the last value where c=1)
         # Update only the p0 that are new lift off positions (unsqueeze lifting off -> shape(batc_size, num_legs, 1) to make it compatible for multiplication with p shape)
         # p0 shape (batch_size, num_legs, 3) 
-        lifting_off = ((c[:,:,0]==0) * (self.c_prev == 1)).unsqueeze(-1)
-        self.p0 = (p[:,:,:,0] * lifting_off) + (self.p0 * ~lifting_off)  
+        lifting_off = ((c[:,:,0]==0) * (self.c_prev == 1)).unsqueeze(-1)  
+        self.p0 = (self.p_sim_prev * lifting_off) + (self.p0 * ~lifting_off)  
 
         # Retrieve p2 : Retrieve the index of the touch down in the contact sequence : First Non-zero Index : shape(batch_size, num_legs)
         # Set the last value of c as ONE to avoid the case of only 0 in the contact sequence, wich return the first element (make more sense to retrun the last)
@@ -333,7 +340,7 @@ class samplingController(modelBaseController):
             - p_dot (tch.Tensor): Feet velocity  (latest from sim)      of shape(batch_size, num_legs, 3)
             - q_dot (tch.Tensor): Joint velocity (latest from sim)      of shape(batch_size, num_legs, num_joints_per_leg)
             - jacobian  (Tensor): Jacobian -> joint frame to foot frame of shape(batch_size, num_legs, 3, num_joints_per_leg)
-            - TODO Geet it from sim or compute it here ? jacobian_dot (Tsr): Jacobian derivative (forward euler)   of shape(batch_size, num_legs, 3, num_joints_per_leg)
+            - jacobian_dot (Tsr): Jacobian derivative (forward euler)   of shape(batch_size, num_legs, 3, num_joints_per_leg)
             - mass_matrix (Tsor): Mass Matrix in joint space            of shape(batch_size, num_legs, num_joints_per_leg, num_joints_per_leg)
             - h   (torch.Tensor): C(q,q_dot) + G(q) (corr. and grav F.) of shape(batch_size, num_legs, num_joints_per_leg)
 
@@ -351,6 +358,9 @@ class samplingController(modelBaseController):
 
         # T shape = (batch_size, num_legs, num_joints_per_leg)
         T = T_swing + T_stance 
+
+        # Save variables
+        self.p_sim_prev = p # Used in genereate trajectory
 
         return T
 

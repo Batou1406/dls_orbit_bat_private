@@ -281,9 +281,9 @@ class RewardsCfg:
     """
 
     # -- task
-    # track_lin_vel_xy_exp = RewTerm(
-    #     func=mdp.track_lin_vel_xy_exp, weight=1.0, params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
-    # )
+    track_lin_vel_xy_exp = RewTerm(
+        func=mdp.track_lin_vel_xy_exp, weight=1.0, params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
+    )
     # track_ang_vel_z_exp = RewTerm(
     #     func=mdp.track_ang_vel_z_exp, weight=0.5, params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
     # )
@@ -312,7 +312,7 @@ class RewardsCfg:
     # dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=0.0)
 
     # -- Reward for alive time
-    is_alive = RewTerm(func=mdp.is_alive, weight=1)
+    is_alive = RewTerm(func=mdp.is_alive, weight=10.0)
 
 
 @configclass
