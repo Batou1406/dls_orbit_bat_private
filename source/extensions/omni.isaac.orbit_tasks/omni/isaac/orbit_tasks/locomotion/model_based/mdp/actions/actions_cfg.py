@@ -37,6 +37,9 @@ class ModelBaseActionCfg(ActionTermCfg):
     offset: float | dict[str, float] = 0.0
     """Offset factor for the action (float or dict of regex expressions). Defaults to 0.0."""
 
+    prevision_horizon: int = 10
+    """Prediction time horizon for the Model Base controller (runs at outer loop frequecy)"""
+
     controller: model_base_controller.modelBaseController = MISSING
     """Model base controller that compute u: output torques from z: latent variable""" 
 

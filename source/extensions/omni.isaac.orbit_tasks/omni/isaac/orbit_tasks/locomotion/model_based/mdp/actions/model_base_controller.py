@@ -1,4 +1,5 @@
 from abc import ABC
+from collections.abc import Sequence
 import torch
 
 
@@ -17,6 +18,7 @@ class modelBaseController(ABC):
 
     Method :
         - late_init(device, num_envs, num_legs) : save environment variable and allow for lazy initialisation of variables
+        - reset(env_ids) : Reset controller variables upon environment reset if needed
         - optimize_latent_variable(f, d, p, F) -> p*, F*, c*, pt*
         - compute_control_output(F0*, c0*, pt01*) -> T
         - gait_generator(f, d, phase) -> c, new_phase
@@ -28,6 +30,16 @@ class modelBaseController(ABC):
 
 
     def late_init(self, device, num_envs, num_legs, time_horizon, dt_out, decimation, dt_in):
+        """ Initialise Model Base variable after the model base action class has been initialised
+
+        Args : 
+            - device            : Cpu or GPu
+            - num_envs     (int): Number of parallel environments
+            - time_horiton (int): Prediction time horizon for the Model Base controller (runs at outer loop frequecy)
+            - dt_out       (int): Outer loop delta t (decimation * dt_in)
+            - decimation   (int): Inner Loop steps per outer loop steps
+            - dt_in        (int): Inner loop delta t
+        """
         self._num_envs = num_envs
         self._device = device
         self._num_legs = num_legs
@@ -35,6 +47,12 @@ class modelBaseController(ABC):
         self._dt_out = dt_out
         self._decimation = decimation
         self._dt_in = dt_in
+
+
+    def reset(self, env_ids: Sequence[int] | None = None) -> None:
+        """ The environment is reseted -> this requires to reset some controller variables
+        """
+        pass 
 
 
     def optimize_latent_variable(self, f: torch.Tensor, d: torch.Tensor, p: torch.Tensor, F: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -107,13 +125,13 @@ class samplingController(modelBaseController):
         Optimize the latent variable z. Generates samples, simulate the samples, evaluate them and return the best one.
 
     Properties : 
-        - _device
-        - _num_envs
-        - _num_legs
-        - _time_horizon : Outer Loop prediction time horizon
-        - _dt_out       : Outer Loop time step 
-        - _decimation   : Inner Loop time horizon
-        - _dt_in        : Inner Loop time step
+        - _device                                                                                                       Inherited from modelBaseController
+        - _num_envs                                                                                                     Inherited from modelBaseController
+        - _num_legs                                                                                                     Inherited from modelBaseController
+        - _time_horizon : Outer Loop prediction time horizon                                                            Inherited from modelBaseController
+        - _dt_out       : Outer Loop time step                                                                          Inherited from modelBaseController
+        - _decimation   : Inner Loop time horizon                                                                       Inherited from modelBaseController
+        - _dt_in        : Inner Loop time step                                                                          Inherited from modelBaseController
         - phase (Tensor): Leg phase                                     of shape (batch_size, num_legs)
         - p0 (th.Tensor): Lift-off position                             of shape (batch_size, num_legs, 3)
         - c_prev (Tnsor): Previous contact value  updated in opt_lat_v  of shape (batch_size, num_legs)
@@ -121,14 +139,22 @@ class samplingController(modelBaseController):
         - p_sim_prev (T): Last foot position from sim. upd in comp_ctrl of shape (batch_size, num_legs, 3)
 
     Method :
-        - late_init(device, num_envs, num_legs) : save environment variable and allow for lazy initialisation of variables # Inherited
-        - optimize_latent_variable(f, d, p, F) -> p*, F*, c*, pt*   # Inherited
-        - compute_control_output(F0*, c0*, pt01*) -> T              # Inherited
-        - gait_generator(f, d, phase) -> c, new_phase               # Inherited
+        - late_init(device, num_envs, num_legs) : save environment variable and allow for lazy init of variables        Inherited from modelBaseController
+        - reset(env_ids) : Reset controller variables upon environment reset if needed                                  Inherited from modelBaseController (not implemented)
+        - optimize_latent_variable(f, d, p, F) -> p*, F*, c*, pt*                                                       Inherited from modelBaseController (not implemented)
+        - compute_control_output(F0*, c0*, pt01*) -> T                                                                  Inherited from modelBaseController (not implemented)
+        - gait_generator(f, d, phase) -> c, new_phase                                                                   Inherited from modelBaseController (not implemented)
         - swing_trajectory_generator(p, c, decimation) -> pt
         - swing_leg_controller(c0*, pt01*) -> T_swing
         - stance_leg_controller(F0*, c0*) -> T_stance
     """
+
+    # Late init
+    phase : torch.Tensor
+    p0 : torch.Tensor
+    c_prev : torch.Tensor
+    swing_time : torch.Tensor
+    p_sim_prev : torch.Tensor
 
     def __init__(self, swing_ctrl_pos_gain_fb = 1, swing_ctrl_vel_gain_fb=1):
         super().__init__()
@@ -136,21 +162,49 @@ class samplingController(modelBaseController):
         self.swing_ctrl_pos_gain_fb = swing_ctrl_pos_gain_fb
         self.swing_ctrl_vel_gain_fb = swing_ctrl_vel_gain_fb
 
-        # Late init
-        self.phase = None
-        self.p0 = None
-        self.c_prev = None
-        self.swing_time = None
-        self.p_sim_prev = None
 
+    def late_init(self, device, num_envs, num_legs, time_horizon, dt_out, decimation, dt_in, p_default: torch.Tensor):
+        """ Initialise Model Base variable after the model base action class has been initialised
 
-    def late_init(self, device, num_envs, num_legs, time_horizon, dt_out, decimation, dt_in):
+        Args : 
+            - device            : Cpu or GPu
+            - num_envs     (int): Number of parallel environments
+            - time_horiton (int): Prediction time horizon for the Model Base controller (runs at outer loop frequecy)
+            - dt_out       (int): Outer loop delta t (decimation * dt_in)
+            - decimation   (int): Inner Loop steps per outer loop steps
+            - dt_in        (int): Inner loop delta t
+            - p_default (Tensor): Default feet pos of robot when reset  of Shape (batch_size, num_legs, 3)
+        """
         super().late_init(device, num_envs, num_legs, time_horizon, dt_out, decimation, dt_in)
         self.phase = torch.zeros(num_envs, num_legs, device=device)
-        self.p0 = torch.zeros(num_envs, num_legs, 3, device=device) # TODO Should initialise with the reset foot position
+        self.p0 = p_default.clone().detach()
         self.c_prev = torch.ones(num_envs, num_legs, device=device)
         self.swing_time = torch.zeros(num_envs, num_legs, device=device)
-        self.p_sim_prev = torch.zeros(num_envs, num_legs, 3, device=device) # TODO Should initialise with the reset foot position
+        self.p_sim_prev = p_default.clone().detach()
+
+
+    def reset(self, env_ids: Sequence[int] | None,  p_default: torch.Tensor) -> None:
+        """ The environment is reseted -> this requires to reset some controller variables
+
+        Args :
+            - env_ids           : Index of the env beeing reseted
+            - p_default (Tensor): Default feet position                 of shape (batch_size, num_legs, 3)
+        """
+        # Reset gait phase          : Shape (batch_size, num_legs)
+        self.phase[env_ids,:] = torch.zeros_like(self.phase, device=self._device)[env_ids,:]
+
+        # Reset lift-off pos       : Shape (batch_size, num_legs, 3)
+        self.p0[env_ids,:,:] = p_default[env_ids,:,:].clone().detach()
+
+        # Reset previous contact   : Shape (batch_size, num_legs)
+        self.c_prev[env_ids,:] = torch.ones_like(self.c_prev, device=self._device)[env_ids,:]
+
+        # Reset swing time         : Shape (batch_size, num_legs)
+        self.swing_time[env_ids,:] = torch.zeros_like(self.swing_time, device=self._device)[env_ids,:]
+
+        # Reset previous foot position  : Shape (batch_size, num_legs, 3)
+        self.p_sim_prev[env_ids,:,:] = p_default[env_ids,:,:].clone().detach()
+
 
 # ----------------------------------- Outer Loop ------------------------------
     def optimize_latent_variable(self, f: torch.Tensor, d: torch.Tensor, p: torch.Tensor, F: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:

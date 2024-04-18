@@ -52,43 +52,53 @@ class ModelBaseAction(ActionTerm):
       responsible for applying the processed actions to the asset managed by the term.
 
     Properties :
-        cfg
-        _env
-        _asset
-        _scale, _offset
-        num_env
-        device
-        action_dim
-        - raw_actions, _raw_actions
-              (torch.Tensor): Actions received from the RL policy   of shape (batch_size, action_dim)
-        - processed_actions, _processed_actions
-              (torch.Tensor): scaled and offseted actions from RL   of shape (batch_site, action_dim)
-        _joint_ids, _joint_names, _num_joints
-        - _decimation
-        - _prevision_horizon: Outer Loop prediction time horizon
-        - f   (torch.Tensor): Prior leg frequency                   of shape (batch_size, num_legs)
-        - d   (torch.Tensor): Prior stepping duty cycle             of shape (batch_size, num_legs)
-        - p   (torch.Tensor): Prior foot pos. sequence              of shape (batch_size, num_legs, 3, time_horizon)
-        - F   (torch.Tensor): Prior Ground Reac. Forces (GRF) seq.  of shape (batch_size, num_legs, 3, time_horizon)
-        - p_star (th.Tensor): Optimizied foot pos sequence          of shape (batch_size, num_legs, 3, time_horizon)
-        - F_star (th.Tensor): Opt. Ground Reac. Forces (GRF) seq.   of shape (batch_size, num_legs, 3, time_horizon)
-        - c_star (th.Tensor): Optimizied foot contact sequence      of shape (batch_size, num_legs, time_horizon)
-        - pt_star(th.Tensor): Optimizied foot swing trajectory      of shape (batch_size, num_legs, 9, decimation)  (9 = pos, vel, acc)
-        - z   (tuple)       : Latent variable : z=(f,d,p,F)         of shape (...)
-        - u   (torch.Tensor): output joint torques                  of shape (batch_size, num_joints)
-        - controller (modelBaseController): controller instance that compute u from z 
-        - _foot_idx         : List of index of the feet
-        - _num_legs         : Number of legs of the robot  : useful for dimension definition
-        - _num_joints_per_leg: Number of joints per leg    : useful for dimension definition
-        - _joint_idx        : List of list of joints [FL_joints, FR_joints, ...]
-        - jacobian_prev (ts): jacobian from prev. dt for jac_dot    of shape (batch_size, num_leg, 3, num_joints_per_leg) 
-        - inner_loop        : Counter of inner loop wrt. outer loop
+    --Inherited--
+        cfg                 (actions_cfg.ModelBaseActionCfg)                                                            Inherited from ManagerTermBase
+        _env                (BaseEnv)                                                                                   Inherited from ManagerTermBase
+        num_env             @Property                                                                                   Inherited from ManagerTermBase
+        device              @Property                                                                                   Inherited from ManagerTermBase
+        _asset              (Articulation)                                                                              Inherited from ActionTerm
+
+    --Defined--
+        _scale       (float): Re-scale the raw actions received from RL policy                                          Received from ModelBaseActionCfg
+        _offset      (float): Offset   the raw actions received from RL policy                                          Received from ModelBaseActionCfg
+        action_dim          @Property                                                                                   Inherited from ActionTerm (not implemented)
+        raw_actions         @Property                                                                                   Inherited from ActionTerm (not implemented)
+        _raw_actions (Tnsor): Actions received from the RL policy   of shape (batch_size, action_dim)                   
+        processed_actions   @Property                                                                                   Inherited from ActionTerm (not implemented)
+        _processed_actions  : scaled and offseted actions from RL   of shape (batch_site, action_dim)
+        _joint_ids    (list): list of int corresponding to joint index
+        _joint_names  (list): list of str corresponding to joint name                                                   Received from ModelBaseActionCfg
+        _num_joints    (int): Number of joints
+        _foot_idx     (list): List of index of the feet
+        _num_legs      (int): Number of legs of the robot  : useful for dimension definition
+        _num_joints_per_leg : Number of joints per leg     : useful for dimension definition
+        _joint_idx    (list): List of list of joints [FL_joints=[FL_Hip,...], FR_joints, ...]
+        _decimation    (int): Inner Loop steps per outer loop steps
+        _prevision_horizon  : Prediction time horizon for the Model Base controller (runs at outer loop frequecy)       Received from ModelBaseActionCfg
+        controller (modelBaseController): controller instance that compute u from z                                     Received from ModelBaseActionCfg
+        
+        f     (torch.Tensor): Prior leg frequency                   of shape (batch_size, num_legs)
+        d     (torch.Tensor): Prior stepping duty cycle             of shape (batch_size, num_legs)
+        p     (torch.Tensor): Prior foot pos. sequence              of shape (batch_size, num_legs, 3, time_horizon)
+        F     (torch.Tensor): Prior Ground Reac. Forces (GRF) seq.  of shape (batch_size, num_legs, 3, time_horizon)
+        p_star (trch.Tensor): Optimizied foot pos sequence          of shape (batch_size, num_legs, 3, time_horizon)
+        F_star (trch.Tensor): Opt. Ground Reac. Forces (GRF) seq.   of shape (batch_size, num_legs, 3, time_horizon)
+        c_star (trch.Tensor): Optimizied foot contact sequence      of shape (batch_size, num_legs, time_horizon)
+        pt_star (tch.Tensor): Optimizied foot swing trajectory      of shape (batch_size, num_legs, 9, decimation)  (9 = pos, vel, acc)
+        z            (tuple): Latent variable : z=(f,d,p,F)         of shape (...)
+        u     (torch.Tensor): output joint torques                  of shape (batch_size, num_joints)
+        jacobian_prev (Tsor): jacobian from prev. dt for jac_dot    of shape (batch_size, num_leg, 3, num_joints_per_leg) 
+        inner_loop     (int): Counter of inner loop wrt. outer loop
 
     Method :
-        reset(env_ids: Sequence[int] | None = None) -> None:
-        __call__(*args) -> Any
-        process_actions(actions: torch.Tensor)
-        apply_actions()
+        reset(env_ids: Sequence[int] | None = None) -> None:                                                            Inherited from ManagerTermBaseCfg (not implemented)
+        __call__(*args) -> Any                                                                                          Inherited from ManagerTermBaseCfg (not implemented)
+        process_actions(actions: torch.Tensor)                                                                          Inherited from ActionTerm (not implemented)
+        apply_actions()                                                                                                 Inherited from ActionTerm (not implemented)
+        get_robot_state() -> tuple(torch.Tensor)
+        get_jacobian() -> torch.Tensor
+        get_reset_foot_position() -> torch.Tensors
     """
 
     cfg: actions_cfg.ModelBaseActionCfg
@@ -106,69 +116,13 @@ class ModelBaseAction(ActionTerm):
     controller: model_base_controller.modelBaseController
     """Model base controller that compute u: output torques from z: latent variable""" 
 
-    _prevision_horizon = 10 # Should get that from cfg
-    # _decimation = 10        # Should get that from the env
-
 
     def __init__(self, cfg: actions_cfg.ModelBaseActionCfg, env: BaseEnv) -> None:
         # initialize the action term
         super().__init__(cfg, env)
 
-        # resolve the joints over which the action term is applied
-        self._joint_ids, self._joint_names = self._asset.find_joints(self.cfg.joint_names)  # joint_ids = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
-        self._num_joints = len(self._joint_ids)                                             # joint_names = ['FL_hip_joint', 'FR_hip_joint', 'RL_hip_joint', 'RR_hip_joint', 'FL_thigh_joint', 'FR_thigh_joint', 'RL_thigh_joint', 'RR_thigh_joint', 'FL_calf_joint', 'FR_calf_joint', 'RL_calf_joint', 'RR_calf_joint']
-        # log the resolved joint names for debugging
-        carb.log_info(
-            f"Resolved joint names for the action term {self.__class__.__name__}:"
-            f" {self._joint_names} [{self._joint_ids}]"
-        )
-        # Avoid indexing across all joints for efficiency
-        if self._num_joints == self._asset.num_joints:
-            self._joint_ids = slice(None)
-
-        # Retrieve series of information usefull for computation and generalisation
-        # Feet Index in body, list [13, 14, 15, 16]
-        self._foot_idx = self._asset.find_bodies(".*foot")[0]
-        self._num_legs = len(self._foot_idx)
-        self._num_joints_per_leg = self._num_joints // self._num_legs
-        self._decimation = self._env.cfg.decimation
-
-        # variable to count the number of inner loop with respect to outer loop
-        self.inner_loop = 0
-
-        # Joint Index
-        fl_joints = self._asset.find_joints("FL.*")[0]		# list [0, 4,  8]
-        fr_joints = self._asset.find_joints("FR.*")[0]		# list [1, 5,  9]
-        rl_joints = self._asset.find_joints("RL.*")[0]		# list [2, 6, 10]
-        rr_joints = self._asset.find_joints("RR.*")[0]		# list [3, 7, 11]
-        self._joints_idx = [fl_joints, fr_joints, rl_joints, rr_joints]
-
-        # Latent variable
-        self.f = torch.zeros(self.num_envs, self._num_legs, device=self.device)
-        self.d = torch.zeros(self.num_envs, self._num_legs, device=self.device)
-        self.p = torch.zeros(self.num_envs, self._num_legs, 3, self._prevision_horizon, device=self.device)
-        self.F = torch.zeros(self.num_envs, self._num_legs, 3, self._prevision_horizon, device=self.device)
-        self.z = [self.f, self.d, self.p, self.F]
-
-        # Model-based optimized latent variable
-        self.p_star = torch.zeros(self.num_envs, self._num_legs, 3, self._prevision_horizon, device=self.device)
-        self.F_star = torch.zeros(self.num_envs, self._num_legs, 3, self._prevision_horizon, device=self.device)
-        self.c_star = torch.ones(self.num_envs, self._num_legs, self._prevision_horizon, device=self.device)
-        self.pt_star= torch.zeros(self.num_envs, self._num_legs, 9, self._decimation, device=self.device)
-
-        # Control input u : joint torques
-        self.u = torch.zeros(self.num_envs, self._num_joints, device=self.device)
-
-        # Variable for intermediary computaion
-        self.jacobian_prev = torch.zeros(self.num_envs, self._num_legs, 3, self._num_joints_per_leg, device=self.device)
-
-        # Instance of control class. Gets Z and output u
-        self.controller = cfg.controller
-        self.controller.late_init(device=self.device, num_envs=self.num_envs, num_legs=self._num_legs, time_horizon=self._prevision_horizon, dt_out=self._decimation*self._env.physics_dt, decimation=self._decimation, dt_in=self._env.physics_dt)
-
-        # create tensors for raw and processed actions
-        self._raw_actions = torch.zeros(self.num_envs, self.action_dim, device=self.device)
-        self._processed_actions = torch.zeros_like(self.raw_actions)
+        # Prevision Horizon
+        self._prevision_horizon = self.cfg.prevision_horizon
 
         # parse scale
         if isinstance(cfg.scale, (float, int)):
@@ -191,13 +145,68 @@ class ModelBaseAction(ActionTerm):
             self._offset[:, index_list] = torch.tensor(value_list, device=self.device)
         else:
             raise ValueError(f"Unsupported offset type: {type(cfg.offset)}. Supported types are float and dict.")
-        
+  
+        # resolve the joints over which the action term is applied
+        self._joint_ids, self._joint_names = self._asset.find_joints(self.cfg.joint_names)  # joint_ids = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+        self._num_joints = len(self._joint_ids)                                             # joint_names = ['FL_hip_joint', 'FR_hip_joint', 'RL_hip_joint', 'RR_hip_joint', 'FL_thigh_joint', 'FR_thigh_joint', 'RL_thigh_joint', 'RR_thigh_joint', 'FL_calf_joint', 'FR_calf_joint', 'RL_calf_joint', 'RR_calf_joint']
+        # log the resolved joint names for debugging
+        carb.log_info(
+            f"Resolved joint names for the action term {self.__class__.__name__}:"
+            f" {self._joint_names} [{self._joint_ids}]"
+        )
+        # Avoid indexing across all joints for efficiency #TODO Is it still usefull
+        if self._num_joints == self._asset.num_joints:
+            self._joint_ids = slice(None)
+
+        # Retrieve series of information usefull for computation and generalisation
+        # Feet Index in body, list [13, 14, 15, 16]
+        self._foot_idx = self._asset.find_bodies(".*foot")[0]
+        self._num_legs = len(self._foot_idx)
+        self._num_joints_per_leg = self._num_joints // self._num_legs
+        self._decimation = self._env.cfg.decimation  
+
+        # variable to count the number of inner loop with respect to outer loop
+        self.inner_loop = 0
+
+        # Joint Index
+        fl_joints = self._asset.find_joints("FL.*")[0]		# list [0, 4,  8]
+        fr_joints = self._asset.find_joints("FR.*")[0]		# list [1, 5,  9]
+        rl_joints = self._asset.find_joints("RL.*")[0]		# list [2, 6, 10]
+        rr_joints = self._asset.find_joints("RR.*")[0]		# list [3, 7, 11]
+        self._joints_idx = [fl_joints, fr_joints, rl_joints, rr_joints]
+
+        # Latent variable
+        self.f = torch.zeros(self.num_envs, self._num_legs, device=self.device)
+        self.d = torch.zeros(self.num_envs, self._num_legs, device=self.device)
+        self.p = torch.zeros(self.num_envs, self._num_legs, 3, self._prevision_horizon, device=self.device)
+        self.F = torch.zeros(self.num_envs, self._num_legs, 3, self._prevision_horizon, device=self.device)
+        self.z = [self.f, self.d, self.p, self.F]
+
+        # create tensors for raw and processed actions
+        self._raw_actions = torch.zeros(self.num_envs, self.action_dim, device=self.device)
+        self._processed_actions = torch.zeros_like(self.raw_actions)   
+
+        # Model-based optimized latent variable
+        self.p_star = torch.zeros(self.num_envs, self._num_legs, 3, self._prevision_horizon, device=self.device)
+        self.F_star = torch.zeros(self.num_envs, self._num_legs, 3, self._prevision_horizon, device=self.device)
+        self.c_star = torch.ones(self.num_envs, self._num_legs, self._prevision_horizon, device=self.device)
+        self.pt_star= torch.zeros(self.num_envs, self._num_legs, 9, self._decimation, device=self.device)
+
+        # Control input u : joint torques
+        self.u = torch.zeros(self.num_envs, self._num_joints, device=self.device)
+
+        # Variable for intermediary computaion
+        self.jacobian_prev = torch.zeros(self.num_envs, self._num_legs, 3, self._num_joints_per_leg, device=self.device) # TODO Is it correct ? This would likely gice a huge jacobian_dot ?
+
+        # Instance of control class. Gets Z and output u
+        self.controller = cfg.controller
+        self.controller.late_init(device=self.device, num_envs=self.num_envs, num_legs=self._num_legs, time_horizon=self._prevision_horizon, dt_out=self._decimation*self._env.physics_dt, decimation=self._decimation, dt_in=self._env.physics_dt, p_default=self.get_reset_foot_position()) 
+
 
     """
     Properties.
     """
 
-    # TODO : Faut-il modifier le 1 par un 0 ?
     @property
     def action_dim(self) -> int:
         return sum(variable.shape[1:].numel() for variable in self.z)
@@ -276,6 +285,27 @@ class ModelBaseAction(ActionTerm):
         self._asset.set_joint_effort_target(self.u, joint_ids=self._joint_ids)
 
 
+    def reset(self, env_ids: Sequence[int] | None = None) -> None:
+        """Resets the manager term.
+
+        Args:
+            env_ids: The environment ids. Defaults to None, in which case
+                all environments are considered.
+        """
+        # check if specific environment ids are provided otherwise all environments must be reseted
+        if env_ids is None:
+            env_ids = slice(None)   # TODO Check the behaviour
+
+        # variable to count the number of inner loop with respect to outer loop
+        self.inner_loop = 0
+
+        # Reset jacobian_prev : copied from get_robot_state() Retrieve Jacobian from sim : shape(batch_size, num_legs, 3, num_joints_per_leg)
+        self.jacobian_prev[env_ids,:,:,:] = self.get_jacobian()[env_ids,:,:,:]      # TODO : This may be wrong, maybe the environment need to be stepped once for the jacobian to be updated.
+
+        # Reset the model base controller
+        self.controller.reset(env_ids, self.get_reset_foot_position())
+
+
     def get_robot_state(self):
         """ Retrieve the Robot states from the simulator
 
@@ -320,20 +350,14 @@ class ModelBaseAction(ActionTerm):
         # Retrieve Joint velocities [num_instances, num_joints] -> reorganise the view and permute to get the
         # shape(batch_size, num_legs, num_joints_per_leg) : This is in joint space, no transformation required
         q_dot = self._asset.data.joint_vel.view(-1,self._num_joints_per_leg,self._num_legs).permute(0,2,1)
-        
-        # Retrieve Jacobian from sim
-        # shape(batch_size, num_legs, 3, num_joints_per_leg)
-        # Intermediary step : extract feet jacobian [batch_size, num_bodies=17, 6, num_joints+6=18] -> [..., 4, 3, 18]
-        # Shift from 6 due to an offset. This is due to how the model is define I think
-        jacobian_feet_full = self._asset.root_physx_view.get_jacobians()[:, self._foot_idx, :3, :]
-        jacobian = torch.cat((jacobian_feet_full[:, 0, :, 6+np.asarray(self._joints_idx[0])].unsqueeze(1),
-                              jacobian_feet_full[:, 1, :, 6+np.asarray(self._joints_idx[1])].unsqueeze(1),
-                              jacobian_feet_full[:, 2, :, 6+np.asarray(self._joints_idx[2])].unsqueeze(1),
-                              jacobian_feet_full[:, 3, :, 6+np.asarray(self._joints_idx[3])].unsqueeze(1)), dim=1)
-        
 
-        # Compute jacobian derivative, using forward euler. 
+        # Retrieve Jacobian from sim  shape(batch_size, num_legs, 3, num_joints_per_leg) -> see method for implementation
+        jacobian = self.get_jacobian()
+
+        # Compute jacobian derivative, using forward euler. shape(batch_size, num_legs, 3, num_joints_per_leg)
         jacobian_dot = ((jacobian - self.jacobian_prev) / self._env.physics_dt)
+
+        # Save jacobian for next iteration : required to compute jacobian derivative shape(batch_size, num_legs, 3, num_joints_per_leg)
         self.jacobian_prev = jacobian
 
         # Retrieve the mass Matrix
@@ -352,3 +376,28 @@ class ModelBaseAction(ActionTerm):
         h = (self._asset.root_physx_view.get_coriolis_and_centrifugal_forces() + self._asset.root_physx_view.get_generalized_gravity_forces()).view(self.num_envs, self._num_joints_per_leg, self._num_legs).permute(0,2,1)
 
         return p_b, p_dot_b, q_dot, jacobian, jacobian_dot, mass_matrix, h
+    
+
+    def get_jacobian(self) -> torch.Tensor:
+        """ To avoid code duplicate (used is get_robot_state() and reset())
+        """
+        # Retrieve Jacobian from sim
+        # shape(batch_size, num_legs, 3, num_joints_per_leg)
+        # Intermediary step : extract feet jacobian [batch_size, num_bodies=17, 6, num_joints+6=18] -> [..., 4, 3, 18]
+        # Shift from 6 due to an offset. This is due to how the model is define I think
+        jacobian_feet_full = self._asset.root_physx_view.get_jacobians()[:, self._foot_idx, :3, :]
+        jacobian = torch.cat((jacobian_feet_full[:, 0, :, 6+np.asarray(self._joints_idx[0])].unsqueeze(1),
+                              jacobian_feet_full[:, 1, :, 6+np.asarray(self._joints_idx[1])].unsqueeze(1),
+                              jacobian_feet_full[:, 2, :, 6+np.asarray(self._joints_idx[2])].unsqueeze(1),
+                              jacobian_feet_full[:, 3, :, 6+np.asarray(self._joints_idx[3])].unsqueeze(1)), dim=1)
+        return jacobian
+    
+    def get_reset_foot_position(self) -> torch.Tensor:
+        """ Return The default position of the robot's feet. this is the position when the states are reseted
+        TODO Now, this is hardcoded for Aliengo (given a joint default position) -> Should get this from simulation or forward kinematics
+
+        Return :
+            - p   (torch.Tensor): Default Feet position after reset     of shape(batch_size, num_legs, 3)
+        """
+        return torch.tensor([[0.2238, 0.1735, -0.3678],[0.2238, -0.1735, -0.3678],[-0.329, 0.1719, -0.3579],[-0.329, -0.1719, -0.3679]], device=self.device).unsqueeze(0).expand(self.num_envs, -1, -1)
+        
