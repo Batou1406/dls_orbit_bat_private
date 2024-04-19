@@ -235,7 +235,7 @@ class samplingController(modelBaseController):
         pt_star = pt
 
         # update saved variable
-        self.c_prev = c[:,:,0]
+        self.c_prev = c[:,:,0].clone()
 
         return p_star, F_star, c_star, pt_star
     

@@ -31,13 +31,21 @@ import torch.utils.dlpack
 
 import numpy as np
 
+## >>>Visualization
+import omni.isaac.orbit.sim as sim_utils
+from omni.isaac.orbit.markers import VisualizationMarkers, VisualizationMarkersCfg
+from omni.isaac.orbit.sim import SimulationContext
+from omni.isaac.orbit.utils.assets import ISAAC_NUCLEUS_DIR, ISAAC_ORBIT_NUCLEUS_DIR
+from omni.isaac.orbit.utils.math import quat_from_angle_axis
+## <<<Visualization
 
 def jax_to_torch(x: jax.Array):
     return torch.utils.dlpack.from_dlpack(jax.dlpack.to_dlpack(x))
 def torch_to_jax(x):
     return jax.dlpack.from_dlpack(torch.utils.dlpack.to_dlpack(x))
 
-
+verbose_mb = True
+verbose_loop = 40
 
 class ModelBaseAction(ActionTerm):
     """Base class for model base actions.
@@ -202,6 +210,8 @@ class ModelBaseAction(ActionTerm):
         self.controller = cfg.controller
         self.controller.late_init(device=self.device, num_envs=self.num_envs, num_legs=self._num_legs, time_horizon=self._prevision_horizon, dt_out=self._decimation*self._env.physics_dt, decimation=self._decimation, dt_in=self._env.physics_dt, p_default=self.get_reset_foot_position()) 
 
+        self.my_visualizer = define_markers()
+
 
     """
     Properties.
@@ -276,6 +286,37 @@ class ModelBaseAction(ActionTerm):
         c0_star = self.c_star[:,:,0]
         pt_i_star = self.pt_star[:,:,:,self.inner_loop]
         self.inner_loop += 1
+
+        global verbose_loop
+        if verbose_mb:
+            verbose_loop+=1
+            if verbose_loop>=40:
+                verbose_loop=0
+                print('Contact sequence : ', c0_star.flatten())
+                print('\nLeg frequency : ', self.f.flatten())
+                print('\nduty cycle : ', self.d.flatten())
+
+        # Vizualise
+        if verbose_mb:
+            
+            p_b = p.clone()
+
+            robot_pos_w = self._asset.data.root_pos_w
+            robot_orientation_w = self._asset.data.root_quat_w
+
+            p_orientation_w = self._asset.data.body_quat_w[:, self._foot_idx,:]
+
+            p_w_0, _ = math_utils.combine_frame_transforms(robot_pos_w, robot_orientation_w, p_b[:,0,:])
+            p_w_1, _ = math_utils.combine_frame_transforms(robot_pos_w, robot_orientation_w, p_b[:,1,:])
+            p_w_2, _ = math_utils.combine_frame_transforms(robot_pos_w, robot_orientation_w, p_b[:,2,:])
+            p_w_3, _ = math_utils.combine_frame_transforms(robot_pos_w, robot_orientation_w, p_b[:,3,:])
+            p_w = torch.cat((p_w_0.unsqueeze(1), p_w_1.unsqueeze(1), p_w_2.unsqueeze(1), p_w_3.unsqueeze(1)), dim=1)
+
+
+            marker_locations = p_w[0,:,:]
+
+            self.my_visualizer.visualize(marker_locations)
+            
 
         # Use model controller to compute the torques from the latent variable
         # Transform the shape from (batch_size, num_legs, num_joints_per_leg) to (batch_size, num_joints)
@@ -359,7 +400,7 @@ class ModelBaseAction(ActionTerm):
 
         # Save jacobian for next iteration : required to compute jacobian derivative shape(batch_size, num_legs, 3, num_joints_per_leg)
         self.jacobian_prev = jacobian
-
+        
         # Retrieve the mass Matrix
         # Shape is (batch_size, num_joints, num_joints) (ie. 144 element), we have to extract num leg sub matrices from that to have 
         # shape (batch_size, num_leg, num_joints_per_leg, num_joints_per_leg) (ie. 36 elements)
@@ -401,3 +442,16 @@ class ModelBaseAction(ActionTerm):
         """
         return torch.tensor([[0.2238, 0.1735, -0.3678],[0.2238, -0.1735, -0.3678],[-0.329, 0.1719, -0.3579],[-0.329, -0.1719, -0.3679]], device=self.device).unsqueeze(0).expand(self.num_envs, -1, -1)
         
+
+def define_markers() -> VisualizationMarkers:
+    """Define markers with various different shapes.""" 
+    marker_cfg = VisualizationMarkersCfg(
+        prim_path="/Visuals/myMarkers",
+        markers={
+            "sphere": sim_utils.SphereCfg(
+                radius=0.1,
+                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 1.0, 0.0)),
+            ),
+        },
+    )
+    return VisualizationMarkers(marker_cfg)
