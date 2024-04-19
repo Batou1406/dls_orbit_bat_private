@@ -248,16 +248,17 @@ class samplingController(modelBaseController):
 
         Note:
             No properties used, no for loop : purely functional -> made to be jitted
+            parallel_rollout : this is optional, it will work without the parallel rollout dimension
 
         Args:
-            - f   (torch.Tensor): Leg frequency                         of shape(batch_size, num_legs, parallel_rollout)
-            - d   (torch.Tensor): Stepping duty cycle                   of shape(batch_size, num_legs, parallel_rollout)
-            - phase (tch.Tensor): phase of leg                          of shape(batch_size, num_legs, parallel_rollout)
+            - f   (torch.Tensor): Leg frequency                         of shape(batch_size, (parallel_rollout), num_legs)
+            - d   (torch.Tensor): Stepping duty cycle in [0,1]          of shape(batch_size, (parallel_rollout), num_legs)
+            - phase (tch.Tensor): phase of leg in [0,1]                 of shape(batch_size, (parallel_rollout), num_legs)
             - time_horizon (int): Time horizon for the contact sequence
 
         Returns:
-            - c     (torch.bool): Foot contact sequence                 of shape(batch_size, num_legs, parallel_rollout, time_horizon)
-            - phase (tch.Tensor): The phase updated by one time steps   of shape(batch_size, num_legs, parallel_rollout)
+            - c     (torch.bool): Foot contact sequence                 of shape(batch_size, (parallel_rollout), num_legs, time_horizon)
+            - phase (tch.Tensor): The phase updated by one time steps   of shape(batch_size, (parallel_rollout), num_legs)
         """
         
         # Increment phase of f*dt: new_phases[0] : incremented of 1 step, new_phases[1] incremented of 2 steps, etc. without a for loop.
