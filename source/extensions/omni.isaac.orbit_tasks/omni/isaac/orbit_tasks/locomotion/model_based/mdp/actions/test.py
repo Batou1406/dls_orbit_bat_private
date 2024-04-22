@@ -5,7 +5,7 @@ import torch
 from model_base_controller import modelBaseController, samplingController
 # from .model_base_controller import *
 
-verbose = 0
+verbose = 0 # 0,1,2
 
 class modelBaseControllerTest():
 
@@ -135,7 +135,6 @@ def main(controller_name, controller):
 
 
 if __name__ == '__main__':
-
     controller_name = 'samplingController'    # 'samplingController', ...
 
     if controller_name == 'samplingController':

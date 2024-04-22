@@ -180,7 +180,7 @@ class ObservationsCfg:
         # )
 
         # Model Based internal variable
-        leg_phase = ObsTerm(func=leg_phase, params={"action_name": "model_base_variable"})
+        # leg_phase = ObsTerm(func=leg_phase, params={"action_name": "model_base_variable"})
 
         def __post_init__(self):
             # self.enable_corruption = True

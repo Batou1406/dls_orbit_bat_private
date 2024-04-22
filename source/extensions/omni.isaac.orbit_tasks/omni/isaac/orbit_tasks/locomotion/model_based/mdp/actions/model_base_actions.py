@@ -300,7 +300,7 @@ class ModelBaseAction(ActionTerm):
 
         # Debug
         if verbose_mb:
-            debug_apply_action(self, p, p_dot, q_dot, jacobian, jacobian_dot, mass_matrix, h, F0_star, c0_star, pt_i_star)
+            self.debug_apply_action(p, p_dot, q_dot, jacobian, jacobian_dot, mass_matrix, h, F0_star, c0_star, pt_i_star)
 
 
     def reset(self, env_ids: Sequence[int] | None = None) -> None:
@@ -422,57 +422,55 @@ class ModelBaseAction(ActionTerm):
         
 
 #-------------------------------------------------- Helpers ------------------------------------------------------------
-def debug_apply_action(self, p, p_dot, q_dot, jacobian, jacobian_dot, mass_matrix, h, F0_star, c0_star, pt_i_star):
-    global verbose_loop
+    def debug_apply_action(self, p, p_dot, q_dot, jacobian, jacobian_dot, mass_matrix, h, F0_star, c0_star, pt_i_star):
+        global verbose_loop
 
-    # Print duty cycée and leg frequency
-    verbose_loop+=1
-    if verbose_loop>=40:
-        verbose_loop=0
-        print('Contact sequence : ', c0_star.flatten())
-        print('\nLeg frequency : ', self.f.flatten())
-        print('\nduty cycle : ', self.d.flatten())
+        # Print duty cycée and leg frequency
+        verbose_loop+=1
+        if verbose_loop>=40:
+            verbose_loop=0
+            print('Contact sequence : ', c0_star.flatten())
+            print('\nLeg frequency : ', self.f.flatten())
+            print('\nduty cycle : ', self.d.flatten())
 
-    # Visualize foot position
-    p_b = p.clone().detach()
-    robot_pos_w = self._asset.data.root_pos_w
-    robot_orientation_w = self._asset.data.root_quat_w
-    p_orientation_w = self._asset.data.body_quat_w[:, self._foot_idx,:]
+        # Visualize foot position
+        p_b = p.clone().detach()
+        robot_pos_w = self._asset.data.root_pos_w
+        robot_orientation_w = self._asset.data.root_quat_w
+        p_orientation_w = self._asset.data.body_quat_w[:, self._foot_idx,:]
 
-    p_w_0, _ = math_utils.combine_frame_transforms(robot_pos_w, robot_orientation_w, p_b[:,0,:])
-    p_w_1, _ = math_utils.combine_frame_transforms(robot_pos_w, robot_orientation_w, p_b[:,1,:])
-    p_w_2, _ = math_utils.combine_frame_transforms(robot_pos_w, robot_orientation_w, p_b[:,2,:])
-    p_w_3, _ = math_utils.combine_frame_transforms(robot_pos_w, robot_orientation_w, p_b[:,3,:])
-    p_w = torch.cat((p_w_0.unsqueeze(1), p_w_1.unsqueeze(1), p_w_2.unsqueeze(1), p_w_3.unsqueeze(1)), dim=1)
+        p_w_0, _ = math_utils.combine_frame_transforms(robot_pos_w, robot_orientation_w, p_b[:,0,:])
+        p_w_1, _ = math_utils.combine_frame_transforms(robot_pos_w, robot_orientation_w, p_b[:,1,:])
+        p_w_2, _ = math_utils.combine_frame_transforms(robot_pos_w, robot_orientation_w, p_b[:,2,:])
+        p_w_3, _ = math_utils.combine_frame_transforms(robot_pos_w, robot_orientation_w, p_b[:,3,:])
+        p_w = torch.cat((p_w_0.unsqueeze(1), p_w_1.unsqueeze(1), p_w_2.unsqueeze(1), p_w_3.unsqueeze(1)), dim=1)
 
-    marker_locations = p_w[0,:,:]
-    self.my_visualizer['foot'].visualize(marker_locations)
+        marker_locations = p_w[0,:,:]
+        self.my_visualizer['foot'].visualize(marker_locations)
 
-    # Visualise jacobian
-    joint_pos_w = self._asset.data.body_pos_w[0,self._joint_ids,:] # shape (num_joints, 3)
-    marker_locations = joint_pos_w
-    jacobian_temp = jacobian[0,:,:,:].clone().detach()
-    jacobian_temp_T = jacobian_temp.permute(0,2,1) # shape (num_legs, 3, num_joints_per_leg) -> (num_legs, num_joints_per_leg, 3)
-    jacobian_temp_T = jacobian_temp.flatten(0,1) # shape (num_joints, 3)
-    normalize_jacobian_temp_T = torch.nn.functional.normalize(jacobian_temp_T, p=2, dim=1) # Transform jacobian to unit vectors
+        # Visualise jacobian
+        joint_pos_w = self._asset.data.body_pos_w[0,self._joint_ids,:] # shape (num_joints, 3)
+        marker_locations = joint_pos_w
+        jacobian_temp = jacobian[0,:,:,:].clone().detach()
+        jacobian_temp_T = jacobian_temp.permute(0,2,1) # shape (num_legs, 3, num_joints_per_leg) -> (num_legs, num_joints_per_leg, 3)
+        jacobian_temp_T = jacobian_temp.flatten(0,1) # shape (num_joints, 3)
+        normalize_jacobian_temp_T = torch.nn.functional.normalize(jacobian_temp_T, p=2, dim=1) # Transform jacobian to unit vectors
 
-    # angle : u dot v = cos(angle) -> angle = acos(u*v) : for unit vector
-    angle = torch.acos(torch.tensordot(normalize_jacobian_temp_T, torch.tensor([1.0,0.0,0.0], device=self.device), dims=1)) # shape(num_joints, 3) -> (num_joints)
-    # Axis : Cross product between u^v (for unit vectors)
-    axis = torch.cross(normalize_jacobian_temp_T, torch.tensor([1.0,0.0,0.0], device=self.device).unsqueeze(0).expand(normalize_jacobian_temp_T.shape))
-    marker_orientations = quat_from_angle_axis(angle=angle, axis=axis)
-    self.my_visualizer['jacobian'].visualize(marker_locations, marker_orientations)
+        # angle : u dot v = cos(angle) -> angle = acos(u*v) : for unit vector
+        angle = torch.acos(torch.tensordot(normalize_jacobian_temp_T, torch.tensor([1.0,0.0,0.0], device=self.device), dims=1)) # shape(num_joints, 3) -> (num_joints)
+        # Axis : Cross product between u^v (for unit vectors)
+        axis = torch.cross(normalize_jacobian_temp_T, torch.tensor([1.0,0.0,0.0], device=self.device).unsqueeze(0).expand(normalize_jacobian_temp_T.shape))
+        marker_orientations = quat_from_angle_axis(angle=angle, axis=axis)
+        self.my_visualizer['jacobian'].visualize(marker_locations, marker_orientations)
 
-    # Visualize foot trajectory
-    pt_i_b = self.pt_star.clone().detach()  # shape (batch_size, num_legs, 9, decimation) (9=px,py,pz,vx,vy,vz,ax,ay,az)
-    pt_i_b = pt_i_b[0,:,0:3,:] # -> shape (num_legs, 3, decimation)
-    pt_i_b = pt_i_b.permute(0,2,1).flatten(0,1) # -> shape (num_legs*decimation, 3)
-    pt_i_w, _ = math_utils.combine_frame_transforms(robot_pos_w[0,:].unsqueeze(0).expand(pt_i_b.shape), robot_orientation_w[0,:].unsqueeze(0).expand(pt_i_b.shape[0], 4), pt_i_b)
-    
-    marker_locations = pt_i_w
-    self.my_visualizer['foot_traj'].visualize(marker_locations)
-
-
+        # Visualize foot trajectory
+        pt_i_b = self.pt_star.clone().detach()  # shape (batch_size, num_legs, 9, decimation) (9=px,py,pz,vx,vy,vz,ax,ay,az)
+        pt_i_b = pt_i_b[0,:,0:3,:] # -> shape (num_legs, 3, decimation)
+        pt_i_b = pt_i_b.permute(0,2,1).flatten(0,1) # -> shape (num_legs*decimation, 3)
+        pt_i_w, _ = math_utils.combine_frame_transforms(robot_pos_w[0,:].unsqueeze(0).expand(pt_i_b.shape), robot_orientation_w[0,:].unsqueeze(0).expand(pt_i_b.shape[0], 4), pt_i_b)
+        
+        marker_locations = pt_i_w
+        self.my_visualizer['foot_traj'].visualize(marker_locations)
 
 
 def define_markers(marker_type, param_dict) -> VisualizationMarkers:
