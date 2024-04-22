@@ -42,8 +42,10 @@ from omni.isaac.orbit.utils.noise import AdditiveUniformNoiseCfg as Unoise
 # TODO re-Implements these
 import omni.isaac.orbit_tasks.locomotion.model_based.mdp as mdp
 
-
+# Local MDP
 from .mdp.actions import model_base_controller
+# import .mdp.observations as local_mdp
+from .mdp.observations import leg_phase
 
 
 ##
@@ -176,6 +178,9 @@ class ObservationsCfg:
         #     noise=Unoise(n_min=-0.1, n_max=0.1),
         #     clip=(-1.0, 1.0),
         # )
+
+        # Model Based internal variable
+        leg_phase = ObsTerm(func=leg_phase, params={"action_name": "model_base_variable"})
 
         def __post_init__(self):
             # self.enable_corruption = True
