@@ -163,8 +163,8 @@ class ModelBaseAction(ActionTerm):
             f" {self._joint_names} [{self._joint_ids}]"
         )
         # Avoid indexing across all joints for efficiency #TODO Is it still usefull
-        if self._num_joints == self._asset.num_joints:
-            self._joint_ids = slice(None)
+        # if self._num_joints == self._asset.num_joints:
+        #     self._joint_ids = slice(None)
 
         # Retrieve series of information usefull for computation and generalisation
         # Feet Index in body, list [13, 14, 15, 16]
@@ -210,7 +210,11 @@ class ModelBaseAction(ActionTerm):
         self.controller = cfg.controller
         self.controller.late_init(device=self.device, num_envs=self.num_envs, num_legs=self._num_legs, time_horizon=self._prevision_horizon, dt_out=self._decimation*self._env.physics_dt, decimation=self._decimation, dt_in=self._env.physics_dt, p_default=self.get_reset_foot_position()) 
 
-        self.my_visualizer = define_markers()
+        if verbose_mb:
+            self.my_visualizer = {}
+            self.my_visualizer['foot'] = define_markers('sphere', {'radius': 0.05, 'color': (1.0,1.0,0)})
+            self.my_visualizer['jacobian'] = define_markers('arrow_x', {'scale':(0.04,0.04,0.3), 'color': (1.0,0,0)})
+            self.my_visualizer['foot_traj'] = define_markers('sphere', {'radius': 0.02, 'color': (1.0,0.0,1.0)})
 
 
     """
@@ -285,38 +289,7 @@ class ModelBaseAction(ActionTerm):
         F0_star = self.F_star[:,:,:,0]
         c0_star = self.c_star[:,:,0]
         pt_i_star = self.pt_star[:,:,:,self.inner_loop]
-        self.inner_loop += 1
-
-        global verbose_loop
-        if verbose_mb:
-            verbose_loop+=1
-            if verbose_loop>=40:
-                verbose_loop=0
-                print('Contact sequence : ', c0_star.flatten())
-                print('\nLeg frequency : ', self.f.flatten())
-                print('\nduty cycle : ', self.d.flatten())
-
-        # Vizualise
-        if verbose_mb:
-            
-            p_b = p.clone()
-
-            robot_pos_w = self._asset.data.root_pos_w
-            robot_orientation_w = self._asset.data.root_quat_w
-
-            p_orientation_w = self._asset.data.body_quat_w[:, self._foot_idx,:]
-
-            p_w_0, _ = math_utils.combine_frame_transforms(robot_pos_w, robot_orientation_w, p_b[:,0,:])
-            p_w_1, _ = math_utils.combine_frame_transforms(robot_pos_w, robot_orientation_w, p_b[:,1,:])
-            p_w_2, _ = math_utils.combine_frame_transforms(robot_pos_w, robot_orientation_w, p_b[:,2,:])
-            p_w_3, _ = math_utils.combine_frame_transforms(robot_pos_w, robot_orientation_w, p_b[:,3,:])
-            p_w = torch.cat((p_w_0.unsqueeze(1), p_w_1.unsqueeze(1), p_w_2.unsqueeze(1), p_w_3.unsqueeze(1)), dim=1)
-
-
-            marker_locations = p_w[0,:,:]
-
-            self.my_visualizer.visualize(marker_locations)
-            
+        self.inner_loop += 1            
 
         # Use model controller to compute the torques from the latent variable
         # Transform the shape from (batch_size, num_legs, num_joints_per_leg) to (batch_size, num_joints)
@@ -324,6 +297,10 @@ class ModelBaseAction(ActionTerm):
 
         # Apply the computed torques
         self._asset.set_joint_effort_target(self.u, joint_ids=self._joint_ids)
+
+        # Debug
+        if verbose_mb:
+            debug_apply_action(self, p, p_dot, q_dot, jacobian, jacobian_dot, mass_matrix, h, F0_star, c0_star, pt_i_star)
 
 
     def reset(self, env_ids: Sequence[int] | None = None) -> None:
@@ -433,6 +410,7 @@ class ModelBaseAction(ActionTerm):
                               jacobian_feet_full[:, 3, :, 6+np.asarray(self._joints_idx[3])].unsqueeze(1)), dim=1)
         return jacobian
     
+
     def get_reset_foot_position(self) -> torch.Tensor:
         """ Return The default position of the robot's feet. this is the position when the states are reseted
         TODO Now, this is hardcoded for Aliengo (given a joint default position) -> Should get this from simulation or forward kinematics
@@ -443,15 +421,85 @@ class ModelBaseAction(ActionTerm):
         return torch.tensor([[0.2238, 0.1735, -0.3678],[0.2238, -0.1735, -0.3678],[-0.329, 0.1719, -0.3579],[-0.329, -0.1719, -0.3679]], device=self.device).unsqueeze(0).expand(self.num_envs, -1, -1)
         
 
-def define_markers() -> VisualizationMarkers:
-    """Define markers with various different shapes.""" 
+#-------------------------------------------------- Helpers ------------------------------------------------------------
+def debug_apply_action(self, p, p_dot, q_dot, jacobian, jacobian_dot, mass_matrix, h, F0_star, c0_star, pt_i_star):
+    global verbose_loop
+
+    # Print duty cycée and leg frequency
+    verbose_loop+=1
+    if verbose_loop>=40:
+        verbose_loop=0
+        print('Contact sequence : ', c0_star.flatten())
+        print('\nLeg frequency : ', self.f.flatten())
+        print('\nduty cycle : ', self.d.flatten())
+
+    # Visualize foot position
+    p_b = p.clone().detach()
+    robot_pos_w = self._asset.data.root_pos_w
+    robot_orientation_w = self._asset.data.root_quat_w
+    p_orientation_w = self._asset.data.body_quat_w[:, self._foot_idx,:]
+
+    p_w_0, _ = math_utils.combine_frame_transforms(robot_pos_w, robot_orientation_w, p_b[:,0,:])
+    p_w_1, _ = math_utils.combine_frame_transforms(robot_pos_w, robot_orientation_w, p_b[:,1,:])
+    p_w_2, _ = math_utils.combine_frame_transforms(robot_pos_w, robot_orientation_w, p_b[:,2,:])
+    p_w_3, _ = math_utils.combine_frame_transforms(robot_pos_w, robot_orientation_w, p_b[:,3,:])
+    p_w = torch.cat((p_w_0.unsqueeze(1), p_w_1.unsqueeze(1), p_w_2.unsqueeze(1), p_w_3.unsqueeze(1)), dim=1)
+
+    marker_locations = p_w[0,:,:]
+    self.my_visualizer['foot'].visualize(marker_locations)
+
+    # Visualise jacobian
+    joint_pos_w = self._asset.data.body_pos_w[0,self._joint_ids,:] # shape (num_joints, 3)
+    marker_locations = joint_pos_w
+    jacobian_temp = jacobian[0,:,:,:].clone().detach()
+    jacobian_temp_T = jacobian_temp.permute(0,2,1) # shape (num_legs, 3, num_joints_per_leg) -> (num_legs, num_joints_per_leg, 3)
+    jacobian_temp_T = jacobian_temp.flatten(0,1) # shape (num_joints, 3)
+    normalize_jacobian_temp_T = torch.nn.functional.normalize(jacobian_temp_T, p=2, dim=1) # Transform jacobian to unit vectors
+
+    # angle : u dot v = cos(angle) -> angle = acos(u*v) : for unit vector
+    angle = torch.acos(torch.tensordot(normalize_jacobian_temp_T, torch.tensor([1.0,0.0,0.0], device=self.device), dims=1)) # shape(num_joints, 3) -> (num_joints)
+    # Axis : Cross product between u^v (for unit vectors)
+    axis = torch.cross(normalize_jacobian_temp_T, torch.tensor([1.0,0.0,0.0], device=self.device).unsqueeze(0).expand(normalize_jacobian_temp_T.shape))
+    marker_orientations = quat_from_angle_axis(angle=angle, axis=axis)
+    self.my_visualizer['jacobian'].visualize(marker_locations, marker_orientations)
+
+    # Visualize foot trajectory
+    pt_i_b = self.pt_star.clone().detach()  # shape (batch_size, num_legs, 9, decimation) (9=px,py,pz,vx,vy,vz,ax,ay,az)
+    pt_i_b = pt_i_b[0,:,0:3,:] # -> shape (num_legs, 3, decimation)
+    pt_i_b = pt_i_b.permute(0,2,1).flatten(0,1) # -> shape (num_legs*decimation, 3)
+    pt_i_w, _ = math_utils.combine_frame_transforms(robot_pos_w[0,:].unsqueeze(0).expand(pt_i_b.shape), robot_orientation_w[0,:].unsqueeze(0).expand(pt_i_b.shape[0], 4), pt_i_b)
+    
+    marker_locations = pt_i_w
+    self.my_visualizer['foot_traj'].visualize(marker_locations)
+
+
+
+
+def define_markers(marker_type, param_dict) -> VisualizationMarkers:
+    """Define markers with various different shapes.
+    Args :
+        - marker_type : 'sphere', 'arrow_x', ...
+        - param_dict : dict of parameter for the given marker :
+            'sphere' : {'radius':float, 'color':(float, float, float)}
+            'arrow_x' : {'scale':(float, float, float), 'color':(float, float, float)}
+    """ 
+    markers={}
+
+    if marker_type == 'sphere':
+        markers['sphere'] = sim_utils.SphereCfg(
+                radius=param_dict['radius'],
+                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=param_dict['color']),
+            )
+        
+    if marker_type == 'arrow_x':
+        markers['arrow_x'] = sim_utils.UsdFileCfg(
+            usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/UIElements/arrow_x.usd",
+            scale=param_dict['scale'],
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=param_dict['color']),
+            )
+
     marker_cfg = VisualizationMarkersCfg(
         prim_path="/Visuals/myMarkers",
-        markers={
-            "sphere": sim_utils.SphereCfg(
-                radius=0.1,
-                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 1.0, 0.0)),
-            ),
-        },
+        markers=markers
     )
     return VisualizationMarkers(marker_cfg)

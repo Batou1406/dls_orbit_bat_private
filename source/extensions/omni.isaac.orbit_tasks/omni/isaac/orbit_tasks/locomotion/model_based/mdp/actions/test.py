@@ -25,10 +25,12 @@ class modelBaseControllerTest():
         self.controller.late_init(device, num_env, num_leg, time_horizon, dt_out, decimation, dt_in, p_default)
 
     def test_optimize_latent_variable(self):
-        pass
+        raise NotImplementedError
+
 
     def test_compute_control_output(self):
-        pass
+        raise NotImplementedError
+
 
     def test_gait_generator(self):
         
@@ -106,6 +108,10 @@ class modelBaseControllerTest():
             raise ValueError('Invalid phase increment for Gait Generator - test 2')
         
         print('Successfully tested gait generator')
+
+
+    def test_swing_trajectory_generator(self):
+        raise NotImplementedError
 
 
 # Level 2 printing : low importance
