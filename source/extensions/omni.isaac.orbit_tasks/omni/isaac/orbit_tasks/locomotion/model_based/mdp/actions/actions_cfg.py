@@ -40,7 +40,11 @@ class ModelBaseActionCfg(ActionTermCfg):
     prevision_horizon: int = 10
     """Prediction time horizon for the Model Base controller (runs at outer loop frequecy)"""
 
-    controller: model_base_controller.modelBaseController = MISSING
+    number_predict_step: int = 3
+    """number of predicted touch down position (used by sampling controller, prior by RL)"""
+
+    # controller: model_base_controller.modelBaseController = MISSING
+    controller: model_base_controller.samplingController = MISSING
     """Model base controller that compute u: output torques from z: latent variable""" 
 
 

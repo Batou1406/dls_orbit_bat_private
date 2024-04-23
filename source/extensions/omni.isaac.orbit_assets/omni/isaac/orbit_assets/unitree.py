@@ -193,12 +193,19 @@ UNITREE_ALIENGO_CFG = ArticulationCfg(
     ),
     init_state=ArticulationCfg.InitialStateCfg(
         pos=(0.0, 0.0, 0.4),
+        # joint_pos={
+        #     ".*L_hip_joint": 0.1,
+        #     ".*R_hip_joint": -0.1,
+        #     "F[L,R]_thigh_joint": 0.8,
+        #     "R[L,R]_thigh_joint": 1.0,
+        #     ".*_calf_joint": -1.5,
+        # },
         joint_pos={
-            ".*L_hip_joint": 0.1,
-            ".*R_hip_joint": -0.1,
-            "F[L,R]_thigh_joint": 0.8,
-            "R[L,R]_thigh_joint": 1.0,
-            ".*_calf_joint": -1.5,
+            ".*L_hip_joint": 0.0,
+            ".*R_hip_joint": 0.0,
+            "F[L,R]_thigh_joint": 0.9,
+            "R[L,R]_thigh_joint": 0.9,
+            ".*_calf_joint": -1.8,
         },
         joint_vel={".*": 0.0},
     ),
@@ -215,4 +222,4 @@ UNITREE_ALIENGO_CFG = ArticulationCfg(
         ),
     },
 )
-"""Configuration of Unitree AlienGo (Claw) using DC-Motor actuator model."""
+"""Configuration of Unitree AlienGo using DC-Motor actuator model."""

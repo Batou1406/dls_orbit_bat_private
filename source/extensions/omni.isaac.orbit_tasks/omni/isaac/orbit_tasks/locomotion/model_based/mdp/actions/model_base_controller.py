@@ -55,22 +55,21 @@ class modelBaseController(ABC):
         pass 
 
 
-    def optimize_latent_variable(self, f: torch.Tensor, d: torch.Tensor, p: torch.Tensor, F: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    def optimize_latent_variable(self, f: torch.Tensor, d: torch.Tensor, p_b: torch.Tensor, F_w: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """ Given the latent variable z=[f,d,p,F], return the optimized latent variable p*, F*, c*, pt*
 
         Args:
             - f   (torch.Tensor): Prior leg frequency                   of shape (batch_size, num_legs)
             - d   (torch.Tensor): Prior stepping duty cycle             of shape (batch_size, num_legs)
-            - p   (torch.Tensor): Prior foot pos. sequence              of shape (batch_size, num_legs, 3, time_horizon)
-            - F   (torch.Tensor): Prior Ground Reac. Forces (GRF) seq.  of shape (batch_size, num_legs, 3, time_horizon)
+            - p_b (torch.Tensor): Prior foot pos. seq. in base frame    of shape (batch_size, num_legs, 3, time_horizon)
+            - F_w (torch.Tensor): Prior Ground Reac. Forces (GRF) seq.  of shape (batch_size, num_legs, 3, time_horizon)
+                                  In world frame
 
         Returns:
             - p*  (torch.Tensor): Optimized foot position sequence      of shape (batch_size, num_legs, 3, time_horizon)
             - F*  (torch.Tensor): Opt. Ground Reac. Forces (GRF) seq.   of shape (batch_size, num_legs, 3, time_horizon)
             - c*  (torch.Tensor): Optimized foot contact sequence       of shape (batch_size, num_legs, time_horizon)
-            - pt* (torch.Tensor): Optimized foot swing trajectory       of shape (batch_size, num_legs, 3, decimation)
         """
-
         raise NotImplementedError
 
 
@@ -132,11 +131,10 @@ class samplingController(modelBaseController):
         - _dt_out       : Outer Loop time step                                                                          Inherited from modelBaseController
         - _decimation   : Inner Loop time horizon                                                                       Inherited from modelBaseController
         - _dt_in        : Inner Loop time step                                                                          Inherited from modelBaseController
-        - phase (Tensor): Leg phase                                     of shape (batch_size, num_legs)
-        - p0 (th.Tensor): Lift-off position                             of shape (batch_size, num_legs, 3)
-        - c_prev (Tnsor): Previous contact value  updated in opt_lat_v  of shape (batch_size, num_legs)
-        - swing_time (T): time progression of the leg in swing phase    of shape (batch_size, num_legs)  
-        - p_sim_prev (T): Last foot position from sim. upd in comp_ctrl of shape (batch_size, num_legs, 3)
+        - phase (Tensor): Leg phase                                             of shape (batch_size, num_legs)
+        - p0_lw (Tensor): Lift-off position                                     of shape (batch_size, num_legs, 3)
+        - swing_time (T): time progression of the leg in swing phase            of shape (batch_size, num_legs)  
+        - p_lw_sim_prev : Last foot position from sim. upd in comp_ctrl in _lw  of shape (batch_size, num_legs, 3)
 
     Method :
         - late_init(device, num_envs, num_legs) : save environment variable and allow for lazy init of variables        Inherited from modelBaseController
@@ -144,17 +142,16 @@ class samplingController(modelBaseController):
         - optimize_latent_variable(f, d, p, F) -> p*, F*, c*, pt*                                                       Inherited from modelBaseController (not implemented)
         - compute_control_output(F0*, c0*, pt01*) -> T                                                                  Inherited from modelBaseController (not implemented)
         - gait_generator(f, d, phase) -> c, new_phase                                                                   Inherited from modelBaseController (not implemented)
-        - swing_trajectory_generator(p, c, decimation) -> pt
+        - swing_trajectory_generator(p_b, c, decimation) -> pt_b
         - swing_leg_controller(c0*, pt01*) -> T_swing
         - stance_leg_controller(F0*, c0*) -> T_stance
     """
 
     # Late init
     phase : torch.Tensor
-    p0 : torch.Tensor
-    c_prev : torch.Tensor
+    p0_lw : torch.Tensor
     swing_time : torch.Tensor
-    p_sim_prev : torch.Tensor
+    p_lw_sim_prev : torch.Tensor
 
     def __init__(self, swing_ctrl_pos_gain_fb = 1, swing_ctrl_vel_gain_fb=1):
         super().__init__()
@@ -163,8 +160,10 @@ class samplingController(modelBaseController):
         self.swing_ctrl_vel_gain_fb = swing_ctrl_vel_gain_fb
 
 
-    def late_init(self, device, num_envs, num_legs, time_horizon, dt_out, decimation, dt_in, p_default: torch.Tensor):
+    def late_init(self, device, num_envs, num_legs, time_horizon, dt_out, decimation, dt_in, p_default_lw: torch.Tensor):
         """ Initialise Model Base variable after the model base action class has been initialised
+        Note :
+            The variable are in the 'local' world frame _wl. This notation is introduced to avoid confusion with the 'global' world frame, where all the batches coexists.
 
         Args : 
             - device            : Cpu or GPu
@@ -177,67 +176,65 @@ class samplingController(modelBaseController):
         """
         super().late_init(device, num_envs, num_legs, time_horizon, dt_out, decimation, dt_in)
         self.phase = torch.zeros(num_envs, num_legs, device=device)
-        self.p0 = p_default.clone().detach()
-        self.c_prev = torch.ones(num_envs, num_legs, device=device)
+        self.p0_lw = p_default_lw.clone().detach()
         self.swing_time = torch.zeros(num_envs, num_legs, device=device)
-        self.p_sim_prev = p_default.clone().detach()
+        self.p_lw_sim_prev = p_default_lw.clone().detach()
 
 
-    def reset(self, env_ids: Sequence[int] | None,  p_default: torch.Tensor) -> None:
+    def reset(self, env_ids: Sequence[int] | None,  p_default_lw: torch.Tensor) -> None:
         """ The environment is reseted -> this requires to reset some controller variables
+        Note :
+            The variable are in the 'local' world frame _wl. This notation is introduced to avoid confusion with the 'global' world frame, where all the batches coexists.
 
         Args :
             - env_ids           : Index of the env beeing reseted
-            - p_default (Tensor): Default feet position                 of shape (batch_size, num_legs, 3)
+            - p_default_lw (Tsr): Default feet position in local world frame of shape (batch_size, num_legs, 3)
         """
         # Reset gait phase          : Shape (batch_size, num_legs)
         self.phase[env_ids,:] = torch.zeros_like(self.phase, device=self._device)[env_ids,:]
 
         # Reset lift-off pos       : Shape (batch_size, num_legs, 3)
-        self.p0[env_ids,:,:] = p_default[env_ids,:,:].clone().detach()
-
-        # Reset previous contact   : Shape (batch_size, num_legs)
-        self.c_prev[env_ids,:] = torch.ones_like(self.c_prev, device=self._device)[env_ids,:]
+        self.p0_lw[env_ids,:,:] = p_default_lw[env_ids,:,:].clone().detach()
 
         # Reset swing time         : Shape (batch_size, num_legs)
         self.swing_time[env_ids,:] = torch.zeros_like(self.swing_time, device=self._device)[env_ids,:]
 
         # Reset previous foot position  : Shape (batch_size, num_legs, 3)
-        self.p_sim_prev[env_ids,:,:] = p_default[env_ids,:,:].clone().detach()
+        self.p_lw_sim_prev[env_ids,:,:] = p_default_lw[env_ids,:,:].clone().detach()
 
 
 # ----------------------------------- Outer Loop ------------------------------
-    def optimize_latent_variable(self, f: torch.Tensor, d: torch.Tensor, p: torch.Tensor, F: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    def optimize_latent_variable(self, f: torch.Tensor, d: torch.Tensor, p_lw: torch.Tensor, F_lw: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """ Given the latent variable z=[f,d,p,F], return the optimized latent variable p*, F*, c*, pt*
+        Note :
+            The variable are in the 'local' world frame _wl. This notation is introduced to avoid confusion with the 'global' world frame, where all the batches coexists.
 
         Args:
             - f   (torch.Tensor): Prior leg frequency                   of shape (batch_size, num_legs)
             - d   (torch.Tensor): Prior stepping duty cycle             of shape (batch_size, num_legs)
-            - p   (torch.Tensor): Prior foot pos. sequence              of shape (batch_size, num_legs, 3, time_horizon)
-            - F   (torch.Tensor): Prior Ground Reac. Forces (GRF) seq.  of shape (batch_size, num_legs, 3, time_horizon)
+            - p_lw (trch.Tensor): Prior foot touch down seq. in _lw     of shape (batch_size, num_legs, 3, number_predict_step)
+            - F_lw (trch.Tensor): Prior Ground Reac. Forces (GRF) seq.  of shape (batch_size, num_legs, 3, time_horizon)
+                                  In local world frame
 
         Returns:
-            - p*  (torch.Tensor): Optimized foot position sequence      of shape (batch_size, num_legs, 3, time_horizon)
-            - F*  (torch.Tensor): Opt. Ground Reac. Forces (GRF) seq.   of shape (batch_size, num_legs, 3, time_horizon)
+            - p*_lw (tch.Tensor): Optimized foot touch down seq. in _lw of shape (batch_size, num_legs, 3, number_predict_step)
+            - F*_lw (tch.Tensor): Opt. Gnd Reac. F. (GRF) seq.   in _lw of shape (batch_size, num_legs, 3, time_horizon)
             - c*  (torch.Tensor): Optimized foot contact sequence       of shape (batch_size, num_legs, time_horizon)
-            - pt* (torch.Tensor): Optimized foot swing trajectory       of shape (batch_size, num_legs, 9, decimation)  (9 = pos, vel, acc)
+            - pt*_lw (th.Tensor): Optimized foot swing traj.     in _lw of shape (batch_size, num_legs, 9, decimation)  (9 = pos, vel, acc)
         """
 
         # Compute the contact sequence and update the phase
         c, self.phase = self.gait_generator(f=f, d=d, phase=self.phase, time_horizon=self._time_horizon, dt=self._dt_out)
 
         # Generate the swing trajectory
-        pt = self.swing_trajectory_generator(p=p, c=c, d=d, f=f)
+        pt_lw = self.swing_trajectory_generator(p_lw=p_lw[:,:,:,0], c=c, d=d, f=f)
 
-        p_star = p
-        F_star = F
+        p_star_lw = p_lw
+        F_star_lw = F_lw
         c_star = c
-        pt_star = pt
+        pt_star_lw = pt_lw
 
-        # update saved variable
-        self.c_prev = c[:,:,0].clone()
-
-        return p_star, F_star, c_star, pt_star
+        return p_star_lw, F_star_lw, c_star, pt_star_lw
     
 
     def gait_generator(self, f: torch.Tensor, d: torch.Tensor, phase: torch.tensor, time_horizon: int, dt) -> tuple[torch.Tensor, torch.Tensor]:
@@ -278,21 +275,23 @@ class samplingController(modelBaseController):
         return c, new_phase
     
 
-    def swing_trajectory_generator(self, p: torch.Tensor, c: torch.Tensor, f: torch.Tensor, d: torch.Tensor) -> torch.Tensor:
+    def swing_trajectory_generator(self, p_lw: torch.Tensor, c: torch.Tensor, f: torch.Tensor, d: torch.Tensor) -> torch.Tensor:
         """ Given feet position sequence and contact sequence -> compute swing trajectories by fitting a cubic spline between
         the lift-off and the touch down define in the contact sequence. 
         - Swing frequency and duty cycle are used to compute the swing period
         - A middle point is used for the interpolation : which is heuristically defined. It defines the step height
         - p1 (middle point) and p2 (touch-down) are updated each time, while p0 is conserved (always the same lift off position)
-
+        Note :
+            The variable are in the 'local' world frame _wl. This notation is introduced to avoid confusion with the 'global' world frame, where all the batches coexists.
+        
         Args:
-            - p   (torch.Tensor): Foot position sequence                of shape(batch_size, num_legs, 3, time_horizon)
+            - p_lw (trch.Tensor): Foot touch down postion in _lw        of shape(batch_size, num_legs, 3)
             - c   (torch.Tensor): Foot contact sequence                 of shape(batch_size, num_legs, time_horizon)
             - f   (torch.Tensor): Leg frequency                         of shape(batch_size, num_legs)
             - d   (torch.Tensor): Stepping duty cycle                   of shape(batch_size, num_legs)
 
         Returns:
-            - pt  (torch.Tensor): Desired Swing Leg trajectories        of shape(batch_size, num_legs, 9, decimation)   (9 = xyz_pos, xzy_vel, xyz_acc)
+            - pt_lw (tch.Tensor): Desired Swing Leg traj. in _lw frame  of shape(batch_size, num_legs, 9, decimation)   (9 = xyz_pos, xzy_vel, xyz_acc)
         """
 
         # Step 0. Define and Compute usefull variables
@@ -309,42 +308,38 @@ class samplingController(modelBaseController):
 
         # Step 1. Retrieve the three interpolation points : p0, p1, p2 (lift-off, middle point, touch down)
 
-        # Retrieve p0 : If c(0)=0 and c(-1)=1 : The leg lift-off -> p0 = p(-1) (value from simulation : the last value where c=1)
-        # Update only the p0 that are new lift off positions (unsqueeze lifting off -> shape(batc_size, num_legs, 1) to make it compatible for multiplication with p shape)
-        # p0 shape (batch_size, num_legs, 3) 
-        lifting_off = ((c[:,:,0]==0) * (self.c_prev == 1)).unsqueeze(-1)  
-        self.p0 = (self.p_sim_prev * lifting_off) + (self.p0 * ~lifting_off)  
+        # Retrieve p0 : update p0 with latest foot position when in contact, don't update when in swing
+        # p0 shape (batch_size, num_legs, 3)
+        in_contact = (c[:,:,0]==0).unsqueeze(-1) 
+        self.p0_lw = (self.p_lw_sim_prev * in_contact) + (self.p0_lw * (~in_contact))
 
-        # Retrieve p2 : Retrieve the index of the touch down in the contact sequence : First Non-zero Index : shape(batch_size, num_legs)
-        # Set the last value of c as ONE to avoid the case of only 0 in the contact sequence, wich return the first element (make more sense to retrun the last)
-        # With the touch_down index, retrieve the touch down foot position : p2
-        # Idx shape : (batch_size, num_legs) -> must transform to (batch_size, num_legs, 3, 1) to retrieve position from p of shape (batch_size, num_legs, 3, time_horizon)
+        # Retrieve p2 : this is simply the foot touch down prior given as input
         # p2 shape (batch_size, num_legs, 3) 
-        c[:,:,-1] = 1 # TODO Does it modify c also outside this function ?
-        first_non_zero_indx = torch.argmax((c!=0).float(), dim=-1)
-        p2 = torch.gather(p, -1, first_non_zero_indx.unsqueeze(-1).expand(-1,-1,3).unsqueeze(-1)).squeeze(-1)
+        p2_lw = p_lw 
 
         # Retrieve p1 : (x,y) position are define as the middle point between p0 and p1 (lift-off and touch-down). z is heuristcally define
         # p1 shape (batch_size, num_legs, 3)
-        p1 = (self.p0[:,:,:2] + p2[:,:,:2]) / 2     # p1(x,y) is in the middle of p0 and p2
-        p1 = torch.cat((p1, step_height*torch.ones_like(p1[:,:,:1])), dim=2) # Append a third dimension z : defined as step_height
+        # TODO Not only choose height as step heigh but use +the terrain height or +the feet height at touch down
+        p1_lw = (self.p0_lw[:,:,:2] + p2_lw[:,:,:2]) / 2     # p1(x,y) is in the middle of p0 and p2
+        p1_lw = torch.cat((p1_lw, step_height*torch.ones_like(p1_lw[:,:,:1])), dim=2) # Append a third dimension z : defined as step_height
+
 
         # Step 2. Compute the parameters for the interpolation
 
-        # Swing time : reset if lifting off, then increment by one time step (outer loop)  (squeeze lifting_off : (batch_size, num_legs, 1)->(batch_size, num_legs))
+        # Swing time : reset if in contact or increment by one time step (outer loop)  (squeeze in_contact : (batch_size, num_legs, 1)->(batch_size, num_legs)) # TODO should we (reset then increment), or (reset or increment)
         # then compute t in [0, Delta_t/2], which would be use for the spline interpolation
         # t & swing_time shape (batch_size, num_legs)
-        self.swing_time = (self.swing_time * ~lifting_off.squeeze(-1)) + self._dt_out
+        self.swing_time = (self.swing_time + self._dt_out) * (~in_contact.squeeze(-1))
         t = self.swing_time % (half_swing_period.abs() + 1e-10)  # Swing time (half) : add small numerical value to avoid nan when % 0
 
         # Compute the a,b,c,d polynimial coefficient for the cubic interpolation S(t) = a*t^3 + b*t^2 + c*t + d
         # If swing_time < swing period/2 -> S_0(t) (ie. first interpolation), otherwise -> S_1(t - delta_t/2) (ie. second interpolation)
         # cp_x shape (batch_size, num_legs, 3)
         is_S0 = (self.swing_time <=  half_swing_period).unsqueeze(-1).expand(*[-1] * len(self.swing_time.shape), 3)  # shape (batch_size, num_legs, 3)
-        cp1 = (self.p0 * is_S0)                                         + (p1 * ~is_S0)
-        cp2 = (self.p0 * is_S0)                                         + (torch.cat((p2[:,:,:2], p1[:,:,2:]), dim=2)* ~is_S0)
-        cp3 = (torch.cat((self.p0[:,:,:2], p1[:,:,2:]), dim=2) * is_S0) + (p2 * ~is_S0)
-        cp4 = (p1 * is_S0)                                              + (p2 * ~is_S0)
+        cp1 = (self.p0_lw * is_S0)                                            + (p1_lw * ~is_S0)
+        cp2 = (self.p0_lw * is_S0)                                            + (torch.cat((p2_lw[:,:,:2], p1_lw[:,:,2:]), dim=2)* ~is_S0)
+        cp3 = (torch.cat((self.p0_lw[:,:,:2], p1_lw[:,:,2:]), dim=2) * is_S0) + (p2_lw * ~is_S0)
+        cp4 = (p1_lw * is_S0)                                                 + (p2_lw * ~is_S0)
 
         # Step 3. Prepare parameters to compute interpolation trajectory in one operation -> matrix multiplication
         
@@ -366,103 +361,105 @@ class samplingController(modelBaseController):
 
         # Step 4. Compute the interpolation trajectory
         # shape (batch_size, num_legs, 3, decimation)
-        desired_foot_pos_traj = cp1*(1 - t_traj)**3 + 3*cp2*(t_traj)*(1 - t_traj)**2 + 3*cp3*((t_traj)**2)*(1 - t_traj) + cp4*(t_traj)**3
-        desired_foot_vel_traj = 3*(cp2 - cp1)*(1 - t_traj)**2 + 6*(cp3 - cp2)*(1 - t_traj)*(t_traj) + 3*(cp4 - cp3)*(t_traj)**2
-        desired_foot_acc_traj = 6*(1 - t_traj) * (cp3 - 2*cp2 + cp1) + 6 * (t_traj) * (cp4 - 2*cp3 + cp2)
+        desired_foot_pos_traj_lw = cp1*(1 - t_traj)**3 + 3*cp2*(t_traj)*(1 - t_traj)**2 + 3*cp3*((t_traj)**2)*(1 - t_traj) + cp4*(t_traj)**3
+        desired_foot_vel_traj_lw = 3*(cp2 - cp1)*(1 - t_traj)**2 + 6*(cp3 - cp2)*(1 - t_traj)*(t_traj) + 3*(cp4 - cp3)*(t_traj)**2
+        desired_foot_acc_traj_lw = 6*(1 - t_traj) * (cp3 - 2*cp2 + cp1) + 6 * (t_traj) * (cp4 - 2*cp3 + cp2)
 
         # shape (batch_size, num_legs, 9, decimation) (9 = xyz_pos, xzy_vel, xyz_acc)
-        pt = torch.cat((desired_foot_pos_traj, desired_foot_vel_traj, desired_foot_acc_traj), dim=2)
+        pt_lw = torch.cat((desired_foot_pos_traj_lw, desired_foot_vel_traj_lw, desired_foot_acc_traj_lw), dim=2)
 
-        if(pt.isnan().any()):
-            print('alo')
-        return pt
+        return pt_lw
 
 
 # ----------------------------------- Inner Loop ------------------------------
-    def compute_control_output(self, F0_star: torch.Tensor, c0_star: torch.Tensor, pt_i_star: torch.Tensor, p:torch.Tensor, p_dot:torch.Tensor, q_dot: torch.Tensor, jacobian: torch.Tensor, jacobian_dot: torch.Tensor, mass_matrix: torch.Tensor, h: torch.Tensor) -> torch.Tensor:
+    def compute_control_output(self, F0_star_lw: torch.Tensor, c0_star: torch.Tensor, pt_i_star_lw: torch.Tensor, p_lw:torch.Tensor, p_dot_lw:torch.Tensor, q_dot: torch.Tensor, jacobian_lw: torch.Tensor, jacobian_dot_lw: torch.Tensor, mass_matrix: torch.Tensor, h: torch.Tensor) -> torch.Tensor:
         """ Compute the output torque to be applied to the system
         typically, it would compute :
             - T_stance_phase = stance_leg_controller(GRF, q, c) # Update the jacobian with the new joint position.
             - T_swing_phase = swing_leg_controller(trajectory, q, q_dot, c) # Feedback lineraization control - trajectory computed with a spline to be followed - new updated joint controller.
             - T = (T_stance_phase * c_star) + (T_swing_phase * (~c_star))
         and return T
+        Note :
+            The variable are in the 'local' world frame _wl. This notation is introduced to avoid confusion with the 'global' world frame, where all the batches coexists.
         
         Args:
-            - F0* (torch.Tensor): Opt. Ground Reac. Forces (GRF)        of shape(batch_size, num_legs, 3)
-            - c0* (torch.bool)  : Optimized foot contact sequence       of shape(batch_size, num_legs)
-            - pt_i* (tch.Tensor): Opt. Foot point in swing phase        of shape(batch_size, num_legs, 9) (9 = pos, vel, acc)
-            - p   (torch.Tensor): Feet Position  (latest from sim)      of shape(batch_size, num_legs, 3)
-            - p_dot (tch.Tensor): Feet velocity  (latest from sim)      of shape(batch_size, num_legs, 3)
-            - q_dot (tch.Tensor): Joint velocity (latest from sim)      of shape(batch_size, num_legs, num_joints_per_leg)
-            - jacobian  (Tensor): Jacobian -> joint frame to foot frame of shape(batch_size, num_legs, 3, num_joints_per_leg)
-            - jacobian_dot (Tsr): Jacobian derivative (forward euler)   of shape(batch_size, num_legs, 3, num_joints_per_leg)
-            - mass_matrix (Tsor): Mass Matrix in joint space            of shape(batch_size, num_legs, num_joints_per_leg, num_joints_per_leg)
-            - h   (torch.Tensor): C(q,q_dot) + G(q) (corr. and grav F.) of shape(batch_size, num_legs, num_joints_per_leg)
+            - F0*_lw (th.Tensor): Opt. Ground Reac. Forces (GRF)   in _lw   of shape(batch_size, num_legs, 3)
+            - c0* (torch.bool)  : Optimized foot contact sequence           of shape(batch_size, num_legs)
+            - pt_i*_lw  (Tensor): Opt. Foot point in swing phase   in _lw   of shape(batch_size, num_legs, 9) (9 = pos, vel, acc)
+            - p_lw (trch.Tensor): Feet Position  (latest from sim) in _lw   of shape(batch_size, num_legs, 3)
+            - p_dot_lw  (Tensor): Feet velocity  (latest from sim) in _lw   of shape(batch_size, num_legs, 3)
+            - q_dot (tch.Tensor): Joint velocity (latest from sim)          of shape(batch_size, num_legs, num_joints_per_leg)
+            - jacobian_lw (Tsor): Jacobian -> joint frame to in _lw frame   of shape(batch_size, num_legs, 3, num_joints_per_leg)
+            - jacobian_dot_lw   : Jacobian derivative (forward euler)in _lw of shape(batch_size, num_legs, 3, num_joints_per_leg)
+            - mass_matrix (Tsor): Mass Matrix in joint space                of shape(batch_size, num_legs, num_joints_per_leg, num_joints_per_leg)
+            - h   (torch.Tensor): C(q,q_dot) + G(q) (corr. and grav F.)     of shape(batch_size, num_legs, num_joints_per_leg)
 
         Returns:
-            - T   (torch.Tensor): control output (ie. Joint Torques)    of shape(batch_size, num_legs, num_joints_per_leg)
+            - T   (torch.Tensor): control output (ie. Joint Torques)        of shape(batch_size, num_legs, num_joints_per_leg)
         """
 
         # Get the swing torque from the swing controller : swing torque has already been filered by C0* (ie. T_swing = T * ~c0*)
         # T_swing Shape (batch_size, num_legs, num_joints_per_leg)
-        T_swing = self.swing_leg_controller(c0_star, pt_i_star, p, p_dot, q_dot, jacobian, jacobian_dot, mass_matrix, h)
+        T_swing = self.swing_leg_controller(c0_star=c0_star, pt_i_star_lw=pt_i_star_lw, p_lw=p_lw, p_dot_lw=p_dot_lw, q_dot=q_dot, jacobian_lw=jacobian_lw, jacobian_dot_lw=jacobian_dot_lw, mass_matrix=mass_matrix, h=h)
 
         # Get the stance torque from the stance controller : stance toeque has already been filtered by c0* (ie. T_stance = T * c0*)
         # T_stance Shape (batch_size, num_legs, num_joints_per_leg)
-        T_stance = self.stance_leg_controller(F0_star, c0_star, jacobian)
+        T_stance = self.stance_leg_controller(F0_star_lw=F0_star_lw, c0_star=c0_star, jacobian_lw=jacobian_lw)
 
         # T shape = (batch_size, num_legs, num_joints_per_leg)
         T = T_swing + T_stance 
 
         # Save variables
-        self.p_sim_prev = p # Used in genereate trajectory
+        self.p_lw_sim_prev = p_lw # Used in genereate trajectory
 
         return T
 
 
-    def swing_leg_controller(self, c0_star: torch.Tensor, pt_i_star: torch.Tensor, p:torch.Tensor, p_dot:torch.Tensor, q_dot: torch.Tensor,
-                             jacobian: torch.Tensor, jacobian_dot: torch.Tensor, mass_matrix: torch.Tensor, h: torch.Tensor) -> torch.Tensor:
+    def swing_leg_controller(self, c0_star: torch.Tensor, pt_i_star_lw: torch.Tensor, p_lw:torch.Tensor, p_dot_lw:torch.Tensor, q_dot: torch.Tensor,
+                             jacobian_lw: torch.Tensor, jacobian_dot_lw: torch.Tensor, mass_matrix: torch.Tensor, h: torch.Tensor) -> torch.Tensor:
         """ Given feet contact, and desired feet trajectory : compute joint torque with feedback linearization control
         T = M(q)*J⁻¹[p_dot_dot - J(q)*q_dot] + C(q,q_dot) + G(q)
+        Note :
+            The variable are in the 'local' world frame _wl. This notation is introduced to avoid confusion with the 'global' world frame, where all the batches coexists.
 
         Args:
-            - c0*   (torch.bool): Optimized foot contact sequence       of shape(batch_size, num_legs)
-            - pt_i* (tch.Tensor): Opt. Foot point in swing phase        of shape(batch_size, num_legs, 9) (9 = pos, vel, acc)
-            - p   (torch.Tensor): Feet Position                         of shape(batch_size, num_legs, 3)
-            - p_dot (tch.Tensor): Feet velocity                         of shape(batch_size, num_legs, 3)
-            - q_dot (tch.Tensor): Joint velocity                        of shape(batch_size, num_legs, num_joints_per_leg)
-            - jacobian  (Tensor): Jacobian -> joint frame to foot frame of shape(batch_size, num_legs, 3, num_joints_per_leg)
-            - jacobian_dot (Tsr): Jacobian derivative (forward euler)   of shape(batch_size, num_legs, 3, num_joints_per_leg)
-            - mass_matrix (Tsor): Mass Matrix in joint space            of shape(batch_size, num_legs, num_joints_per_leg, num_joints_per_leg)
-            - h   (torch.Tensor): C(q,q_dot) + G(q) (corr. and grav F.) of shape(batch_size, num_legs, num_joints_per_leg)
+            - c0*   (torch.bool): Optimized foot contact sequence           of shape(batch_size, num_legs)
+            - pt_i_lw*  (Tensor): Opt. Foot point in swing phase in _lw     of shape(batch_size, num_legs, 9) (9 = pos, vel, acc)
+            - p_lw (trch.Tensor): Feet Position  in _lw                     of shape(batch_size, num_legs, 3)
+            - p_dot_lw  (Tensor): Feet velocity  in _lw                     of shape(batch_size, num_legs, 3)
+            - q_dot (tch.Tensor): Joint velocity                            of shape(batch_size, num_legs, num_joints_per_leg)
+            - jacobian_lw (Tsor): Jacobian -> joint frame to _lw frame      of shape(batch_size, num_legs, 3, num_joints_per_leg)
+            - jacobian_dot_lw   : Jacobian derivative (forward euler)in _lw of shape(batch_size, num_legs, 3, num_joints_per_leg)
+            - mass_matrix (Tsor): Mass Matrix in joint space                of shape(batch_size, num_legs, num_joints_per_leg, num_joints_per_leg)
+            - h   (torch.Tensor): C(q,q_dot) + G(q) (corr. and grav F.)     of shape(batch_size, num_legs, num_joints_per_leg)
 
         Returns:
             - T_swing (t.Tensor): Swing Leg joint torques               of shape(batch_size, num_legs, num_joints_per_leg)
         """
 
-        # Intermediate variables
-        pos_err = pt_i_star[:,:,0:3] - p
-        vel_err = pt_i_star[:,:,3:6] - p_dot
-        des_foot_acc = pt_i_star[:,:,6:9]
+        # Intermediate variables : position, velocity errors : frame independant, desired acceleration in 'local' world frame
+        pos_err = pt_i_star_lw[:,:,0:3] - p_lw
+        vel_err = pt_i_star_lw[:,:,3:6] - p_dot_lw
+        des_foot_acc_lw = pt_i_star_lw[:,:,6:9]
 
         # Intermediary step : p_dot_dot
         # Compute the desired acceleration : with a PD controller thanks to the feedback linearization
         # Shape (batch_size, num_legs, 3)
-        p_dot_dot = des_foot_acc + self.swing_ctrl_pos_gain_fb * (pos_err) + self.swing_ctrl_vel_gain_fb * (vel_err)
+        p_dot_dot_lw = des_foot_acc_lw + self.swing_ctrl_pos_gain_fb * (pos_err) + self.swing_ctrl_vel_gain_fb * (vel_err)
 
         # Compute  the inverse jacobian. This synchronise CPU and GPU
         # Compute pseudo-inverse -> to be resilient to any number of joint per legs (not restricted to square matrix)
         # Changed shape from (batch_size, num_legs, 3, num_joints_per_leg) to -> (batch_size, num_legs, num_joints_per_leg, 3)
-        jacobian_inv = torch.linalg.pinv(jacobian)
+        jacobian_inv = torch.linalg.pinv(jacobian_lw)
         
         # Intermediary step : J(q)*q_dot            (batch_size, num_legs, 3, num_joints_per_leg) * (batch_size, num_legs, num_joints_per_leg)
         # Must unsqueeze q_dot to perform matmul (ie add a singleton dimension on last position)
         # change q_dot shape from (batch_size, num_legs, num_joints_per_leg) to (batch_size, num_legs, num_joints_per_leg, 1)
         # J_dot_x_q_dot is of shape (batch_size, num_legs, 3) (The singleton dim is dropped by the squeeze operation)
-        J_dot_x_q_dot = torch.matmul(jacobian_dot, q_dot.unsqueeze(-1)).squeeze(-1)
+        J_dot_x_q_dot = torch.matmul(jacobian_dot_lw, q_dot.unsqueeze(-1)).squeeze(-1)
 
         # Intermediary step : [p_dot_dot - J(q)*q_dot]          : Shape (batch_size, num_legs, 3)
-        p_dot_dot_min_J_dot_x_q_dot = p_dot_dot - J_dot_x_q_dot
+        p_dot_dot_min_J_dot_x_q_dot = p_dot_dot_lw - J_dot_x_q_dot
 
         # Intermediary step : J⁻¹[p_dot_dot - J(q)*q_dot]       : (batch_size, num_legs, num_joints_per_leg, 3) * (batch_size, num_legs, 3)
         # Shape is (batch_size, num_legs, num_joints_per_leg)
@@ -482,15 +479,17 @@ class samplingController(modelBaseController):
         return T_swing
     
 
-    def stance_leg_controller(self, F0_star: torch.Tensor, c0_star: torch.Tensor, jacobian: torch.Tensor) -> torch.Tensor:
+    def stance_leg_controller(self, F0_star_lw: torch.Tensor, c0_star: torch.Tensor, jacobian_lw: torch.Tensor) -> torch.Tensor:
         """ Given GRF and contact sequence -> compute joint torques using the jacobian : T = -J*F
         1. compute the jacobian using the simulation tool : end effector jacobian wrt to robot base
         2. compute the stance torque : T = -J*F
+        Note :
+            The variable are in the 'local' world frame _wl. This notation is introduced to avoid confusion with the 'global' world frame, where all the batches coexists.
 
         Args:
-            - F0* (torch.Tensor): Opt. Ground Reac. Forces (GRF)        of shape(batch_size, num_legs, 3)
-            - c0*   (torch.bool): Optimized foot contact 1st el. seq.   of shape(batch_size, num_legs)
-            - jacobian  (Tensor): Jacobian -> joint frame to foot frame of shape(batch_size, num_legs, 3, num_joints_per_leg)
+            - F0*_lw (th.Tensor): Opt. Ground Reac. Forces (GRF) in w fr.   of shape(batch_size, num_legs, 3)
+            - c0*   (torch.bool): Optimized foot contact 1st el. seq.       of shape(batch_size, num_legs)
+            - jacobian_lw (Tsor): Jacobian -> joint space to world frame    of shape(batch_size, num_legs, 3, num_joints_per_leg)
 
         Returns:
             - T_stance(t.Tensor): Stance Leg joint Torques              of shape(batch_size, num_legs, num_joints_per_leg)
@@ -498,15 +497,15 @@ class samplingController(modelBaseController):
         
         # Transpose the jacobian -> In batch operation : permut the last two dimensions 
         # shape(batch_size, num_legs, 3, num_joints_per_leg) -> shape(batch_size, num_legs, num_joints_per_leg, 3)
-        jacobian_T = jacobian.transpose(-1,-2)
+        jacobian_lw_T = jacobian_lw.transpose(-1,-2)
 
         # Add a singleton dimension on last position to enable matmul operation 
         # shape(batch_size, num_legs, 3) -> shape(batch_size, num_legs, 3, 1)
-        F0_star_unsqueezed = F0_star.unsqueeze(-1)
+        F0_star_lw_unsqueezed = F0_star_lw.unsqueeze(-1)
 
         # Perform the matrix multiplication T = - J^T * F
         # shape(batch_size, num_legs, num_joints_per_leg, 1)
-        T_unsqueezed= -torch.matmul(jacobian_T, F0_star_unsqueezed)
+        T_unsqueezed= -torch.matmul(jacobian_lw_T, F0_star_lw_unsqueezed)
 
         # Supress the singleton dimension added for the matmul operation
         # shape(batch_size, num_legs, num_joints_per_leg, 1) -> shape(batch_size, num_legs, num_joints_per_leg)
