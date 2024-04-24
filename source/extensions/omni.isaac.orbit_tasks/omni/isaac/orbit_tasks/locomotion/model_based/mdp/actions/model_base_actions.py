@@ -44,8 +44,9 @@ def jax_to_torch(x: jax.Array):
 def torch_to_jax(x):
     return jax.dlpack.from_dlpack(torch.utils.dlpack.to_dlpack(x))
 
-verbose_mb = False
+verbose_mb = True
 verbose_loop = 40
+vizualise_debug = {'foot': False, 'jacobian': True, 'foot_traj': True, 'lift-off': True, 'touch-down': True}
 
 class ModelBaseAction(ActionTerm):
     """Base class for model base actions.
@@ -216,9 +217,10 @@ class ModelBaseAction(ActionTerm):
         if verbose_mb:
             self.my_visualizer = {}
             self.my_visualizer['foot'] = define_markers('sphere', {'radius': 0.03, 'color': (1.0,1.0,0)})
-            self.my_visualizer['jacobian'] = define_markers('arrow_x', {'scale':(0.04,0.04,0.3), 'color': (1.0,0,0)})
+            self.my_visualizer['jacobian'] = define_markers('arrow_x', {'scale':(0.03,0.03,0.15), 'color': (1.0,0,0)})
             self.my_visualizer['foot_traj'] = define_markers('sphere', {'radius': 0.02, 'color': (1.0,0.0,1.0)})
             self.my_visualizer['lift-off'] = define_markers('sphere', {'radius': 0.03, 'color': (0.0,0.0,1.0)})
+            self.my_visualizer['touch-down'] = define_markers('sphere', {'radius': 0.03, 'color': (1.0,0.0,1.0)})
 
 
     """
@@ -484,70 +486,104 @@ class ModelBaseAction(ActionTerm):
         return jacobian_w
 
 #-------------------------------------------------- Helpers ------------------------------------------------------------
-    def debug_apply_action(self, p, p_dot, q_dot, jacobian, jacobian_dot, mass_matrix, h, F0_star, c0_star, pt_i_star):
+    def debug_apply_action(self, p_lw, p_dot_lw, q_dot, jacobian_lw, jacobian_dot_lw, mass_matrix, h, F0_star_lw, c0_star, pt_i_star_lw):
         global verbose_loop
 
-        # Print duty cycée and leg frequency
+        # Print duty cycle and leg frequency
         verbose_loop+=1
         if verbose_loop>=40:
             verbose_loop=0
-            print('Contact sequence : ', c0_star.flatten())
-            print('\nLeg frequency : ', self.f.flatten())
-            print('\nduty cycle : ', self.d.flatten())
+            print('\nContact sequence : ', c0_star[0,...].flatten())
+            print('  Leg  frequency : ', self.f[0,...].flatten())
+            print('   duty   cycle  : ', self.d[0,...].flatten())
+            print('Touch-down pos   : ', self.p_lw[:,:,:,0])
 
         # Visualize foot position
-        p_b = p.clone().detach()
-        robot_pos_w = self._asset.data.root_pos_w
-        robot_orientation_w = self._asset.data.root_quat_w
-        p_orientation_w = self._asset.data.body_quat_w[:, self._foot_idx,:]
+        if vizualise_debug['foot']:
+            # p_lw_ = p_lw.clone().detach()
+            p_w = p_lw + self._env.scene.env_origins.unsqueeze(1)
 
-        p_w_0, _ = math_utils.combine_frame_transforms(robot_pos_w, robot_orientation_w, p_b[:,0,:])
-        p_w_1, _ = math_utils.combine_frame_transforms(robot_pos_w, robot_orientation_w, p_b[:,1,:])
-        p_w_2, _ = math_utils.combine_frame_transforms(robot_pos_w, robot_orientation_w, p_b[:,2,:])
-        p_w_3, _ = math_utils.combine_frame_transforms(robot_pos_w, robot_orientation_w, p_b[:,3,:])
-        p_w = torch.cat((p_w_0.unsqueeze(1), p_w_1.unsqueeze(1), p_w_2.unsqueeze(1), p_w_3.unsqueeze(1)), dim=1)
+            # Transformation if p in base frame
+            # robot_pos_w = self._asset.data.root_pos_w
+            # robot_orientation_w = self._asset.data.root_quat_w
+            # p_orientation_w = self._asset.data.body_quat_w[:, self._foot_idx,:]
+            # p_w_0, _ = math_utils.combine_frame_transforms(robot_pos_w, robot_orientation_w, p_b[:,0,:])
+            # p_w_1, _ = math_utils.combine_frame_transforms(robot_pos_w, robot_orientation_w, p_b[:,1,:])
+            # p_w_2, _ = math_utils.combine_frame_transforms(robot_pos_w, robot_orientation_w, p_b[:,2,:])
+            # p_w_3, _ = math_utils.combine_frame_transforms(robot_pos_w, robot_orientation_w, p_b[:,3,:])
+            # p_w = torch.cat((p_w_0.unsqueeze(1), p_w_1.unsqueeze(1), p_w_2.unsqueeze(1), p_w_3.unsqueeze(1)), dim=1)
 
-        marker_locations = p_w[0,:,:]
-        # self.my_visualizer['foot'].visualize(marker_locations)
+            marker_locations = p_w[0,:,:]
+            self.my_visualizer['foot'].visualize(marker_locations)
 
         # Visualise jacobian
-        joint_pos_w = self._asset.data.body_pos_w[0,self._joint_ids,:] # shape (num_joints, 3)
-        marker_locations = joint_pos_w
-        jacobian_temp = jacobian[0,:,:,:].clone().detach()
-        jacobian_temp_T = jacobian_temp.permute(0,2,1) # shape (num_legs, 3, num_joints_per_leg) -> (num_legs, num_joints_per_leg, 3)
-        jacobian_temp_T = jacobian_temp.flatten(0,1) # shape (num_joints, 3)
-        normalize_jacobian_temp_T = torch.nn.functional.normalize(jacobian_temp_T, p=2, dim=1) # Transform jacobian to unit vectors
+        if vizualise_debug['jacobian']:
+            # Get point where to draw the jacobian
+            joint_pos_w = self._asset.data.body_pos_w[0,1+np.asarray(self._joint_ids),:] # shape (num_joints, 3) # +1 Not clean a way to change from joint to body view but it works
+            marker_locations = joint_pos_w
 
-        # angle : u dot v = cos(angle) -> angle = acos(u*v) : for unit vector
-        angle = torch.acos(torch.tensordot(normalize_jacobian_temp_T, torch.tensor([1.0,0.0,0.0], device=self.device), dims=1)) # shape(num_joints, 3) -> (num_joints)
-        # Axis : Cross product between u^v (for unit vectors)
-        axis = torch.cross(normalize_jacobian_temp_T, torch.tensor([1.0,0.0,0.0], device=self.device).unsqueeze(0).expand(normalize_jacobian_temp_T.shape))
-        marker_orientations = quat_from_angle_axis(angle=angle, axis=axis)
-        self.my_visualizer['jacobian'].visualize(marker_locations, marker_orientations)
+            # From jacobian, retrieve orientation (angle and axis representation)
+            jacobian_temp_lw = jacobian_lw[0,:,:,:].clone().detach()
+            jacobian_temp_T_lw = jacobian_temp_lw.permute(0,2,1) # shape (num_legs, 3, num_joints_per_leg) -> (num_legs, num_joints_per_leg, 3)
+            jacobian_temp_T_lw = jacobian_temp_T_lw.permute(1,0,2).flatten(0,1) # shape (num_joints, 3) # permute to have index in right order (ie. 0,1,2,... and not 0,4,8,1,...)
+            normalize_jacobian_temp_T_lw = torch.nn.functional.normalize(jacobian_temp_T_lw, p=2, dim=1) # Transform jacobian to unit vectors
+
+            # angle : u dot v = cos(angle) -> angle = acos(u*v) : for unit vector # Need to take the opposite angle in order to make appropriate rotation
+            angle = -torch.acos(torch.tensordot(normalize_jacobian_temp_T_lw, torch.tensor([1.0,0.0,0.0], device=self.device), dims=1)) # shape(num_joints, 3) -> (num_joints)
+            # Axis : Cross product between u^v (for unit vectors)
+            axis = torch.cross(normalize_jacobian_temp_T_lw, torch.tensor([1.0,0.0,0.0], device=self.device).unsqueeze(0).expand(normalize_jacobian_temp_T_lw.shape))
+
+            marker_orientations = quat_from_angle_axis(angle=angle, axis=axis)
+
+            # The arrow point is define at its center. So to avoid having the arrow in the middle of the joint, we translate it by a factor along its pointing direction
+            translation = torch.tensor([0.05, 0.0, 0.0], device=self.device).unsqueeze(0).expand(joint_pos_w.shape)
+            translation = math_utils.transform_points(points=translation.unsqueeze(1), pos=joint_pos_w, quat=marker_orientations).squeeze(1)
+            marker_locations = translation
+
+            self.my_visualizer['jacobian'].visualize(marker_locations, marker_orientations)
 
         # Visualize foot trajectory
-        pt_i_b = self.pt_star_lw.clone().detach()  # shape (batch_size, num_legs, 9, decimation) (9=px,py,pz,vx,vy,vz,ax,ay,az)
-        pt_i_b = pt_i_b[0,:,0:3,:] # -> shape (num_legs, 3, decimation)
-        pt_i_b = pt_i_b.permute(0,2,1).flatten(0,1) # -> shape (num_legs*decimation, 3)
-        pt_i_w, _ = math_utils.combine_frame_transforms(robot_pos_w[0,:].unsqueeze(0).expand(pt_i_b.shape), robot_orientation_w[0,:].unsqueeze(0).expand(pt_i_b.shape[0], 4), pt_i_b)
-        
-        marker_locations = pt_i_w
-        self.my_visualizer['foot_traj'].visualize(marker_locations)
+        if vizualise_debug['foot_traj']:
+            pt_i_lw_= self.pt_star_lw.clone().detach()  # shape (batch_size, num_legs, 9, decimation) (9=px,py,pz,vx,vy,vz,ax,ay,az)
+            pt_i_lw_ = pt_i_lw_[0,:,0:3,:] # -> shape (num_legs, 3, decimation)
+            pt_i_lw_ = pt_i_lw_.permute(0,2,1).flatten(0,1) # -> shape (num_legs*decimation, 3)
+
+            # If in base frame
+            # robot_pos_w = self._asset.data.root_pos_w
+            # robot_orientation_w = self._asset.data.root_quat_w
+            # pt_i_w, _ = math_utils.combine_frame_transforms(robot_pos_w[0,:].unsqueeze(0).expand(pt_i_b.shape), robot_orientation_w[0,:].unsqueeze(0).expand(pt_i_b.shape[0], 4), pt_i_b)
+            
+            pt_i_w = pt_i_lw_ + self._env.scene.env_origins.unsqueeze(1)
+
+            marker_locations = pt_i_w[0,...]
+            self.my_visualizer['foot_traj'].visualize(marker_locations)
 
         # Visualize Lift-off position
-        p_b = self.controller.p0_lw.clone().detach()
-        robot_pos_w = self._asset.data.root_pos_w
-        robot_orientation_w = self._asset.data.root_quat_w
-        p_orientation_w = self._asset.data.body_quat_w[:, self._foot_idx,:]
+        if vizualise_debug['lift-off']:
+            p0_lw = self.controller.p0_lw.clone().detach()
+            p0_w = p0_lw + self._env.scene.env_origins.unsqueeze(1)
+            # If in base frame
+            # p_b = self.controller.p0_lw.clone().detach()
+            # robot_pos_w = self._asset.data.root_pos_w
+            # robot_orientation_w = self._asset.data.root_quat_w
+            # p_orientation_w = self._asset.data.body_quat_w[:, self._foot_idx,:]
+            # p_w_0, _ = math_utils.combine_frame_transforms(robot_pos_w, robot_orientation_w, p_b[:,0,:])
+            # p_w_1, _ = math_utils.combine_frame_transforms(robot_pos_w, robot_orientation_w, p_b[:,1,:])
+            # p_w_2, _ = math_utils.combine_frame_transforms(robot_pos_w, robot_orientation_w, p_b[:,2,:])
+            # p_w_3, _ = math_utils.combine_frame_transforms(robot_pos_w, robot_orientation_w, p_b[:,3,:])
+            # p_w = torch.cat((p_w_0.unsqueeze(1), p_w_1.unsqueeze(1), p_w_2.unsqueeze(1), p_w_3.unsqueeze(1)), dim=1)
 
-        p_w_0, _ = math_utils.combine_frame_transforms(robot_pos_w, robot_orientation_w, p_b[:,0,:])
-        p_w_1, _ = math_utils.combine_frame_transforms(robot_pos_w, robot_orientation_w, p_b[:,1,:])
-        p_w_2, _ = math_utils.combine_frame_transforms(robot_pos_w, robot_orientation_w, p_b[:,2,:])
-        p_w_3, _ = math_utils.combine_frame_transforms(robot_pos_w, robot_orientation_w, p_b[:,3,:])
-        p_w = torch.cat((p_w_0.unsqueeze(1), p_w_1.unsqueeze(1), p_w_2.unsqueeze(1), p_w_3.unsqueeze(1)), dim=1)
+            marker_locations = p0_w[0,:,:]
+            self.my_visualizer['lift-off'].visualize(marker_locations)
 
-        marker_locations = p_w[0,:,:]
-        self.my_visualizer['lift-off'].visualize(marker_locations)
+        # Visualize touch-down position
+        if vizualise_debug['touch-down']:
+            p2_lw = self.p_lw[:,:,:,0].clone().detach()
+            p2_lw = p2_lw + self._env.scene.env_origins.unsqueeze(1)
+            p2_lw[:,:,2] = 0
+            marker_locations = p2_lw[0,:,:]
+            self.my_visualizer['touch-down'].visualize(marker_locations)
+
 
 
 def define_markers(marker_type, param_dict) -> VisualizationMarkers:

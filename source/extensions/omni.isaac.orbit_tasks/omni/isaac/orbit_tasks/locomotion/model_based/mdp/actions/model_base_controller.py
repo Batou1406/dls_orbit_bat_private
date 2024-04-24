@@ -241,7 +241,9 @@ class samplingController(modelBaseController):
         """ Implement a gait generator that return a contact sequence given a leg frequency and a leg duty cycle
         Increment phase by dt*f 
         restart if needed
-        return contact : 1 if phase < duty cyle, 0 otherwise 
+        return contact : 1 if phase < duty cyle, 0 otherwise  
+        c == 1 : Leg is in contact (stance)
+        c == 0 : Leg is in swing
 
         Note:
             No properties used, no for loop : purely functional -> made to be jitted
@@ -310,7 +312,7 @@ class samplingController(modelBaseController):
 
         # Retrieve p0 : update p0 with latest foot position when in contact, don't update when in swing
         # p0 shape (batch_size, num_legs, 3)
-        in_contact = (c[:,:,0]==0).unsqueeze(-1) 
+        in_contact = (c[:,:,0]==1).unsqueeze(-1) # shape (batch_size, num_legs, 1)
         self.p0_lw = (self.p_lw_sim_prev * in_contact) + (self.p0_lw * (~in_contact))
 
         # Retrieve p2 : this is simply the foot touch down prior given as input
