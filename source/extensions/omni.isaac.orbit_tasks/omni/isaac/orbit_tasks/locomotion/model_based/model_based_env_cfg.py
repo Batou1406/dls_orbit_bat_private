@@ -149,7 +149,7 @@ class ObservationsCfg:
 
     @configclass
     class PolicyCfg(ObsGroup):
-        """Observations for policy group.
+        """Observations Term for policy group (order preserved).
         - Robot base linear velocity    - uniform noise ±0.1    - dim=3 
         - Robot base angular velocity   - uniform noise ±0.2    - dim=3
         - Gravity proj. on robot base   - uniform noise ±0.05   - dim=3
@@ -160,18 +160,28 @@ class ObservationsCfg:
         - height scan                   - uniform noise ±0.1    - dim=...
         """
 
-        # observation terms (order preserved)
+        # ---- Robot's pose ----
         base_lin_vel = ObsTerm(func=mdp.base_lin_vel)#, noise=Unoise(n_min=-0.1, n_max=0.1))
         base_ang_vel = ObsTerm(func=mdp.base_ang_vel)#, noise=Unoise(n_min=-0.2, n_max=0.2))
         root_quat_w = ObsTerm(func=mdp.root_quat_w)
+        robot_height = ObsTerm(func=mdp.base_pos_z)
+        # root_pos_w = ObsTerm(func=mdp.root_pos_w)
         # projected_gravity = ObsTerm(
         #     func=mdp.projected_gravity,
         #     noise=Unoise(n_min=-0.05, n_max=0.05),
         # )
-        velocity_commands = ObsTerm(func=mdp.generated_commands, params={"command_name": "base_velocity"})
+
+        # ---- Robot's joint variable ----
         joint_pos = ObsTerm(func=mdp.joint_pos_rel)#, noise=Unoise(n_min=-0.01, n_max=0.01))
         joint_vel = ObsTerm(func=mdp.joint_vel_rel)#, noise=Unoise(n_min=-1.5, n_max=1.5))
+
+        # ---- Policy Memory ----
         actions = ObsTerm(func=mdp.last_action)
+
+        # ---- Policy Commands ----
+        # velocity_commands = ObsTerm(func=mdp.generated_commands, params={"command_name": "base_velocity"})
+        
+        # ---- Exteroceptive sensors
         # height_scan = ObsTerm(
         #     func=mdp.height_scan,
         #     params={"sensor_cfg": SceneEntityCfg("height_scanner")},
@@ -179,8 +189,8 @@ class ObservationsCfg:
         #     clip=(-1.0, 1.0),
         # )
 
-        # Model Based internal variable
-        # leg_phase = ObsTerm(func=leg_phase, params={"action_name": "model_base_variable"})
+        # ---- Model-Base internal variable ----
+        leg_phase = ObsTerm(func=leg_phase, params={"action_name": "model_base_variable"})
 
         def __post_init__(self):
             # self.enable_corruption = True
@@ -287,12 +297,13 @@ class RewardsCfg:
     """
 
     # -- task
-    track_lin_vel_xy_exp = RewTerm(
-        func=mdp.track_lin_vel_xy_exp, weight=1.0, params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
-    )
+    # track_lin_vel_xy_exp = RewTerm(
+    #     func=mdp.track_lin_vel_xy_exp, weight=1.0, params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
+    # )
     # track_ang_vel_z_exp = RewTerm(
     #     func=mdp.track_ang_vel_z_exp, weight=0.5, params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
     # )
+
     # -- penalties
     # lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-2.0)
     # ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
@@ -313,12 +324,13 @@ class RewardsCfg:
     #     weight=-1.0,
     #     params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*THIGH"), "threshold": 1.0},
     # )
+
     # -- optional penalties
     # flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=0.0)
     # dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=0.0)
 
     # -- Reward for alive time
-    is_alive = RewTerm(func=mdp.is_alive, weight=10.0)
+    is_alive = RewTerm(func=mdp.is_alive, weight=1.0)
 
 
 @configclass
