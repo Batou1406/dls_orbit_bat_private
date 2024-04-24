@@ -153,7 +153,7 @@ class samplingController(modelBaseController):
     swing_time : torch.Tensor
     p_lw_sim_prev : torch.Tensor
 
-    def __init__(self, swing_ctrl_pos_gain_fb = 1, swing_ctrl_vel_gain_fb=1):
+    def __init__(self, swing_ctrl_pos_gain_fb = 5000, swing_ctrl_vel_gain_fb=100):
         super().__init__()
 
         self.swing_ctrl_pos_gain_fb = swing_ctrl_pos_gain_fb
@@ -289,8 +289,8 @@ class samplingController(modelBaseController):
         Args:
             - p_lw (trch.Tensor): Foot touch down postion in _lw        of shape(batch_size, num_legs, 3)
             - c   (torch.Tensor): Foot contact sequence                 of shape(batch_size, num_legs, time_horizon)
-            - f   (torch.Tensor): Leg frequency                         of shape(batch_size, num_legs)
-            - d   (torch.Tensor): Stepping duty cycle                   of shape(batch_size, num_legs)
+            - f   (torch.Tensor): Leg frequency           in R+         of shape(batch_size, num_legs)
+            - d   (torch.Tensor): Stepping duty cycle     in[0,1]       of shape(batch_size, num_legs)
 
         Returns:
             - pt_lw (tch.Tensor): Desired Swing Leg traj. in _lw frame  of shape(batch_size, num_legs, 9, decimation)   (9 = xyz_pos, xzy_vel, xyz_acc)
@@ -303,9 +303,9 @@ class samplingController(modelBaseController):
 
         # Time during wich the leg is in swing.(add small numerical value to denominator to avoid division by 0)
         # Shape (batch_size, num_legs)
-        swing_period = ((1-d) / (f.abs()+1e-10))
+        swing_period = ((1-d) / (f+1e-10))
         half_swing_period = swing_period / 2
-        time_fac = 1 / ((swing_period.abs()+1e-10) / 2) #bezier_time_factor
+        time_fac = 1 / ((swing_period+1e-10) / 2) #bezier_time_factor
 
 
         # Step 1. Retrieve the three interpolation points : p0, p1, p2 (lift-off, middle point, touch down)
@@ -332,7 +332,7 @@ class samplingController(modelBaseController):
         # then compute t in [0, Delta_t/2], which would be use for the spline interpolation
         # t & swing_time shape (batch_size, num_legs)
         self.swing_time = (self.swing_time + self._dt_out) * (~in_contact.squeeze(-1))
-        t = self.swing_time % (half_swing_period.abs() + 1e-10)  # Swing time (half) : add small numerical value to avoid nan when % 0
+        t = self.swing_time % (half_swing_period + 1e-10)  # Swing time (half) : add small numerical value to avoid nan when % 0
 
         # Compute the a,b,c,d polynimial coefficient for the cubic interpolation S(t) = a*t^3 + b*t^2 + c*t + d
         # If swing_time < swing period/2 -> S_0(t) (ie. first interpolation), otherwise -> S_1(t - delta_t/2) (ie. second interpolation)

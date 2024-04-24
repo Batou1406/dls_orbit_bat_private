@@ -220,7 +220,7 @@ class ModelBaseAction(ActionTerm):
             self.my_visualizer['jacobian'] = define_markers('arrow_x', {'scale':(0.03,0.03,0.15), 'color': (1.0,0,0)})
             self.my_visualizer['foot_traj'] = define_markers('sphere', {'radius': 0.02, 'color': (1.0,0.0,1.0)})
             self.my_visualizer['lift-off'] = define_markers('sphere', {'radius': 0.03, 'color': (0.0,0.0,1.0)})
-            self.my_visualizer['touch-down'] = define_markers('sphere', {'radius': 0.03, 'color': (1.0,0.0,1.0)})
+            self.my_visualizer['touch-down'] = define_markers('sphere', {'radius': 0.035, 'color': (1.0,0.3,0.3)})
 
 
     """
@@ -270,6 +270,10 @@ class ModelBaseAction(ActionTerm):
         self.p_lw = self._processed_actions[:, 2*self._num_legs:(2*self._num_legs + 3*self._num_legs*self._number_predict_step)].reshape([self.num_envs, self._num_legs, 3, self._number_predict_step])
         self.F_lw = self._processed_actions[:, (2*self._num_legs + 3*self._num_legs*self._number_predict_step):].reshape([self.num_envs, self._num_legs, 3, self._prevision_horizon])
         # self.z = [self.f, self.d, self.p_lw, self.F_lw]
+
+        # Clip duty cycle to valid space [0,1], take absolute value of leg frequency
+        self.f = self.f.abs()
+        self.d = self.d.clamp(0,1)
 
         # Optimize the latent variable with the model base controller
         self.p_star_lw, self.F_star_lw, self.c_star, self.pt_star_lw = self.controller.optimize_latent_variable(f=self.f, d=self.d, p_lw=self.p_lw, F_lw=self.F_lw)
@@ -496,7 +500,9 @@ class ModelBaseAction(ActionTerm):
             print('\nContact sequence : ', c0_star[0,...].flatten())
             print('  Leg  frequency : ', self.f[0,...].flatten())
             print('   duty   cycle  : ', self.d[0,...].flatten())
-            print('Touch-down pos   : ', self.p_lw[:,:,:,0])
+            print('Touch-down pos   : ', self.p_lw[0,0,:,0])
+            print('Foot traj shape  : ', self.pt_star_lw.shape)
+            print('Foot traj : ', self.pt_star_lw[0,0,:3,:])
 
         # Visualize foot position
         if vizualise_debug['foot']:
@@ -580,7 +586,7 @@ class ModelBaseAction(ActionTerm):
         if vizualise_debug['touch-down']:
             p2_lw = self.p_lw[:,:,:,0].clone().detach()
             p2_lw = p2_lw + self._env.scene.env_origins.unsqueeze(1)
-            p2_lw[:,:,2] = 0
+            p2_lw[:,:,2] = 0.05 #small height to make them more visible
             marker_locations = p2_lw[0,:,:]
             self.my_visualizer['touch-down'].visualize(marker_locations)
 
