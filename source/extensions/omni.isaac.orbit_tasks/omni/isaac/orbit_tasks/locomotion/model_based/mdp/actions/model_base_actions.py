@@ -437,7 +437,6 @@ class ModelBaseAction(ActionTerm):
         return jacobian_w, jacobian_b
     
 
-    # TODO Change values !! Now in body frame, and need them in local world frame
     def get_reset_foot_position(self) -> torch.Tensor:
         """ Return The default position of the robot's feet. this is the position when the states are reseted
         TODO Now, this is hardcoded for Aliengo (given a joint default position) -> Should get this from simulation or forward kinematics
@@ -446,7 +445,21 @@ class ModelBaseAction(ActionTerm):
             - p_lw   (torch.Tensor): Default Feet position after reset in local world frame    of shape(batch_size, num_legs, 3)
         """
         p_b = torch.tensor([[0.243, 0.138, -0.325],[0.243, -0.138, -0.325],[-0.236, 0.137, -0.326],[-0.236, -0.137, -0.326]], device=self.device).unsqueeze(0).expand(self.num_envs, -1, -1) 
-        return p_b
+        
+        # Retrieve the robot base orientation in the world frame as quaternions : shape(batch_size, 4)
+        quat_robot_base_w = self._asset.data.root_quat_w 
+
+        # From the quaternions compute the rotation matrix that rotates from base frame b to world frame w : shape(batch_size, 3,3)
+        R_b_to_w = math_utils.matrix_from_quat(quat_robot_base_w)
+
+        # Rotate p from base to world frame (no translation yet)
+        p_rotated = torch.matmul(R_b_to_w, p_b.permute(0,2,1)).permute(0,2,1)
+        
+        # Compute translation from base frame to local world frame
+        # Transform p_b into p_lw b appling final translation
+        p_lw = (self._asset.data.root_pos_w.unsqueeze(1) - self._env.scene.env_origins.unsqueeze(1)) + p_rotated 
+
+        return p_lw
 
 
     def get_reset_jacobian(self) -> torch.Tensor:
@@ -465,8 +478,8 @@ class ModelBaseAction(ActionTerm):
         # From the quaternions compute the rotation matrix that rotates from base frame b to world frame w : shape(batch_size, 3,3)
         R_b_to_w = math_utils.matrix_from_quat(quat_robot_base_w)
 
-        # Finally, rotate the jacobian from base to world frame : shape(batch_size, num_legs, 3, 3)
-        jacobian_w = torch.matmul(R_b_to_w.unsqueeze(1), jacobian_default_b) # (batch, 1, 3, 3) * (batch, legs, 3, 3) -> (batch, legs, 3, 3)
+        # Finally, rotate the jacobian from base to world frame : shape(batch_size, num_legs, 3, num_joints_per_leg)
+        jacobian_w = torch.matmul(R_b_to_w.unsqueeze(1), jacobian_default_b) # (batch, 1, 3, 3) * (batch, legs, 3, joints_per_leg) -> (batch, legs, 3, joints_per_leg)
         
         return jacobian_w
 
