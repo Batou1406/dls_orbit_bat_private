@@ -44,9 +44,10 @@ def jax_to_torch(x: jax.Array):
 def torch_to_jax(x):
     return jax.dlpack.from_dlpack(torch.utils.dlpack.to_dlpack(x))
 
-verbose_mb = True
+verbose_mb = False
 verbose_loop = 40
 vizualise_debug = {'foot': False, 'jacobian': True, 'foot_traj': True, 'lift-off': True, 'touch-down': True}
+torch.set_printoptions(precision=2, linewidth=200, sci_mode=False)
 
 class ModelBaseAction(ActionTerm):
     """Base class for model base actions.
@@ -188,8 +189,8 @@ class ModelBaseAction(ActionTerm):
         self._joints_idx = [fl_joints, fr_joints, rl_joints, rr_joints]
 
         # Latent variable
-        self.f = torch.zeros(self.num_envs, self._num_legs, device=self.device)
-        self.d = torch.zeros(self.num_envs, self._num_legs, device=self.device)
+        self.f = 2*torch.ones(self.num_envs, self._num_legs, device=self.device)
+        self.d = 0.5*torch.ones(self.num_envs, self._num_legs, device=self.device)
         self.p_lw = torch.zeros(self.num_envs, self._num_legs, 3, self._number_predict_step, device=self.device)
         self.F_lw = torch.zeros(self.num_envs, self._num_legs, 3, self._prevision_horizon, device=self.device)
         self.z = [self.f, self.d, self.p_lw, self.F_lw]
@@ -220,7 +221,7 @@ class ModelBaseAction(ActionTerm):
             self.my_visualizer['jacobian'] = define_markers('arrow_x', {'scale':(0.03,0.03,0.15), 'color': (1.0,0,0)})
             self.my_visualizer['foot_traj'] = define_markers('sphere', {'radius': 0.02, 'color': (1.0,0.0,1.0)})
             self.my_visualizer['lift-off'] = define_markers('sphere', {'radius': 0.03, 'color': (0.0,0.0,1.0)})
-            self.my_visualizer['touch-down'] = define_markers('sphere', {'radius': 0.035, 'color': (1.0,0.3,0.3)})
+            self.my_visualizer['touch-down'] = define_markers('sphere', {'radius': 0.035, 'color': (0.0,1.0,1.0)})
 
 
     """
@@ -265,15 +266,11 @@ class ModelBaseAction(ActionTerm):
         self._processed_actions = self._raw_actions * self._scale + self._offset
 
         # reconstruct the latent variable from the RL poliy actions
-        self.f = self._processed_actions[:, :self._num_legs] # 0:3 
-        self.d = self._processed_actions[:, self._num_legs:2*self._num_legs] # 4:7
+        self.f = (self._processed_actions[:, :self._num_legs]).clamp(0,20) # 0:3 and clip frequency to valid range [0,20]
+        self.d = (self._processed_actions[:, self._num_legs:2*self._num_legs]).clamp(0,1) # 4:7 and clip leg duty cycle to valid range [0,1]
         self.p_lw = self._processed_actions[:, 2*self._num_legs:(2*self._num_legs + 3*self._num_legs*self._number_predict_step)].reshape([self.num_envs, self._num_legs, 3, self._number_predict_step])
         self.F_lw = self._processed_actions[:, (2*self._num_legs + 3*self._num_legs*self._number_predict_step):].reshape([self.num_envs, self._num_legs, 3, self._prevision_horizon])
         # self.z = [self.f, self.d, self.p_lw, self.F_lw]
-
-        # Clip duty cycle to valid space [0,1], take absolute value of leg frequency
-        self.f = self.f.abs()
-        self.d = self.d.clamp(0,1)
 
         # Optimize the latent variable with the model base controller
         self.p_star_lw, self.F_star_lw, self.c_star, self.pt_star_lw = self.controller.optimize_latent_variable(f=self.f, d=self.d, p_lw=self.p_lw, F_lw=self.F_lw)
@@ -503,6 +500,9 @@ class ModelBaseAction(ActionTerm):
             print('Touch-down pos   : ', self.p_lw[0,0,:,0])
             print('Foot traj shape  : ', self.pt_star_lw.shape)
             print('Foot traj : ', self.pt_star_lw[0,0,:3,:])
+            print('Foot Force :', self.F_star_lw[0,:,:])
+            if (self.F_lw != self.F_star_lw).any():
+                assert ValueError('F value don\'t match...')
 
         # Visualize foot position
         if vizualise_debug['foot']:
@@ -585,9 +585,9 @@ class ModelBaseAction(ActionTerm):
         # Visualize touch-down position
         if vizualise_debug['touch-down']:
             p2_lw = self.p_lw[:,:,:,0].clone().detach()
-            p2_lw = p2_lw + self._env.scene.env_origins.unsqueeze(1)
-            p2_lw[:,:,2] = 0.05 #small height to make them more visible
-            marker_locations = p2_lw[0,:,:]
+            p2_w = p2_lw + self._env.scene.env_origins.unsqueeze(1)
+            p2_w[:,:,2] = 0.05 #small height to make them more visible
+            marker_locations = p2_w[0,:,:]
             self.my_visualizer['touch-down'].visualize(marker_locations)
 
 
