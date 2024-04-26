@@ -111,7 +111,51 @@ class modelBaseControllerTest():
 
 
     def test_swing_trajectory_generator(self):
-        raise NotImplementedError
+        prin1('\n--- Test Swing trajectory Generator ---')
+
+        prin1('\nTest 1')
+
+        # ---- Generate test data ----
+
+        # foot touch down position of shape (batch_size, num_legs, 3, prediction) # only first prediction should be used thus Should ignore the NaN error
+        p_lw =torch.tensor([[[[1,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0]],
+                             [[2,0.5,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0]],
+                             [[1,0,1000],[0,0,0],[0,0,0],[0,0,0],[0,0,0]]], # should ignore the step height of 1000
+                            [[[-2,2,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0]],
+                             [[0,0.5,0],[float('nan'),float('nan'),float('nan')],[float('nan'),float('nan'),float('nan')],[float('nan'),float('nan'),float('nan')],[float('nan'),float('nan'),float('nan')]],
+                             [[-2,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0]]]]) # prediction = 5 
+
+        # Foot contact sequence of shape (batch_size, num_legs, time_horizon) # only first should be used time
+        c = torch.tensor([[[0,0,0,0,0], [1,1,1,1,1], [0,1,1,1,1]], [[0,0,0,0,0], [0,0,0,0,0], [1,0,0,0,0]]]) # 2 batch, 3 leg, 5 time horizon
+
+        # leg frequency of shape (batch_size, num_legs)
+        f = torch.tensor([[1,1,2],[0.5,0.5,1]])
+
+        # Duty cycle of shape (batch_size, num_legs)
+        d = torch.tensor([[0.2,0.2,0.9],[0,0,0.5]])
+
+        # Set also internal variable : 
+        self.controller.swing_trajectory_generator.p0_lw = torch.tensor([[[0,0,1000],[0,0,0],[0,0,0]], # should ignore the step height of 1000
+                                                                         [[0,0,0],[0,-0.5,0],[0,0,0]]]) # shape (batch_size, num_legs, 3)
+        p_lw_sim_prev = p_lw
+        p_lw_sim_prev[1,2,:,:] = torch.tensor([[-2,-2,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0]])
+        self.controller.swing_trajectory_generator.p_lw_sim_prev = p_lw_sim_prev # should verify that p0 is updated correctly for leg in contact here : batch 1 leg 2
+        self.controller.swing_trajectory_generator.swing_time = torch.tensor([[0, 0, 0],[ 0, 0, 1000]])# (batch_size, num_legs) : 10000 should be reseted to -2.3
+        self.controller.swing_trajectory_generator._dt_out = 2.3
+        self.controller.swing_trajectory_generator._decimation = 4
+        self.controller.swing_trajectory_generator._device = 'cpu'
+        self.controller.swing_trajectory_generator._dt_in = 1
+
+        # Manually computed output : ie. what should output the function if it's correct
+        pt_lw_correct = ...
+
+
+        # ---- Compute the data to be tested ----
+        pt_lw = self.controller.swing_trajectory_generator(p_lw, c, f, d)
+
+        # ---- Assert Data ----
+        if (pt_lw - pt_lw_correct).abs() < 1e-9 :
+            raise ValueError('Invalid swing trajectory for Swing Trajectory Generator - Test 1')
 
 
 # Level 2 printing : low importance
