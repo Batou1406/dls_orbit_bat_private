@@ -49,8 +49,8 @@ class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
         self.events.reset_robot_joints.params["position_range"] = (1.0, 1.0)
 
         self.events.reset_base.params = {
-            "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},
-            # "pose_range": {"x": (0.0, 0.0), "y": (0.0, 0.0), "yaw": (-3.14, 3.14)},
+            # "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},
+            "pose_range": {"x": (0.0, 0.0), "y": (0.0, 0.0), "yaw": (0.0, 0.0)},
             "velocity_range": {                                                                                         # Default was ±0.5
                 "x": (0.0, 0.0),
                 "y": (0.0, 0.0),
