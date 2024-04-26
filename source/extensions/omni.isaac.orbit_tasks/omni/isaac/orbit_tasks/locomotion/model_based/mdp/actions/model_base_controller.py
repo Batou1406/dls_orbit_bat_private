@@ -275,9 +275,111 @@ class samplingController(modelBaseController):
         c = new_phases <= d.unsqueeze(-1).expand(*[-1] * len(d.shape), time_horizon)
 
         return c, new_phase
-    
+
 
     def swing_trajectory_generator(self, p_lw: torch.Tensor, c: torch.Tensor, f: torch.Tensor, d: torch.Tensor) -> torch.Tensor:
+        """ Given feet position sequence and contact sequence -> compute swing trajectories by fitting a cubic spline between
+        the lift-off and the touch down define in the contact sequence. 
+        - Swing frequency and duty cycle are used to compute the swing period
+        - A middle point is used for the interpolation : which is heuristically defined. It defines the step height
+        - p1 (middle point) and p2 (touch-down) are updated each time, while p0 is conserved (always the same lift off position)
+        Note :
+            The variable are in the 'local' world frame _wl. This notation is introduced to avoid confusion with the 'global' world frame, where all the batches coexists.
+        
+        Args:
+            - p_lw (trch.Tensor): Foot touch down postion in _lw        of shape(batch_size, num_legs, 3)
+            - c   (torch.Tensor): Foot contact sequence                 of shape(batch_size, num_legs, time_horizon)
+            - f   (torch.Tensor): Leg frequency           in R+         of shape(batch_size, num_legs)
+            - d   (torch.Tensor): Stepping duty cycle     in[0,1]       of shape(batch_size, num_legs)
+
+        Returns:
+            - pt_lw (tch.Tensor): Desired Swing Leg traj. in _lw frame  of shape(batch_size, num_legs, 9, decimation)   (9 = xyz_pos, xzy_vel, xyz_acc)
+        """
+
+        # Step 0. Define and Compute usefull variables
+
+        # Heuristic TODO Save that on the right place, could also be a RL variable
+        step_height = 0.05
+
+        # True if foot in contact, False in in swing, shape (batch_size, num_legs, 1)
+        in_contact = (c[:,:,0]==1).unsqueeze(-1)
+
+
+        # Step 1. Compute the time trajectory (utimately the trajectory is in phase space [0,1])
+
+        # Swing Period : Time during wich the leg is in swing.(add small numerical value to denominator to avoid division by 0)
+        # Shape (batch_size, num_legs)
+        swing_period = ((1-d) / (f+1e-10))                                                                  # [s]  Time during wich the leg is in swing
+        half_swing_period = swing_period / 2                                                                # [s]  Time during wich the leg is in one of the two spline = swing period/2
+        double_swing_frequency = 1 / ((swing_period+1e-10) / 2) #bezier_time_factor                         # [Hz] Frequency of the spline = 2*swing freq
+
+        # Swing time : time since the leg is in swing [s]. 
+        # Increment by dt_out if in swing, Reset if in contact (at -dt_out, so first time in swing time=0) 
+        # (batch_size, num_legs)  # (squeeze in_contact : (batch_size, num_legs, 1)->(batch_size, num_legs))
+        self.swing_time = (self.swing_time + self._dt_out) * (~in_contact.squeeze(-1)) - (self._dt_out*in_contact.squeeze(-1))  # [s] time since the leg is in swing
+        half_swing_time = self.swing_time % (half_swing_period + 1e-10)  # add small numerical value to avoid nan when % 0      # [s] time since the leg is in one of the two spline
+
+        # Generate the time trajectory t -> [t, t + dt, t+ 2*dt,...] : ie. increment the swing time by the inner loop time freq for the given number of inner steps
+        # shape (batch_size, num_legs, decimation)
+        time_traj = (half_swing_time.unsqueeze(-1)) + (torch.arange(self._decimation, device=self._device)*self._dt_in).unsqueeze(0).unsqueeze(0)   # [s] futur time at which the leg would be in swing
+
+        # Convert the time trajectory (in [0, half_sing_period]) to a phase trajectory (in [0,1]),   shape (batch_size, num_legs, decimation)
+        phase_traj = double_swing_frequency.unsqueeze(-1) * time_traj # (batch, legs)[Hz] * (batch, legs, decimation)[s] -> (batch, legs, decimation) in [0,1]
+        
+
+        # Step 2. Retrieve the three interpolation points : p0, p1, p2 (lift-off, middle point, touch down)
+
+        # Retrieve p0 : update p0 with latest foot position when in contact, don't update when in swing
+        # p0 shape (batch_size, num_legs, 3)
+        self.p0_lw = (self.p_lw_sim_prev * in_contact) + (self.p0_lw * (~in_contact))
+
+        # Retrieve p2 : this is simply the foot touch down prior given as input
+        # p2 shape (batch_size, num_legs, 3) 
+        p2_lw = p_lw 
+
+        # Retrieve p1 : (x,y) position are define as the middle point between p0 and p1 (lift-off and touch-down). z is heuristcally define
+        # p1 shape (batch_size, num_legs, 3)
+        # TODO Not only choose height as step heigh but use +the terrain height or +the feet height at touch down
+        p1_lw = (self.p0_lw[:,:,:2] + p2_lw[:,:,:2]) / 2     # p1(x,y) is in the middle of p0 and p2
+        p1_lw = torch.cat((p1_lw, step_height*torch.ones_like(p1_lw[:,:,:1])), dim=2) # Append a third dimension z : defined as step_height
+
+
+        # Step 3. Compute the parameters for the interpolation (control points)
+
+        # Compute the a,b,c,d polynimial coefficient for the cubic interpolation S(t) = a*t^3 + b*t^2 + c*t + d
+        # If swing_time < swing period/2 -> S_0(t) (ie. first interpolation), otherwise -> S_1(t - delta_t/2) (ie. second interpolation)
+        # cp_x shape (batch_size, num_legs, 3)
+        is_S0 = (self.swing_time <=  half_swing_period).unsqueeze(-1).expand(*[-1] * len(self.swing_time.shape), 3)  # shape (batch_size, num_legs, 3)
+        cp1 = (self.p0_lw * is_S0)                                            + (p1_lw * ~is_S0)
+        cp2 = (self.p0_lw * is_S0)                                            + (torch.cat((p2_lw[:,:,:2], p1_lw[:,:,2:]), dim=2)* ~is_S0)
+        cp3 = (torch.cat((self.p0_lw[:,:,:2], p1_lw[:,:,2:]), dim=2) * is_S0) + (p2_lw * ~is_S0)
+        cp4 = (p1_lw * is_S0)                                                 + (p2_lw * ~is_S0)
+
+        # Step 4. Prepare parameters to compute interpolation trajectory in one operation -> matrix multiplication
+
+        # Prepare cp_x to be mutltiplied by the time traj :  shape(batch_size, num_leg, 3) -> (batch_size, num_leg, 3, 1)
+        cp1 = cp1.unsqueeze(-1)
+        cp2 = cp2.unsqueeze(-1)
+        cp3 = cp3.unsqueeze(-1)
+        cp4 = cp4.unsqueeze(-1)
+
+        # Prepare time traj to be multplied by cp_x : shape(batch_size, num_leg, decimation) -> (batch_size, num_leg, 1, decimation)
+        phase_traj = phase_traj.unsqueeze(2)
+
+
+        # Step 5. Compute the interpolation trajectory
+        # shape (batch_size, num_legs, 3, decimation)
+        desired_foot_pos_traj_lw = cp1*(1 - phase_traj)**3 + 3*cp2*(phase_traj)*(1 - phase_traj)**2 + 3*cp3*((phase_traj)**2)*(1 - phase_traj) + cp4*(phase_traj)**3
+        desired_foot_vel_traj_lw = 3*(cp2 - cp1)*(1 - phase_traj)**2 + 6*(cp3 - cp2)*(1 - phase_traj)*(phase_traj) + 3*(cp4 - cp3)*(phase_traj)**2
+        desired_foot_acc_traj_lw = 6*(1 - phase_traj) * (cp3 - 2*cp2 + cp1) + 6 * (phase_traj) * (cp4 - 2*cp3 + cp2)
+
+        # shape (batch_size, num_legs, 9, decimation) (9 = xyz_pos, xzy_vel, xyz_acc)
+        pt_lw = torch.cat((desired_foot_pos_traj_lw, desired_foot_vel_traj_lw, desired_foot_acc_traj_lw), dim=2)
+
+        return pt_lw
+     
+
+    def swing_trajectory_generator_legacy(self, p_lw: torch.Tensor, c: torch.Tensor, f: torch.Tensor, d: torch.Tensor) -> torch.Tensor:
         """ Given feet position sequence and contact sequence -> compute swing trajectories by fitting a cubic spline between
         the lift-off and the touch down define in the contact sequence. 
         - Swing frequency and duty cycle are used to compute the swing period

@@ -46,7 +46,7 @@ def torch_to_jax(x):
 
 verbose_mb = False
 verbose_loop = 40
-vizualise_debug = {'foot': False, 'jacobian': True, 'foot_traj': True, 'lift-off': True, 'touch-down': True}
+vizualise_debug = {'foot': True, 'jacobian': True, 'foot_traj': True, 'lift-off': True, 'touch-down': True}
 torch.set_printoptions(precision=2, linewidth=200, sci_mode=False)
 
 class ModelBaseAction(ActionTerm):
@@ -217,7 +217,8 @@ class ModelBaseAction(ActionTerm):
 
         if verbose_mb:
             self.my_visualizer = {}
-            self.my_visualizer['foot'] = define_markers('sphere', {'radius': 0.03, 'color': (1.0,1.0,0)})
+            self.my_visualizer['foot'] = {'foot_swing' : define_markers('sphere', {'radius': 0.03, 'color': (1.0,1.0,0)}),
+                                          'foot_stance': define_markers('sphere', {'radius': 0.03, 'color': (0.0,1.0,0)})}
             self.my_visualizer['jacobian'] = define_markers('arrow_x', {'scale':(0.03,0.03,0.15), 'color': (1.0,0,0)})
             self.my_visualizer['foot_traj'] = define_markers('sphere', {'radius': 0.02, 'color': (1.0,0.0,1.0)})
             self.my_visualizer['lift-off'] = define_markers('sphere', {'radius': 0.03, 'color': (0.0,0.0,1.0)})
@@ -518,9 +519,12 @@ class ModelBaseAction(ActionTerm):
             # p_w_2, _ = math_utils.combine_frame_transforms(robot_pos_w, robot_orientation_w, p_b[:,2,:])
             # p_w_3, _ = math_utils.combine_frame_transforms(robot_pos_w, robot_orientation_w, p_b[:,3,:])
             # p_w = torch.cat((p_w_0.unsqueeze(1), p_w_1.unsqueeze(1), p_w_2.unsqueeze(1), p_w_3.unsqueeze(1)), dim=1)
+            stance = self.c_star[:,:,0]
 
-            marker_locations = p_w[0,:,:]
-            self.my_visualizer['foot'].visualize(marker_locations)
+            marker_locations_stance = (p_w[:,:,:] * stance.unsqueeze(-1)).flatten(0,1)
+            marker_locations_swing = (p_w[:,:,:] * (~stance.unsqueeze(-1))).flatten(0,1)
+            self.my_visualizer['foot']['foot_stance'].visualize(marker_locations_stance)
+            self.my_visualizer['foot']['foot_swing'].visualize(marker_locations_swing)
 
         # Visualise jacobian
         if vizualise_debug['jacobian']:
