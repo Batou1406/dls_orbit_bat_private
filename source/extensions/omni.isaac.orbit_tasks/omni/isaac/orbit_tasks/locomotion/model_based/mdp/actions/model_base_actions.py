@@ -267,8 +267,8 @@ class ModelBaseAction(ActionTerm):
         self._processed_actions = self._raw_actions * self._scale + self._offset
 
         # reconstruct the latent variable from the RL poliy actions
-        self.f = (self._processed_actions[:, :self._num_legs]).clamp(1,6) # 0:3 and clip frequency to valid range [0,20]
-        self.d = (self._processed_actions[:, self._num_legs:2*self._num_legs]).clamp(0.2,0.6) # 4:7 and clip leg duty cycle to valid range [0,1]
+        self.f = (self._processed_actions[:, :self._num_legs]).clamp(1,2) # 0:3 and clip frequency to valid range [0,20]
+        self.d = (self._processed_actions[:, self._num_legs:2*self._num_legs]).clamp(0.4,0.6) # 4:7 and clip leg duty cycle to valid range [0,1]
         self.p_lw = self._processed_actions[:, 2*self._num_legs:(2*self._num_legs + 3*self._num_legs*self._number_predict_step)].reshape([self.num_envs, self._num_legs, 3, self._number_predict_step])
         self.F_lw = self._processed_actions[:, (2*self._num_legs + 3*self._num_legs*self._number_predict_step):].reshape([self.num_envs, self._num_legs, 3, self._prevision_horizon])
         # self.z = [self.f, self.d, self.p_lw, self.F_lw]
