@@ -44,7 +44,7 @@ def jax_to_torch(x: jax.Array):
 def torch_to_jax(x):
     return jax.dlpack.from_dlpack(torch.utils.dlpack.to_dlpack(x))
 
-verbose_mb = False
+verbose_mb = True
 verbose_loop = 40
 vizualise_debug = {'foot': True, 'jacobian': True, 'foot_traj': True, 'lift-off': True, 'touch-down': True}
 torch.set_printoptions(precision=2, linewidth=200, sci_mode=False)
@@ -278,7 +278,7 @@ class ModelBaseAction(ActionTerm):
         #self.f = 2    Doesn't change from default
         #self.d = 0.55 Doesn't change from default 
         self.p_lw = torch.tensor([[0.243, 0.138, 0],[0.243, -0.138, 0],[-0.236, 0.137, 0],[-0.236, -0.137, 0]], device=self.device).unsqueeze(0).expand(self.num_envs, -1, -1).unsqueeze(-1) 
-        self.F_lw = self._processed_actions.reshape([self.num_envs, self._num_legs, 3, self._prevision_horizon])
+        self.F_lw = self._processed_actions.reshape([self.num_envs, self._num_legs, 3, self._prevision_horizon])*10
         ##<<<DEBUG
 
         # Optimize the latent variable with the model base controller
