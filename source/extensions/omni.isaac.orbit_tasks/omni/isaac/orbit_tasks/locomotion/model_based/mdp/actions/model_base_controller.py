@@ -176,7 +176,7 @@ class samplingController(modelBaseController):
         """
         super().late_init(device, num_envs, num_legs, time_horizon, dt_out, decimation, dt_in)
         self.phase = torch.zeros(num_envs, num_legs, device=device)
-        self.phase[:,(0,2)] = 0.5 # Init phase [0.5, 0, 0.5, 0]
+        self.phase[:,(0,3)] = 0.5 # Init phase [0.5, 0, 0.5, 0]
         self.p0_lw = p_default_lw.clone().detach()
         self.swing_time = torch.zeros(num_envs, num_legs, device=device)
         self.p_lw_sim_prev = p_default_lw.clone().detach()
@@ -193,7 +193,8 @@ class samplingController(modelBaseController):
         """
         # Reset gait phase          : Shape (batch_size, num_legs)
         self.phase[env_ids,:] = torch.zeros_like(self.phase, device=self._device)[env_ids,:]
-        (self.phase[env_ids,:])[:,(0,2)] = 0.5 # Init phase [0.5, 0, 0.5, 0]
+        self.phase[env_ids,0] = 0.5
+        self.phase[env_ids,3] = 0.5 # Init phase [0.5, 0, 0.5, 0]
 
         # Reset lift-off pos       : Shape (batch_size, num_legs, 3)
         self.p0_lw[env_ids,:,:] = p_default_lw[env_ids,:,:].clone().detach()

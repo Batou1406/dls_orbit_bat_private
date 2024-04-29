@@ -44,9 +44,9 @@ def jax_to_torch(x: jax.Array):
 def torch_to_jax(x):
     return jax.dlpack.from_dlpack(torch.utils.dlpack.to_dlpack(x))
 
-verbose_mb = True
+verbose_mb = False
 verbose_loop = 40
-vizualise_debug = {'foot': True, 'jacobian': True, 'foot_traj': True, 'lift-off': True, 'touch-down': True}
+vizualise_debug = {'foot': False, 'jacobian': True, 'foot_traj': True, 'lift-off': True, 'touch-down': True, 'GRF': True}
 torch.set_printoptions(precision=2, linewidth=200, sci_mode=False)
 
 class ModelBaseAction(ActionTerm):
@@ -219,10 +219,11 @@ class ModelBaseAction(ActionTerm):
             self.my_visualizer = {}
             self.my_visualizer['foot'] = {'foot_swing' : define_markers('sphere', {'radius': 0.03, 'color': (1.0,1.0,0)}),
                                           'foot_stance': define_markers('sphere', {'radius': 0.03, 'color': (0.0,1.0,0)})}
-            self.my_visualizer['jacobian'] = define_markers('arrow_x', {'scale':(0.03,0.03,0.15), 'color': (1.0,0,0)})
-            self.my_visualizer['foot_traj'] = define_markers('sphere', {'radius': 0.02, 'color': (1.0,0.0,1.0)})
-            self.my_visualizer['lift-off'] = define_markers('sphere', {'radius': 0.03, 'color': (0.0,0.0,1.0)})
-            self.my_visualizer['touch-down'] = define_markers('sphere', {'radius': 0.035, 'color': (0.0,1.0,1.0)})
+            self.my_visualizer['jacobian'] = define_markers('arrow_x', {'scale':(0.1,0.1,1.0), 'color': (1.0,0,0)})
+            self.my_visualizer['foot_traj'] = define_markers('sphere', {'radius': 0.01, 'color': (0.0,1.0,0.0)})
+            self.my_visualizer['lift-off'] = define_markers('sphere', {'radius': 0.02, 'color': (0.678,1.0,0.184)})
+            self.my_visualizer['touch-down'] = define_markers('sphere', {'radius': 0.02, 'color': (0.196,0.804,0.196)})
+            self.my_visualizer['GRF']= define_markers('arrow_x', {'scale':(0.1,0.1,1.0), 'color': (0.196,0.804,0.196)})#'scale':(0.03,0.03,0.15), 
 
 
     """
@@ -231,8 +232,10 @@ class ModelBaseAction(ActionTerm):
 
     @property
     def action_dim(self) -> int:
-        # return sum(variable.shape[1:].numel() for variable in self.z) # shape[1:], return all the dimension exept dim0=batch_size
-        return self.F_lw.shape[1:].numel()
+        return sum(variable.shape[1:].numel() for variable in self.z) # shape[1:], return all the dimension exept dim0=batch_size
+        ##>>>DEBUG
+        # return self.F_lw.shape[1:].numel()
+        ##<<<DEBUG
 
     @property
     def raw_actions(self) -> torch.Tensor:
@@ -268,17 +271,17 @@ class ModelBaseAction(ActionTerm):
         self._processed_actions = self._raw_actions * self._scale + self._offset
 
         # reconstruct the latent variable from the RL poliy actions
-        # self.f = (self._processed_actions[:, :self._num_legs]).clamp(2,2) # 0:3 and clip frequency to valid range [0,20]
-        # self.d = (self._processed_actions[:, self._num_legs:2*self._num_legs]).clamp(0.55,0.55) # 4:7 and clip leg duty cycle to valid range [0,1]
-        # self.p_lw = self._processed_actions[:, 2*self._num_legs:(2*self._num_legs + 3*self._num_legs*self._number_predict_step)].reshape([self.num_envs, self._num_legs, 3, self._number_predict_step])
-        # self.F_lw = self._processed_actions[:, (2*self._num_legs + 3*self._num_legs*self._number_predict_step):].reshape([self.num_envs, self._num_legs, 3, self._prevision_horizon])
+        self.f = 2*(self._processed_actions[:, :self._num_legs]).clamp(0,10) # 0:3 and clip frequency to valid range [0,20]
+        self.d = (self._processed_actions[:, self._num_legs:2*self._num_legs]).clamp(0.1,0.9) # 4:7 and clip leg duty cycle to valid range [0,1]
+        self.p_lw = 0.5*self._processed_actions[:, 2*self._num_legs:(2*self._num_legs + 3*self._num_legs*self._number_predict_step)].reshape([self.num_envs, self._num_legs, 3, self._number_predict_step])
+        self.F_lw = 50*self._processed_actions[:, (2*self._num_legs + 3*self._num_legs*self._number_predict_step):].reshape([self.num_envs, self._num_legs, 3, self._prevision_horizon]) #TODO change as scale parameter
         # self.z = [self.f, self.d, self.p_lw, self.F_lw]
 
         ##>>>DEBUG
-        #self.f = 2    Doesn't change from default
-        #self.d = 0.55 Doesn't change from default 
-        self.p_lw = torch.tensor([[0.243, 0.138, 0],[0.243, -0.138, 0],[-0.236, 0.137, 0],[-0.236, -0.137, 0]], device=self.device).unsqueeze(0).expand(self.num_envs, -1, -1).unsqueeze(-1) 
-        self.F_lw = self._processed_actions.reshape([self.num_envs, self._num_legs, 3, self._prevision_horizon])*10
+        # #self.f = 2    Doesn't change from default
+        # #self.d = 0.55 Doesn't change from default 
+        # self.p_lw = torch.tensor([[0.243, 0.138, 0],[0.243, -0.138, 0],[-0.236, 0.137, 0],[-0.236, -0.137, 0]], device=self.device).unsqueeze(0).expand(self.num_envs, -1, -1).unsqueeze(-1) 
+        # self.F_lw = self._processed_actions.reshape([self.num_envs, self._num_legs, 3, self._prevision_horizon])*10
         ##<<<DEBUG
 
         # Optimize the latent variable with the model base controller
@@ -499,7 +502,7 @@ class ModelBaseAction(ActionTerm):
     def debug_apply_action(self, p_lw, p_dot_lw, q_dot, jacobian_lw, jacobian_dot_lw, mass_matrix, h, F0_star_lw, c0_star, pt_i_star_lw):
         global verbose_loop
 
-        # Print 
+        # --- Print --- 
         verbose_loop+=1
         if verbose_loop>=40:
             verbose_loop=0
@@ -513,7 +516,7 @@ class ModelBaseAction(ActionTerm):
             if (self.F_lw != self.F_star_lw).any():
                 assert ValueError('F value don\'t match...')
 
-        # Visualize foot position
+        # --- Visualize foot position ---
         if vizualise_debug['foot']:
             # p_lw_ = p_lw.clone().detach()
             p_w = p_lw + self._env.scene.env_origins.unsqueeze(1)
@@ -534,7 +537,7 @@ class ModelBaseAction(ActionTerm):
             self.my_visualizer['foot']['foot_stance'].visualize(marker_locations_stance)
             self.my_visualizer['foot']['foot_swing'].visualize(marker_locations_swing)
 
-        # Visualise jacobian
+        # --- Visualise jacobian ---
         if vizualise_debug['jacobian']:
             # Get point where to draw the jacobian
             joint_pos_w = self._asset.data.body_pos_w[0,1+np.asarray(self._joint_ids),:] # shape (num_joints, 3) # +1 Not clean a way to change from joint to body view but it works
@@ -545,22 +548,23 @@ class ModelBaseAction(ActionTerm):
             jacobian_temp_T_lw = jacobian_temp_lw.permute(0,2,1) # shape (num_legs, 3, num_joints_per_leg) -> (num_legs, num_joints_per_leg, 3)
             jacobian_temp_T_lw = jacobian_temp_T_lw.permute(1,0,2).flatten(0,1) # shape (num_joints, 3) # permute to have index in right order (ie. 0,1,2,... and not 0,4,8,1,...)
             normalize_jacobian_temp_T_lw = torch.nn.functional.normalize(jacobian_temp_T_lw, p=2, dim=1) # Transform jacobian to unit vectors
-
             # angle : u dot v = cos(angle) -> angle = acos(u*v) : for unit vector # Need to take the opposite angle in order to make appropriate rotation
             angle = -torch.acos(torch.tensordot(normalize_jacobian_temp_T_lw, torch.tensor([1.0,0.0,0.0], device=self.device), dims=1)) # shape(num_joints, 3) -> (num_joints)
             # Axis : Cross product between u^v (for unit vectors)
             axis = torch.cross(normalize_jacobian_temp_T_lw, torch.tensor([1.0,0.0,0.0], device=self.device).unsqueeze(0).expand(normalize_jacobian_temp_T_lw.shape))
-
             marker_orientations = quat_from_angle_axis(angle=angle, axis=axis)
 
+            # Scale Jacobian arrow
+            scale = torch.linalg.vector_norm(jacobian_temp_T_lw, dim=1).unsqueeze(-1).expand(jacobian_temp_T_lw.shape) / 1.8
+
             # The arrow point is define at its center. So to avoid having the arrow in the middle of the joint, we translate it by a factor along its pointing direction
-            translation = torch.tensor([0.05, 0.0, 0.0], device=self.device).unsqueeze(0).expand(joint_pos_w.shape)
+            translation = scale*torch.tensor([0.25, 0.0, 0.0], device=self.device).unsqueeze(0).expand(joint_pos_w.shape)
             translation = math_utils.transform_points(points=translation.unsqueeze(1), pos=joint_pos_w, quat=marker_orientations).squeeze(1)
             marker_locations = translation
 
-            self.my_visualizer['jacobian'].visualize(marker_locations, marker_orientations)
+            self.my_visualizer['jacobian'].visualize(translations=marker_locations, orientations=marker_orientations, scales=scale)
 
-        # Visualize foot trajectory
+        # --- Visualize foot trajectory ---
         if vizualise_debug['foot_traj']:
             pt_i_lw_= self.pt_star_lw.clone().detach()  # shape (batch_size, num_legs, 9, decimation) (9=px,py,pz,vx,vy,vz,ax,ay,az)
             pt_i_lw_ = pt_i_lw_[0,:,0:3,:] # -> shape (num_legs, 3, decimation)
@@ -576,7 +580,7 @@ class ModelBaseAction(ActionTerm):
             marker_locations = pt_i_w[0,...]
             self.my_visualizer['foot_traj'].visualize(marker_locations)
 
-        # Visualize Lift-off position
+        # --- Visualize Lift-off position ---
         if vizualise_debug['lift-off']:
             p0_lw = self.controller.p0_lw.clone().detach()
             p0_w = p0_lw + self._env.scene.env_origins.unsqueeze(1)
@@ -594,13 +598,39 @@ class ModelBaseAction(ActionTerm):
             marker_locations = p0_w[0,:,:]
             self.my_visualizer['lift-off'].visualize(marker_locations)
 
-        # Visualize touch-down position
+        #  --- Visualize touch-down position ---
         if vizualise_debug['touch-down']:
             p2_lw = self.p_lw[:,:,:,0].clone().detach()
             p2_w = p2_lw + self._env.scene.env_origins.unsqueeze(1)
             p2_w[:,:,2] = 0.05 #small height to make them more visible
             marker_locations = p2_w[0,:,:]
             self.my_visualizer['touch-down'].visualize(marker_locations)
+
+        # --- Visualize Ground Reactions Forces (GRF) ---
+        if vizualise_debug['GRF']:
+
+            # GRF location are the feet position
+            p3_w = p_lw + self._env.scene.env_origins.unsqueeze(1) # (batch, num_legs, 3)
+            marker_locations = p3_w[0,...]
+
+            # From GRF, retrieve orientation (angle and axis representation)
+            F = F0_star_lw.clone().detach()[0,:] # (batch, num_legs, 3) -> (num_legs, 3)
+            normalize_F = torch.nn.functional.normalize(F, p=2, dim=1) # Transform jacobian to unit vectors
+            # angle : u dot v = cos(angle) -> angle = acos(u*v) : for unit vector # Need to take the opposite angle in order to make appropriate rotation
+            angle = -torch.acos(torch.tensordot(normalize_F, torch.tensor([1.0,0.0,0.0], device=self.device), dims=1)) # shape(num_joints, 3) -> (num_joints)
+            # Axis : Cross product between u^v (for unit vectors)
+            axis = torch.cross(normalize_F, torch.tensor([1.0,0.0,0.0], device=self.device).unsqueeze(0).expand(normalize_F.shape))
+            marker_orientations = quat_from_angle_axis(angle=angle, axis=axis)
+
+            # Scale GRF
+            scale = torch.linalg.vector_norm(F, dim=1).unsqueeze(-1).expand(F.shape) / 150
+
+            # The arrow point is define at its center. So to avoid having the arrow in the middle of the feet, we translate it by a factor along its pointing direction
+            translation = scale*torch.tensor([0.25, 0.0, 0.0], device=self.device).unsqueeze(0).expand(marker_locations.shape)
+            translation = math_utils.transform_points(points=translation.unsqueeze(1), pos=marker_locations, quat=marker_orientations).squeeze(1)
+            marker_locations = translation
+
+            self.my_visualizer['GRF'].visualize(translations=marker_locations, orientations=marker_orientations, scales=scale)
 
 
 
