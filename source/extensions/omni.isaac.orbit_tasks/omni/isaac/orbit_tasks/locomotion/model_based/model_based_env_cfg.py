@@ -216,7 +216,7 @@ class EventCfg:
     - push_robot : assign base a velocity at random interval - sample uniform vel ±0.5, time 10-15s
     """
 
-    # startup
+    # ----- startup -----
     physics_material = EventTerm(
         func=mdp.randomize_rigid_body_material,
         mode="startup",
@@ -228,14 +228,13 @@ class EventCfg:
             "num_buckets": 64,
         },
     )
-
     add_base_mass = EventTerm(
         func=mdp.add_body_mass,
         mode="startup",
         params={"asset_cfg": SceneEntityCfg("robot", body_names="base"), "mass_range": (-5.0, 5.0)},
     )
 
-    # reset
+    # ---- reset ----
     base_external_force_torque = EventTerm(
         func=mdp.apply_external_force_torque,
         mode="reset",
@@ -245,7 +244,6 @@ class EventCfg:
             "torque_range": (-0.0, 0.0),
         },
     )
-
     reset_base = EventTerm(
         func=mdp.reset_root_state_uniform,
         mode="reset",
@@ -261,7 +259,6 @@ class EventCfg:
             },
         },
     )
-
     reset_robot_joints = EventTerm(
         func=mdp.reset_joints_by_scale,
         mode="reset",
@@ -271,7 +268,7 @@ class EventCfg:
         },
     )
 
-    # interval
+    # ----- interval -----
     push_robot = EventTerm(
         func=mdp.push_by_setting_velocity,
         mode="interval",
@@ -297,12 +294,12 @@ class RewardsCfg:
     """
 
     # -- task
-    track_lin_vel_xy_exp = RewTerm(
-        func=mdp.track_lin_vel_xy_exp, weight=1.0, params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
-    )
-    track_ang_vel_z_exp = RewTerm(
-        func=mdp.track_ang_vel_z_exp, weight=0.5, params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
-    )
+    # track_lin_vel_xy_exp = RewTerm(
+    #     func=mdp.track_lin_vel_xy_exp, weight=1.0, params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
+    # )
+    # track_ang_vel_z_exp = RewTerm(
+    #     func=mdp.track_ang_vel_z_exp, weight=0.5, params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
+    # )
 
     # -- Additionnal penalties : Need a negative weight
     # lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-2.0)

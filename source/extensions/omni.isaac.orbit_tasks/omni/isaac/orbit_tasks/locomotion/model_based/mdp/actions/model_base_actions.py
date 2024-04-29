@@ -190,7 +190,7 @@ class ModelBaseAction(ActionTerm):
 
         # Latent variable
         self.f = 2*torch.ones(self.num_envs, self._num_legs, device=self.device)
-        self.d = 0.5*torch.ones(self.num_envs, self._num_legs, device=self.device)
+        self.d = 0.55*torch.ones(self.num_envs, self._num_legs, device=self.device)
         self.p_lw = torch.zeros(self.num_envs, self._num_legs, 3, self._number_predict_step, device=self.device)
         self.F_lw = torch.zeros(self.num_envs, self._num_legs, 3, self._prevision_horizon, device=self.device)
         self.z = [self.f, self.d, self.p_lw, self.F_lw]
@@ -231,7 +231,8 @@ class ModelBaseAction(ActionTerm):
 
     @property
     def action_dim(self) -> int:
-        return sum(variable.shape[1:].numel() for variable in self.z)
+        # return sum(variable.shape[1:].numel() for variable in self.z) # shape[1:], return all the dimension exept dim0=batch_size
+        return self.F_lw.shape[1:].numel()
 
     @property
     def raw_actions(self) -> torch.Tensor:
@@ -267,11 +268,18 @@ class ModelBaseAction(ActionTerm):
         self._processed_actions = self._raw_actions * self._scale + self._offset
 
         # reconstruct the latent variable from the RL poliy actions
-        self.f = (self._processed_actions[:, :self._num_legs]).clamp(1,2) # 0:3 and clip frequency to valid range [0,20]
-        self.d = (self._processed_actions[:, self._num_legs:2*self._num_legs]).clamp(0.4,0.6) # 4:7 and clip leg duty cycle to valid range [0,1]
-        self.p_lw = self._processed_actions[:, 2*self._num_legs:(2*self._num_legs + 3*self._num_legs*self._number_predict_step)].reshape([self.num_envs, self._num_legs, 3, self._number_predict_step])
-        self.F_lw = self._processed_actions[:, (2*self._num_legs + 3*self._num_legs*self._number_predict_step):].reshape([self.num_envs, self._num_legs, 3, self._prevision_horizon])
+        # self.f = (self._processed_actions[:, :self._num_legs]).clamp(2,2) # 0:3 and clip frequency to valid range [0,20]
+        # self.d = (self._processed_actions[:, self._num_legs:2*self._num_legs]).clamp(0.55,0.55) # 4:7 and clip leg duty cycle to valid range [0,1]
+        # self.p_lw = self._processed_actions[:, 2*self._num_legs:(2*self._num_legs + 3*self._num_legs*self._number_predict_step)].reshape([self.num_envs, self._num_legs, 3, self._number_predict_step])
+        # self.F_lw = self._processed_actions[:, (2*self._num_legs + 3*self._num_legs*self._number_predict_step):].reshape([self.num_envs, self._num_legs, 3, self._prevision_horizon])
         # self.z = [self.f, self.d, self.p_lw, self.F_lw]
+
+        ##>>>DEBUG
+        #self.f = 2    Doesn't change from default
+        #self.d = 0.55 Doesn't change from default 
+        self.p_lw = torch.tensor([[0.243, 0.138, 0],[0.243, -0.138, 0],[-0.236, 0.137, 0],[-0.236, -0.137, 0]], device=self.device).unsqueeze(0).expand(self.num_envs, -1, -1).unsqueeze(-1) 
+        self.F_lw = self._processed_actions.reshape([self.num_envs, self._num_legs, 3, self._prevision_horizon])
+        ##<<<DEBUG
 
         # Optimize the latent variable with the model base controller
         self.p_star_lw, self.F_star_lw, self.c_star, self.pt_star_lw = self.controller.optimize_latent_variable(f=self.f, d=self.d, p_lw=self.p_lw, F_lw=self.F_lw)
