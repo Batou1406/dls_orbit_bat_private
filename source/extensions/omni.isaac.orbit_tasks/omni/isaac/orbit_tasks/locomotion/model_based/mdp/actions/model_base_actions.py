@@ -586,10 +586,10 @@ class ModelBaseAction(ActionTerm):
             pt_i_w = pt_i_lw_ + self._env.scene.env_origins.unsqueeze(1)
             
             # Visualize the traj only if it is used (ie. the foot is in swing -> c==0)
-            # marker_indices = ~c0_star[0,...]
+            marker_indices = ~((c0_star.unsqueeze(-1).expand(self.num_envs,self._num_legs,22)).flatten(1,2).flatten(0,1))
             # marker_locations = pt_i_w[0,...]        
 
-            self.my_visualizer['foot_traj'].visualize(translations=marker_locations)#, marker_indices=marker_indices)
+            self.my_visualizer['foot_traj'].visualize(translations=marker_locations, marker_indices=marker_indices)
 
         # --- Visualize Lift-off position ---
         if vizualise_debug['lift-off']:
