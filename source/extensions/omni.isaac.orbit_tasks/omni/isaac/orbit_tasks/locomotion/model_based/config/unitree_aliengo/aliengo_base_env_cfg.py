@@ -11,6 +11,7 @@ from omni.isaac.orbit_tasks.locomotion.model_based.model_based_env_cfg import Lo
 # Pre-defined configs
 ##
 from omni.isaac.orbit_assets.unitree import UNITREE_ALIENGO_CFG  # isort: skip
+from omni.isaac.orbit_assets.anymal import ANYMAL_C_CFG  # isort: skip
 
 
 @configclass
@@ -21,6 +22,7 @@ class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
 
         # ----- Select the robot : Unitree Aliengo -----
         self.scene.robot = UNITREE_ALIENGO_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+        self.scene.robot = ANYMAL_C_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
 
 
         # ----- Select the prime path of the height sensor : already default setting -----
