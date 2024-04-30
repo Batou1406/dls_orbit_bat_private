@@ -176,7 +176,7 @@ class samplingController(modelBaseController):
         """
         super().late_init(device, num_envs, num_legs, time_horizon, dt_out, decimation, dt_in)
         self.phase = torch.zeros(num_envs, num_legs, device=device)
-        self.phase[:,(0,3)] = 0.5 # Init phase [0.5, 0, 0.5, 0]
+        self.phase[:,(0,2)] = 0.5 # Init phase [0.5, 0, 0.5, 0]
         self.p0_lw = p_default_lw.clone().detach()
         self.swing_time = torch.zeros(num_envs, num_legs, device=device)
         self.p_lw_sim_prev = p_default_lw.clone().detach()
@@ -194,7 +194,7 @@ class samplingController(modelBaseController):
         # Reset gait phase          : Shape (batch_size, num_legs)
         self.phase[env_ids,:] = torch.zeros_like(self.phase, device=self._device)[env_ids,:]
         self.phase[env_ids,0] = 0.5
-        self.phase[env_ids,3] = 0.5 # Init phase [0.5, 0, 0.5, 0]
+        self.phase[env_ids,2] = 0.5 # Init phase [0.5, 0, 0.5, 0]
 
         # Reset lift-off pos       : Shape (batch_size, num_legs, 3)
         self.p0_lw[env_ids,:,:] = p_default_lw[env_ids,:,:].clone().detach()
@@ -207,7 +207,7 @@ class samplingController(modelBaseController):
 
 
 # ----------------------------------- Outer Loop ------------------------------
-    def optimize_latent_variable(self, f: torch.Tensor, d: torch.Tensor, p_lw: torch.Tensor, F_lw: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    def optimize_latent_variable(self, f: torch.Tensor, d: torch.Tensor, p_lw: torch.Tensor, F_lw: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """ Given the latent variable z=[f,d,p,F], return the optimized latent variable p*, F*, c*, pt*
         Note :
             The variable are in the 'local' world frame _wl. This notation is introduced to avoid confusion with the 'global' world frame, where all the batches coexists.
@@ -230,14 +230,15 @@ class samplingController(modelBaseController):
         c, self.phase = self.gait_generator(f=f, d=d, phase=self.phase, time_horizon=self._time_horizon, dt=self._dt_out)
 
         # Generate the swing trajectory
-        pt_lw = self.swing_trajectory_generator(p_lw=p_lw[:,:,:,0], c=c, d=d, f=f)
+        # pt_lw = self.swing_trajectory_generator(p_lw=p_lw[:,:,:,0], c=c, d=d, f=f)
+        pt_lw, full_pt_lw = self.full_swing_trajectory_generator(p_lw=p_lw[:,:,:,0], c=c, d=d, f=f)
 
         p_star_lw = p_lw
         F_star_lw = F_lw
         c_star = c
         pt_star_lw = pt_lw
 
-        return p_star_lw, F_star_lw, c_star, pt_star_lw
+        return p_star_lw, F_star_lw, c_star, pt_star_lw, full_pt_lw
     
 
     def gait_generator(self, f: torch.Tensor, d: torch.Tensor, phase: torch.tensor, time_horizon: int, dt) -> tuple[torch.Tensor, torch.Tensor]:
@@ -380,7 +381,122 @@ class samplingController(modelBaseController):
         pt_lw = torch.cat((desired_foot_pos_traj_lw, desired_foot_vel_traj_lw, desired_foot_acc_traj_lw), dim=2)
 
         return pt_lw
-     
+ 
+
+    def full_swing_trajectory_generator(self, p_lw: torch.Tensor, c: torch.Tensor, f: torch.Tensor, d: torch.Tensor) -> [torch.Tensor, torch.Tensor]:
+        """ Given feet position sequence and contact sequence -> compute swing trajectories by fitting a cubic spline between
+        the lift-off and the touch down define in the contact sequence. 
+        - Swing frequency and duty cycle are used to compute the swing period
+        - A middle point is used for the interpolation : which is heuristically defined. It defines the step height
+        - p1 (middle point) and p2 (touch-down) are updated each time, while p0 is conserved (always the same lift off position)
+        Note :
+            The variable are in the 'local' world frame _wl. This notation is introduced to avoid confusion with the 'global' world frame, where all the batches coexists.
+        
+        Args:
+            - p_lw (trch.Tensor): Foot touch down postion in _lw        of shape(batch_size, num_legs, 3)
+            - c   (torch.Tensor): Foot contact sequence                 of shape(batch_size, num_legs, time_horizon)
+            - f   (torch.Tensor): Leg frequency           in R+         of shape(batch_size, num_legs)
+            - d   (torch.Tensor): Stepping duty cycle     in[0,1]       of shape(batch_size, num_legs)
+
+        Returns:
+            - pt_lw (tch.Tensor): Desired Swing Leg traj. in _lw frame  of shape(batch_size, num_legs, 9, decimation)   (9 = xyz_pos, xzy_vel, xyz_acc)
+        """
+        # Step 0. Define and Compute usefull variables
+
+        # Heuristic TODO Save that on the right place, could also be a RL variable
+        step_height = 0.2
+
+
+        # Step 1. Compute the phase trajectory : shape (batch_size, num_legs, decimation)
+        # ie. retrieve the actual leg phase -> and compute the trajectory (phase evolution) for the next outer loop period (ie. for decimation inner loop iteration) 
+
+        # swing phase in [0,1] (leg is in swing when phase = [d, 1] -> scale to have swing_phase in [0,1]), shape(batch_size, num_legs)
+        swing_phase = (self.phase - d) / (1 - d)  
+
+        swing_frequency = f / (1 - d + 1e-10)           # [Hz] : swing frequency,   shape(batch_size, num_legs)
+        delta_phase = swing_frequency * self._dt_in      # delta_phase = swing_freq [Hz] * dt [s],  shape(batch_size, num_legs)
+
+        # swing phase trajectpry [phase, phase + delta_phase, ...],   shape (batch_size, num_legs, decimation)
+        # (batch_size, num_legs, 1) + [(1, 1, decimation) * (batch_size, num_legs, 1)] -> (batch_size, num_legs, decimation)
+        swing_phase_traj = (swing_phase.unsqueeze(-1)) + ((torch.arange(self._decimation, device=self._device).unsqueeze(0).unsqueeze(0)) * delta_phase.unsqueeze(-1))
+
+
+        # Step 2. Retrieve the three interpolation points : p0, p1, p2 (lift-off, middle point, touch down)
+
+        # Retrieve p0 : update p0 with latest foot position when in contact, don't update when in swing
+        # p0 shape (batch_size, num_legs, 3)
+        in_contact = (c[:,:,0]==1).unsqueeze(-1)    # True if foot in contact, False in in swing, shape (batch_size, num_legs, 1)
+        self.p0_lw = (self.p_lw_sim_prev * in_contact) + (self.p0_lw * (~in_contact))
+
+        # Retrieve p2 : this is simply the foot touch down prior given as input
+        # p2 shape (batch_size, num_legs, 3) 
+        p2_lw = p_lw 
+
+        # Retrieve p1 : (x,y) position are define as the middle point between p0 and p1 (lift-off and touch-down). z is heuristcally define
+        # p1 shape (batch_size, num_legs, 3)
+        # TODO Not only choose height as step heigh but use +the terrain height or +the feet height at touch down
+        p1_lw = (self.p0_lw[:,:,:2] + p2_lw[:,:,:2]) / 2     # p1(x,y) is in the middle of p0 and p2
+        p1_lw = torch.cat((p1_lw, step_height*torch.ones_like(p1_lw[:,:,:1])), dim=2) # Append a third dimension z : defined as step_height
+
+
+        # Step 3. Compute the parameters for the interpolation (control points)
+        # Compute the a,b,c,d polynimial coefficient for the cubic interpolation S(x) = a*x^3 + b*x^2 + c*x + d, x in [0,1]
+
+        # If swing_time < swing period/2 -> S_0(t) (ie. first interpolation), otherwise -> S_1(t - delta_t/2) (ie. second interpolation)
+        # is_S0 may vary during the trajectory if we are close to the middle point, (ie if phase goes through 0.5), this is why is_S0 has decimation dimension
+        is_S0 = (swing_phase_traj <=  0.5).unsqueeze(2)  # shape (batch_size, num_legs, 1, decimation)
+
+        # cp_x shape (batch_size, num_legs, 3, decimation)
+        # cp_x already has decimation dimension thanks to is_S0, px.unsqueeze(-1) : shape(batch, legs, 3) -> shape(batch, legs, 3, 1)
+        #     --------------- S0 ---------------                                              ------------- S1 -------------
+        cp1 = (self.p0_lw.unsqueeze(-1) * is_S0)                                            + (p1_lw.unsqueeze(-1) * ~is_S0)
+        cp2 = (self.p0_lw.unsqueeze(-1) * is_S0)                                            + (torch.cat((p2_lw[:,:,:2], p1_lw[:,:,2:]), dim=2).unsqueeze(-1) * ~is_S0)
+        cp3 = (torch.cat((self.p0_lw[:,:,:2], p1_lw[:,:,2:]), dim=2).unsqueeze(-1) * is_S0) + (p2_lw.unsqueeze(-1) * ~is_S0)
+        cp4 = (p1_lw.unsqueeze(-1) * is_S0)                                                 + (p2_lw.unsqueeze(-1) * ~is_S0)
+
+
+        # Step 4. Prepare parameters to compute interpolation trajectory in one operation -> matrix multiplication
+        # Prepare swing phase traj to be multplied by cp_x : shape(batch_size, num_leg, decimation) -> (batch_size, num_leg, 1, decimation) (unsqueezed(2) but is_S0 is already unsqueezed (ie in the right shape))
+        # swing phase may be > 1 if we reach the end of the traj, thus we clamp it to 1. 
+        # Moreover, S0 and S1 takes values in [0,1], thus swing phase need to be double (and modulo 1) to be corrected
+        phase_traj = (2 * swing_phase_traj.unsqueeze(2) - 1*(~is_S0)).clamp(0,1) # ie. double_swing_phase_traj
+
+
+        # Step 5. Compute the interpolation trajectory
+        # shape (batch_size, num_legs, 3, decimation)
+        desired_foot_pos_traj_lw = cp1*(1 - phase_traj)**3 + 3*cp2*(phase_traj)*(1 - phase_traj)**2 + 3*cp3*((phase_traj)**2)*(1 - phase_traj) + cp4*(phase_traj)**3
+        desired_foot_vel_traj_lw = 3*(cp2 - cp1)*(1 - phase_traj)**2 + 6*(cp3 - cp2)*(1 - phase_traj)*(phase_traj) + 3*(cp4 - cp3)*(phase_traj)**2
+        desired_foot_acc_traj_lw = 6*(1 - phase_traj) * (cp3 - 2*cp2 + cp1) + 6 * (phase_traj) * (cp4 - 2*cp3 + cp2)
+
+        # shape (batch_size, num_legs, 9, decimation) (9 = xyz_pos, xzy_vel, xyz_acc)
+        pt_lw = torch.cat((desired_foot_pos_traj_lw, desired_foot_vel_traj_lw, desired_foot_acc_traj_lw), dim=2)
+
+        # return pt_lw
+    
+        # Compute the full trajectory for plotting and debugging purposes
+        # Shape (1,1,1,22)
+        full_phase_traj = torch.cat((torch.arange(start=0, end=1.01, step=0.1, device=self._device), torch.arange(start=0, end=1.01, step=0.1, device=self._device))).unsqueeze(0).unsqueeze(1).unsqueeze(2) # [0, 0.1, 0.2, ..., 0.9, 1.0, 0.0, 0.1, ..., 1.0]
+        is_S0 = (torch.arange(start=0, end=22, step=1, device=self._device) < 11).unsqueeze(0).unsqueeze(1).unsqueeze(2)
+
+        # Recompute cp_x with the new 'decimation' that comes from the new is_S0
+        # cp_x shape (batch_size, num_legs, 3, 22)
+        # cp_x already has decimation dimension thanks to is_S0, px.unsqueeze(-1) : shape(batch, legs, 3) -> shape(batch, legs, 3, 1)
+        #     --------------- S0 ---------------                                              ------------- S1 -------------
+        cp1 = (self.p0_lw.unsqueeze(-1) * is_S0)                                            + (p1_lw.unsqueeze(-1) * ~is_S0)
+        cp2 = (self.p0_lw.unsqueeze(-1) * is_S0)                                            + (torch.cat((p2_lw[:,:,:2], p1_lw[:,:,2:]), dim=2).unsqueeze(-1) * ~is_S0)
+        cp3 = (torch.cat((self.p0_lw[:,:,:2], p1_lw[:,:,2:]), dim=2).unsqueeze(-1) * is_S0) + (p2_lw.unsqueeze(-1) * ~is_S0)
+        cp4 = (p1_lw.unsqueeze(-1) * is_S0)                                                 + (p2_lw.unsqueeze(-1) * ~is_S0)
+
+        # Compute the full trajectory
+        # shape (batch_size, num_legs, 3, 22)
+        desired_foot_pos_traj_lw = cp1*(1 - full_phase_traj)**3 + 3*cp2*(full_phase_traj)*(1 - full_phase_traj)**2 + 3*cp3*((full_phase_traj)**2)*(1 - full_phase_traj) + cp4*(full_phase_traj)**3
+        desired_foot_vel_traj_lw = 3*(cp2 - cp1)*(1 - full_phase_traj)**2 + 6*(cp3 - cp2)*(1 - full_phase_traj)*(full_phase_traj) + 3*(cp4 - cp3)*(full_phase_traj)**2
+        desired_foot_acc_traj_lw = 6*(1 - full_phase_traj) * (cp3 - 2*cp2 + cp1) + 6 * (full_phase_traj) * (cp4 - 2*cp3 + cp2)
+
+        full_pt_lw = torch.cat((desired_foot_pos_traj_lw, desired_foot_vel_traj_lw, desired_foot_acc_traj_lw), dim=2)
+
+        return pt_lw, full_pt_lw
+
 
     def swing_trajectory_generator_legacy(self, p_lw: torch.Tensor, c: torch.Tensor, f: torch.Tensor, d: torch.Tensor) -> torch.Tensor:
         """ Given feet position sequence and contact sequence -> compute swing trajectories by fitting a cubic spline between

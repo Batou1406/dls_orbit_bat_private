@@ -44,7 +44,7 @@ def jax_to_torch(x: jax.Array):
 def torch_to_jax(x):
     return jax.dlpack.from_dlpack(torch.utils.dlpack.to_dlpack(x))
 
-verbose_mb = False
+verbose_mb = True
 verbose_loop = 40
 vizualise_debug = {'foot': False, 'jacobian': True, 'foot_traj': True, 'lift-off': True, 'touch-down': True, 'GRF': True}
 torch.set_printoptions(precision=2, linewidth=200, sci_mode=False)
@@ -203,7 +203,8 @@ class ModelBaseAction(ActionTerm):
         self.p_star_lw = torch.zeros(self.num_envs, self._num_legs, 3, self._number_predict_step, device=self.device)
         self.F_star_lw = torch.zeros(self.num_envs, self._num_legs, 3, self._prevision_horizon, device=self.device)
         self.c_star = torch.ones(self.num_envs, self._num_legs, self._prevision_horizon, device=self.device)
-        self.pt_star_lw= torch.zeros(self.num_envs, self._num_legs, 9, self._decimation, device=self.device)
+        self.pt_star_lw = torch.zeros(self.num_envs, self._num_legs, 9, self._decimation, device=self.device)
+        self.full_pt_lw = torch.zeros(self.num_envs, self._num_legs, 9, 22, device=self.device)
 
         # Control input u : joint torques
         self.u = torch.zeros(self.num_envs, self._num_joints, device=self.device)
@@ -232,9 +233,9 @@ class ModelBaseAction(ActionTerm):
 
     @property
     def action_dim(self) -> int:
-        return sum(variable.shape[1:].numel() for variable in self.z) # shape[1:], return all the dimension exept dim0=batch_size
+        # return sum(variable.shape[1:].numel() for variable in self.z) # shape[1:], return all the dimension exept dim0=batch_size
         ##>>>DEBUG
-        # return self.F_lw.shape[1:].numel()
+        return self.F_lw.shape[1:].numel()
         ##<<<DEBUG
 
     @property
@@ -271,21 +272,21 @@ class ModelBaseAction(ActionTerm):
         self._processed_actions = self._raw_actions * self._scale + self._offset
 
         # reconstruct the latent variable from the RL poliy actions
-        self.f = 2*(self._processed_actions[:, :self._num_legs]).clamp(0,10) # 0:3 and clip frequency to valid range [0,20]
-        self.d = (self._processed_actions[:, self._num_legs:2*self._num_legs]).clamp(0.1,0.9) # 4:7 and clip leg duty cycle to valid range [0,1]
-        self.p_lw = 0.5*self._processed_actions[:, 2*self._num_legs:(2*self._num_legs + 3*self._num_legs*self._number_predict_step)].reshape([self.num_envs, self._num_legs, 3, self._number_predict_step])
-        self.F_lw = 50*self._processed_actions[:, (2*self._num_legs + 3*self._num_legs*self._number_predict_step):].reshape([self.num_envs, self._num_legs, 3, self._prevision_horizon]) #TODO change as scale parameter
+        # self.f = 2*(self._processed_actions[:, :self._num_legs]).clamp(0,10) # 0:3 and clip frequency to valid range [0,20]
+        # self.d = (self._processed_actions[:, self._num_legs:2*self._num_legs]).clamp(0.1,0.9) # 4:7 and clip leg duty cycle to valid range [0,1]
+        # self.p_lw = 0.5*self._processed_actions[:, 2*self._num_legs:(2*self._num_legs + 3*self._num_legs*self._number_predict_step)].reshape([self.num_envs, self._num_legs, 3, self._number_predict_step])
+        # self.F_lw = 50*self._processed_actions[:, (2*self._num_legs + 3*self._num_legs*self._number_predict_step):].reshape([self.num_envs, self._num_legs, 3, self._prevision_horizon]) #TODO change as scale parameter
         # self.z = [self.f, self.d, self.p_lw, self.F_lw]
 
         ##>>>DEBUG
-        # #self.f = 2    Doesn't change from default
-        # #self.d = 0.55 Doesn't change from default 
-        # self.p_lw = torch.tensor([[0.243, 0.138, 0],[0.243, -0.138, 0],[-0.236, 0.137, 0],[-0.236, -0.137, 0]], device=self.device).unsqueeze(0).expand(self.num_envs, -1, -1).unsqueeze(-1) 
-        # self.F_lw = self._processed_actions.reshape([self.num_envs, self._num_legs, 3, self._prevision_horizon])*10
+        #self.f = 2    Doesn't change from default
+        #self.d = 0.55 Doesn't change from default 
+        self.p_lw = torch.tensor([[0.243, 0.138, 0],[0.243, -0.138, 0],[-0.236, 0.137, 0],[-0.236, -0.137, 0]], device=self.device).unsqueeze(0).expand(self.num_envs, -1, -1).unsqueeze(-1) 
+        self.F_lw = self._processed_actions.reshape([self.num_envs, self._num_legs, 3, self._prevision_horizon])*10
         ##<<<DEBUG
 
         # Optimize the latent variable with the model base controller
-        self.p_star_lw, self.F_star_lw, self.c_star, self.pt_star_lw = self.controller.optimize_latent_variable(f=self.f, d=self.d, p_lw=self.p_lw, F_lw=self.F_lw)
+        self.p_star_lw, self.F_star_lw, self.c_star, self.pt_star_lw, self.full_pt_lw = self.controller.optimize_latent_variable(f=self.f, d=self.d, p_lw=self.p_lw, F_lw=self.F_lw)
 
         # Reset the inner loop counter
         self.inner_loop = 0
@@ -311,12 +312,12 @@ class ModelBaseAction(ActionTerm):
         self.inner_loop += 1            
 
         # Use model controller to compute the torques from the latent variable
-        # Transform the shape from (batch_size, num_legs, num_joints_per_leg) to (batch_size, num_joints)
+        # Transform the shape from (batch_size, num_legs, num_joints_per_leg) to (batch_size, num_joints) # Permute and reshape to have the joint in right order [0,4,8][1,5,...] to [0,1,2,...]
         self.u = (self.controller.compute_control_output(F0_star_lw=F0_star_lw, c0_star=c0_star, pt_i_star_lw=pt_i_star_lw, p_lw=p_lw, p_dot_lw=p_dot_lw, q_dot=q_dot,
                                                           jacobian_lw=jacobian_lw, jacobian_dot_lw=jacobian_dot_lw, mass_matrix=mass_matrix, h=h)).permute(0,2,1).reshape(self.num_envs,self._num_joints)
 
         # Apply the computed torques
-        self._asset.set_joint_effort_target(self.u, joint_ids=self._joint_ids)
+        self._asset.set_joint_effort_target(self.u)#, joint_ids=self._joint_ids) # Do use joint_ids to speed up the process
 
         # Debug
         if verbose_mb:
@@ -570,15 +571,25 @@ class ModelBaseAction(ActionTerm):
             pt_i_lw_ = pt_i_lw_[0,:,0:3,:] # -> shape (num_legs, 3, decimation)
             pt_i_lw_ = pt_i_lw_.permute(0,2,1).flatten(0,1) # -> shape (num_legs*decimation, 3)
 
+            full_pt_lw_ = self.full_pt_lw.clone().detach()  # shape (batch_size, num_legs, 9, 22) (9=px,py,pz,vx,vy,vz,ax,ay,az)
+            full_pt_lw_ = full_pt_lw_[:,:,0:3,:] # -> shape (batch_size, num_legs, 3, 22)
+            full_pt_lw_ = full_pt_lw_.permute(0,1,3,2).flatten(1,2) # -> shape (batch_size, num_legs, 22, 3) -> (batch_size, num_legs*22, 3)
+            full_pt_w_ = full_pt_lw_ + self._env.scene.env_origins.unsqueeze(1) 
+            full_pt_w_ = full_pt_w_.flatten(0,1) # -> shape (batch_size*num_legs*22, 3)
+            marker_locations = full_pt_w_
+
             # If in base frame
             # robot_pos_w = self._asset.data.root_pos_w
             # robot_orientation_w = self._asset.data.root_quat_w
             # pt_i_w, _ = math_utils.combine_frame_transforms(robot_pos_w[0,:].unsqueeze(0).expand(pt_i_b.shape), robot_orientation_w[0,:].unsqueeze(0).expand(pt_i_b.shape[0], 4), pt_i_b)
             
             pt_i_w = pt_i_lw_ + self._env.scene.env_origins.unsqueeze(1)
+            
+            # Visualize the traj only if it is used (ie. the foot is in swing -> c==0)
+            # marker_indices = ~c0_star[0,...]
+            # marker_locations = pt_i_w[0,...]        
 
-            marker_locations = pt_i_w[0,...]
-            self.my_visualizer['foot_traj'].visualize(marker_locations)
+            self.my_visualizer['foot_traj'].visualize(translations=marker_locations)#, marker_indices=marker_indices)
 
         # --- Visualize Lift-off position ---
         if vizualise_debug['lift-off']:
@@ -595,15 +606,17 @@ class ModelBaseAction(ActionTerm):
             # p_w_3, _ = math_utils.combine_frame_transforms(robot_pos_w, robot_orientation_w, p_b[:,3,:])
             # p_w = torch.cat((p_w_0.unsqueeze(1), p_w_1.unsqueeze(1), p_w_2.unsqueeze(1), p_w_3.unsqueeze(1)), dim=1)
 
-            marker_locations = p0_w[0,:,:]
+            # marker_locations = p0_w[0,:,:]
+            marker_locations = p0_w.flatten(0,1)
             self.my_visualizer['lift-off'].visualize(marker_locations)
 
         #  --- Visualize touch-down position ---
         if vizualise_debug['touch-down']:
             p2_lw = self.p_lw[:,:,:,0].clone().detach()
             p2_w = p2_lw + self._env.scene.env_origins.unsqueeze(1)
-            p2_w[:,:,2] = 0.05 #small height to make them more visible
+            # p2_w[:,:,2] = 0.05 #small height to make them more visible
             marker_locations = p2_w[0,:,:]
+            marker_locations = p2_w.flatten(0,1)
             self.my_visualizer['touch-down'].visualize(marker_locations)
 
         # --- Visualize Ground Reactions Forces (GRF) ---
@@ -630,7 +643,10 @@ class ModelBaseAction(ActionTerm):
             translation = math_utils.transform_points(points=translation.unsqueeze(1), pos=marker_locations, quat=marker_orientations).squeeze(1)
             marker_locations = translation
 
-            self.my_visualizer['GRF'].visualize(translations=marker_locations, orientations=marker_orientations, scales=scale)
+            # Visualize the force only if it is used (ie. the foot is in contact -> c==1)
+            marker_indices = c0_star[0,...]
+
+            self.my_visualizer['GRF'].visualize(translations=marker_locations, orientations=marker_orientations, scales=scale, marker_indices=marker_indices)
 
 
 
