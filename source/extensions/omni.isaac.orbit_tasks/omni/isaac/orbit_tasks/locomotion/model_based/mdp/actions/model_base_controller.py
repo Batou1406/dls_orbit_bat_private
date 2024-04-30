@@ -695,7 +695,7 @@ class samplingController(modelBaseController):
         M_J_inv_p_dot_dot_min_J_dot_x_q_dot = torch.matmul(mass_matrix, J_inv_p_dot_dot_min_J_dot_x_q_dot.unsqueeze(-1)).squeeze(-1)
 
         # Final step        : # Shape is (batch_size, num_legs, num_joints_per_leg, num_joints_per_leg)
-        # T_swing = torch.add(M_J_inv_p_dot_dot_min_J_dot_x_q_dot, h)
+        T_swing = torch.add(M_J_inv_p_dot_dot_min_J_dot_x_q_dot, h)
 
         # Like Giulio did
         T_swing =  torch.matmul(jacobian_lw.transpose(2,3), p_dot_dot_min_J_dot_x_q_dot.unsqueeze(-1)).squeeze(-1) # + h
