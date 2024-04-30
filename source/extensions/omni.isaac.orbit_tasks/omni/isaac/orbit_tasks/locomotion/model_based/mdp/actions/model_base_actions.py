@@ -182,10 +182,10 @@ class ModelBaseAction(ActionTerm):
         self.inner_loop = 0
 
         # Joint Index
-        fl_joints = self._asset.find_joints("LF.*")[0]		# list [0, 4,  8]
-        fr_joints = self._asset.find_joints("LH.*")[0]		# list [1, 5,  9]
-        rl_joints = self._asset.find_joints("RF.*")[0]		# list [2, 6, 10]
-        rr_joints = self._asset.find_joints("RH.*")[0]		# list [3, 7, 11]
+        fl_joints = self._asset.find_joints("FL.*")[0]		# list [0, 4,  8]
+        fr_joints = self._asset.find_joints("FR.*")[0]		# list [1, 5,  9]
+        rl_joints = self._asset.find_joints("RL.*")[0]		# list [2, 6, 10]
+        rr_joints = self._asset.find_joints("RR.*")[0]		# list [3, 7, 11]
         self._joints_idx = [fl_joints, fr_joints, rl_joints, rr_joints]
 
         # Latent variable
