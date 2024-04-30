@@ -621,16 +621,17 @@ class samplingController(modelBaseController):
             - T   (torch.Tensor): control output (ie. Joint Torques)        of shape(batch_size, num_legs, num_joints_per_leg)
         """
 
-        # Get the swing torque from the swing controller : swing torque has already been filered by C0* (ie. T_swing = T * ~c0*)
+        # Get the swing torque from the swing controller 
         # T_swing Shape (batch_size, num_legs, num_joints_per_leg)
-        T_swing = self.swing_leg_controller(c0_star=c0_star, pt_i_star_lw=pt_i_star_lw, p_lw=p_lw, p_dot_lw=p_dot_lw, q_dot=q_dot, jacobian_lw=jacobian_lw, jacobian_dot_lw=jacobian_dot_lw, mass_matrix=mass_matrix, h=h)
+        T_swing = self.swing_leg_controller(pt_i_star_lw=pt_i_star_lw, p_lw=p_lw, p_dot_lw=p_dot_lw, q_dot=q_dot, jacobian_lw=jacobian_lw, jacobian_dot_lw=jacobian_dot_lw, mass_matrix=mass_matrix, h=h)
 
-        # Get the stance torque from the stance controller : stance toeque has already been filtered by c0* (ie. T_stance = T * c0*)
+        # Get the stance torque from the stance controller 
         # T_stance Shape (batch_size, num_legs, num_joints_per_leg)
-        T_stance = self.stance_leg_controller(F0_star_lw=F0_star_lw, c0_star=c0_star, jacobian_lw=jacobian_lw)
+        T_stance = self.stance_leg_controller(F0_star_lw=F0_star_lw, jacobian_lw=jacobian_lw)
 
-        # T shape = (batch_size, num_legs, num_joints_per_leg)
-        T = T_swing + T_stance 
+        # Compute the final torque : keep T_stance for leg in stance and T_swing for leg in swing
+        # T shape (batch_size, num_legs, num_joints_per_leg) , c0* shape(batch_size, num_legs) -> unsqueezed(-1) -> (batch_size, num_legs, 1)
+        T = (T_stance * c0_star.unsqueeze(-1))  +  (T_swing * (~c0_star.unsqueeze(-1))) 
 
         # Save variables
         self.p_lw_sim_prev = p_lw # Used in genereate trajectory
@@ -638,7 +639,7 @@ class samplingController(modelBaseController):
         return T
 
 
-    def swing_leg_controller(self, c0_star: torch.Tensor, pt_i_star_lw: torch.Tensor, p_lw:torch.Tensor, p_dot_lw:torch.Tensor, q_dot: torch.Tensor,
+    def swing_leg_controller(self, pt_i_star_lw: torch.Tensor, p_lw:torch.Tensor, p_dot_lw:torch.Tensor, q_dot: torch.Tensor,
                              jacobian_lw: torch.Tensor, jacobian_dot_lw: torch.Tensor, mass_matrix: torch.Tensor, h: torch.Tensor) -> torch.Tensor:
         """ Given feet contact, and desired feet trajectory : compute joint torque with feedback linearization control
         T = M(q)*J⁻¹[p_dot_dot - J_dot(q)*q_dot] + C(q,q_dot) + G(q)
@@ -646,7 +647,6 @@ class samplingController(modelBaseController):
             The variable are in the 'local' world frame _wl. This notation is introduced to avoid confusion with the 'global' world frame, where all the batches coexists.
 
         Args:
-            - c0*   (torch.bool): Optimized foot contact sequence           of shape(batch_size, num_legs)
             - pt_i_lw*  (Tensor): Opt. Foot point in swing phase in _lw     of shape(batch_size, num_legs, 9) (9 = pos, vel, acc)
             - p_lw (trch.Tensor): Feet Position  in _lw                     of shape(batch_size, num_legs, 3)
             - p_dot_lw  (Tensor): Feet velocity  in _lw                     of shape(batch_size, num_legs, 3)
@@ -693,19 +693,15 @@ class samplingController(modelBaseController):
         M_J_inv_p_dot_dot_min_J_dot_x_q_dot = torch.matmul(mass_matrix, J_inv_p_dot_dot_min_J_dot_x_q_dot.unsqueeze(-1)).squeeze(-1)
 
         # Final step        : # Shape is (batch_size, num_legs, num_joints_per_leg, num_joints_per_leg)
-        T = torch.add(M_J_inv_p_dot_dot_min_J_dot_x_q_dot, h)
+        # T_swing = torch.add(M_J_inv_p_dot_dot_min_J_dot_x_q_dot, h)
 
         # Like Giulio did
-        T =  torch.matmul(jacobian_lw.transpose(2,3), p_dot_dot_min_J_dot_x_q_dot.unsqueeze(-1)).squeeze(-1) + h
-
-        # Keep torques only for leg in swing (~ operator inverse c0*)
-        # C0_star must be expanded to perform operation : shape(batch_size, num_legs) -> shape(batch_size, num_legs, num_joints_per_leg)
-        T_swing = T * (~c0_star.unsqueeze(-1).expand(*[-1] * len(c0_star.shape), T.shape[-1]))
+        T_swing =  torch.matmul(jacobian_lw.transpose(2,3), p_dot_dot_min_J_dot_x_q_dot.unsqueeze(-1)).squeeze(-1) + h
 
         return T_swing
     
 
-    def stance_leg_controller(self, F0_star_lw: torch.Tensor, c0_star: torch.Tensor, jacobian_lw: torch.Tensor) -> torch.Tensor:
+    def stance_leg_controller(self, F0_star_lw: torch.Tensor, jacobian_lw: torch.Tensor) -> torch.Tensor:
         """ Given GRF and contact sequence -> compute joint torques using the jacobian : T = -J*F
         1. compute the jacobian using the simulation tool : end effector jacobian wrt to robot base
         2. compute the stance torque : T = -J*F
@@ -714,7 +710,6 @@ class samplingController(modelBaseController):
 
         Args:
             - F0*_lw (th.Tensor): Opt. Ground Reac. Forces (GRF) in w fr.   of shape(batch_size, num_legs, 3)
-            - c0*   (torch.bool): Optimized foot contact 1st el. seq.       of shape(batch_size, num_legs)
             - jacobian_lw (Tsor): Jacobian -> joint space to world frame    of shape(batch_size, num_legs, 3, num_joints_per_leg)
 
         Returns:
@@ -735,11 +730,7 @@ class samplingController(modelBaseController):
 
         # Supress the singleton dimension added for the matmul operation
         # shape(batch_size, num_legs, num_joints_per_leg, 1) -> shape(batch_size, num_legs, num_joints_per_leg)
-        T = T_unsqueezed.squeeze(-1)
-
-        # Keep torques only for leg in contact
-        # C0_star must be expanded to perform operation : shape(batch_size, num_legs) -> shape(batch_size, num_legs, num_joints_per_leg)
-        T_stance = T * c0_star.unsqueeze(-1).expand(*[-1] * len(c0_star.shape), T.shape[-1])
+        T_stance = T_unsqueezed.squeeze(-1)
 
         return T_stance
 
