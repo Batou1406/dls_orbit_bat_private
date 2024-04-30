@@ -173,8 +173,7 @@ class ModelBaseAction(ActionTerm):
 
         # Retrieve series of information usefull for computation and generalisation
         # Feet Index in body, list [13, 14, 15, 16]
-        # self._foot_idx = self._asset.find_bodies(".*foot")[0]
-        self._foot_idx = self._asset.find_bodies(".*FOOT")[0]
+        self._foot_idx = self._asset.find_bodies(".*foot")[0]
         self._num_legs = len(self._foot_idx)
         self._num_joints_per_leg = self._num_joints // self._num_legs
         self._decimation = self._env.cfg.decimation  
@@ -183,10 +182,10 @@ class ModelBaseAction(ActionTerm):
         self.inner_loop = 0
 
         # Joint Index
-        fl_joints = self._asset.find_joints("FL.*")[0]		# list [0, 4,  8]
-        fr_joints = self._asset.find_joints("FR.*")[0]		# list [1, 5,  9]
-        rl_joints = self._asset.find_joints("RL.*")[0]		# list [2, 6, 10]
-        rr_joints = self._asset.find_joints("RR.*")[0]		# list [3, 7, 11]
+        fl_joints = self._asset.find_joints("LF.*")[0]		# list [0, 4,  8]
+        fr_joints = self._asset.find_joints("LH.*")[0]		# list [1, 5,  9]
+        rl_joints = self._asset.find_joints("RF.*")[0]		# list [2, 6, 10]
+        rr_joints = self._asset.find_joints("RH.*")[0]		# list [3, 7, 11]
         self._joints_idx = [fl_joints, fr_joints, rl_joints, rr_joints]
 
         # Latent variable
