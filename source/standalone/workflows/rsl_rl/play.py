@@ -102,6 +102,15 @@ def main():
 
 
 if __name__ == "__main__":
+
+    # To automatically close all the unecessary windows
+    import omni.ui
+    windows = omni.ui.Workspace.get_windows()   
+    for window in windows: 
+        name = window.title
+        if name=="Property" or name=="Content" or name=="Layer" or name=="Semantics Schema Editor" or name=="Stage" or name=="Render Settings" or name=="Console" or name=="Simulation Settings":
+            omni.ui.Workspace.show_window(str(window), False)
+            
     # run the main function
     main()
     # close sim app
