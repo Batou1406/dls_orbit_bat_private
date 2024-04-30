@@ -44,7 +44,7 @@ def jax_to_torch(x: jax.Array):
 def torch_to_jax(x):
     return jax.dlpack.from_dlpack(torch.utils.dlpack.to_dlpack(x))
 
-verbose_mb = True
+verbose_mb = False
 verbose_loop = 40
 vizualise_debug = {'foot': False, 'jacobian': True, 'foot_traj': True, 'lift-off': True, 'touch-down': True, 'GRF': True}
 torch.set_printoptions(precision=2, linewidth=200, sci_mode=False)
@@ -189,7 +189,7 @@ class ModelBaseAction(ActionTerm):
         self._joints_idx = [fl_joints, fr_joints, rl_joints, rr_joints]
 
         # Latent variable
-        self.f = 2*torch.ones(self.num_envs, self._num_legs, device=self.device)
+        self.f = 1*torch.ones(self.num_envs, self._num_legs, device=self.device)
         self.d = 0.55*torch.ones(self.num_envs, self._num_legs, device=self.device)
         self.p_lw = torch.zeros(self.num_envs, self._num_legs, 3, self._number_predict_step, device=self.device)
         self.F_lw = torch.zeros(self.num_envs, self._num_legs, 3, self._prevision_horizon, device=self.device)

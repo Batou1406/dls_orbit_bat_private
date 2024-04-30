@@ -176,7 +176,7 @@ class samplingController(modelBaseController):
         """
         super().late_init(device, num_envs, num_legs, time_horizon, dt_out, decimation, dt_in)
         self.phase = torch.zeros(num_envs, num_legs, device=device)
-        self.phase[:,(0,2)] = 0.5 # Init phase [0.5, 0, 0.5, 0]
+        self.phase[:,(0,3)] = 0.5 # Init phase [0.5, 0, 0.5, 0]
         self.p0_lw = p_default_lw.clone().detach()
         self.swing_time = torch.zeros(num_envs, num_legs, device=device)
         self.p_lw_sim_prev = p_default_lw.clone().detach()
@@ -194,7 +194,7 @@ class samplingController(modelBaseController):
         # Reset gait phase          : Shape (batch_size, num_legs)
         self.phase[env_ids,:] = torch.zeros_like(self.phase, device=self._device)[env_ids,:]
         self.phase[env_ids,0] = 0.5
-        self.phase[env_ids,2] = 0.5 # Init phase [0.5, 0, 0.5, 0]
+        self.phase[env_ids,3] = 0.5 # Init phase [0.5, 0, 0.5, 0]
 
         # Reset lift-off pos       : Shape (batch_size, num_legs, 3)
         self.p0_lw[env_ids,:,:] = p_default_lw[env_ids,:,:].clone().detach()
@@ -404,7 +404,7 @@ class samplingController(modelBaseController):
         # Step 0. Define and Compute usefull variables
 
         # Heuristic TODO Save that on the right place, could also be a RL variable
-        step_height = 0.2
+        step_height = 0.1
 
 
         # Step 1. Compute the phase trajectory : shape (batch_size, num_legs, decimation)
@@ -641,7 +641,7 @@ class samplingController(modelBaseController):
     def swing_leg_controller(self, c0_star: torch.Tensor, pt_i_star_lw: torch.Tensor, p_lw:torch.Tensor, p_dot_lw:torch.Tensor, q_dot: torch.Tensor,
                              jacobian_lw: torch.Tensor, jacobian_dot_lw: torch.Tensor, mass_matrix: torch.Tensor, h: torch.Tensor) -> torch.Tensor:
         """ Given feet contact, and desired feet trajectory : compute joint torque with feedback linearization control
-        T = M(q)*J⁻¹[p_dot_dot - J(q)*q_dot] + C(q,q_dot) + G(q)
+        T = M(q)*J⁻¹[p_dot_dot - J_dot(q)*q_dot] + C(q,q_dot) + G(q)
         Note :
             The variable are in the 'local' world frame _wl. This notation is introduced to avoid confusion with the 'global' world frame, where all the batches coexists.
 
@@ -689,11 +689,14 @@ class samplingController(modelBaseController):
         J_inv_p_dot_dot_min_J_dot_x_q_dot = torch.matmul(jacobian_inv, p_dot_dot_min_J_dot_x_q_dot.unsqueeze(-1)).squeeze(-1)
 
         # Intermediary step : M(q)*J⁻¹[p_dot_dot - J(q)*q_dot]  : (batch_size, num_legs, num_joints_per_leg, num_joints_per_leg) * (batch_size, num_legs, num_joints_per_leg)
-        # Shape is (batch_size, num_legs, num_joints_per_leg, num_joints_per_leg)
+        # Shape is (batch_size, num_legs, num_joints_per_leg)
         M_J_inv_p_dot_dot_min_J_dot_x_q_dot = torch.matmul(mass_matrix, J_inv_p_dot_dot_min_J_dot_x_q_dot.unsqueeze(-1)).squeeze(-1)
 
         # Final step        : # Shape is (batch_size, num_legs, num_joints_per_leg, num_joints_per_leg)
         T = torch.add(M_J_inv_p_dot_dot_min_J_dot_x_q_dot, h)
+
+        # Like Giulio did
+        T =  torch.matmul(jacobian_lw.transpose(2,3), p_dot_dot_min_J_dot_x_q_dot.unsqueeze(-1)).squeeze(-1) + h
 
         # Keep torques only for leg in swing (~ operator inverse c0*)
         # C0_star must be expanded to perform operation : shape(batch_size, num_legs) -> shape(batch_size, num_legs, num_joints_per_leg)
