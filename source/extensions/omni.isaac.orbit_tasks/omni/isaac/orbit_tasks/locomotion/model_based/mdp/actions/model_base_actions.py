@@ -44,7 +44,7 @@ def jax_to_torch(x: jax.Array):
 def torch_to_jax(x):
     return jax.dlpack.from_dlpack(torch.utils.dlpack.to_dlpack(x))
 
-verbose_mb = False
+verbose_mb = True
 verbose_loop = 40
 vizualise_debug = {'foot': False, 'jacobian': True, 'foot_traj': True, 'lift-off': True, 'touch-down': True, 'GRF': True}
 torch.set_printoptions(precision=2, linewidth=200, sci_mode=False)
@@ -84,6 +84,7 @@ class ModelBaseAction(ActionTerm):
         _num_legs      (int): Number of legs of the robot  : useful for dimension definition
         _num_joints_per_leg : Number of joints per leg     : useful for dimension definition
         _joint_idx    (list): List of list of joints [FL_joints=[FL_Hip,...], FR_joints, ...]
+        _hip_idx      (list): List of index (in body view) with the index of the robot's hip
         _decimation    (int): Inner Loop steps per outer loop steps
         _prevision_horizon  : Prediction time horizon for the Model Base controller (runs at outer loop frequecy)       Received from ModelBaseActionCfg
         _number_predict_step: number of predicted touch down position (used by sampling controller, prior by RL)        Received from ModelBaseActionCfg
@@ -110,6 +111,7 @@ class ModelBaseAction(ActionTerm):
         get_robot_state() -> tuple(torch.Tensor)
         get_jacobian() -> torch.Tensor
         get_reset_foot_position() -> torch.Tensors
+        transform_from_rl_frame_to_lw(p_rl) -> p_lw
     """
 
     cfg: actions_cfg.ModelBaseActionCfg
@@ -188,6 +190,8 @@ class ModelBaseAction(ActionTerm):
         rr_joints = self._asset.find_joints("RR.*")[0]		# list [3, 7, 11]
         self._joints_idx = [fl_joints, fr_joints, rl_joints, rr_joints]
 
+        self._hip_idx = self._asset.find_bodies(".*thigh")[0]
+
         # Latent variable
         self.f = 1*torch.ones(self.num_envs, self._num_legs, device=self.device)
         self.d = 0.55*torch.ones(self.num_envs, self._num_legs, device=self.device)
@@ -233,9 +237,9 @@ class ModelBaseAction(ActionTerm):
 
     @property
     def action_dim(self) -> int:
-        # return sum(variable.shape[1:].numel() for variable in self.z) # shape[1:], return all the dimension exept dim0=batch_size
+        return sum(variable.shape[1:].numel() for variable in self.z) # shape[1:], return all the dimension exept dim0=batch_size
         ##>>>DEBUG
-        return self.F_lw.shape[1:].numel()
+        # return self.F_lw.shape[1:].numel()
         ##<<<DEBUG
 
     @property
@@ -272,18 +276,26 @@ class ModelBaseAction(ActionTerm):
         self._processed_actions = self._raw_actions * self._scale + self._offset
 
         # reconstruct the latent variable from the RL poliy actions
-        # self.f = 2*(self._processed_actions[:, :self._num_legs]).clamp(0,10) # 0:3 and clip frequency to valid range [0,20]
-        # self.d = (self._processed_actions[:, self._num_legs:2*self._num_legs]).clamp(0.1,0.9) # 4:7 and clip leg duty cycle to valid range [0,1]
-        # self.p_lw = 0.5*self._processed_actions[:, 2*self._num_legs:(2*self._num_legs + 3*self._num_legs*self._number_predict_step)].reshape([self.num_envs, self._num_legs, 3, self._number_predict_step])
-        # self.F_lw = 50*self._processed_actions[:, (2*self._num_legs + 3*self._num_legs*self._number_predict_step):].reshape([self.num_envs, self._num_legs, 3, self._prevision_horizon]) #TODO change as scale parameter
+        self.f = (self._processed_actions[:, :self._num_legs]).clamp(1.2,1.2) # 0:3 and clip frequency to valid range [0,20]
+        self.d = (self._processed_actions[:, self._num_legs:2*self._num_legs]).clamp(0.55,0.55) # 4:7 and clip leg duty cycle to valid range [0,1]
+        p_rl = 0.5*self._processed_actions[:, 2*self._num_legs:(2*self._num_legs + 3*self._num_legs*self._number_predict_step)].reshape([self.num_envs, self._num_legs, 3, self._number_predict_step]).clamp(-0.12,0.12)
+        F_rl = 50*self._processed_actions[:, (2*self._num_legs + 3*self._num_legs*self._number_predict_step):].reshape([self.num_envs, self._num_legs, 3, self._prevision_horizon]) #TODO change as scale parameter
         # self.z = [self.f, self.d, self.p_lw, self.F_lw]
 
         ##>>>DEBUG
         #self.f = 2    Doesn't change from default
         #self.d = 0.55 Doesn't change from default 
-        self.p_lw = torch.tensor([[0.243, 0.138, 0.03],[0.243, -0.138, 0.03],[-0.236, 0.137, 0.03],[-0.236, -0.137, 0.03]], device=self.device).unsqueeze(0).expand(self.num_envs, -1, -1).unsqueeze(-1) 
-        self.F_lw = self._processed_actions.reshape([self.num_envs, self._num_legs, 3, self._prevision_horizon])*10
+        # p_rl= torch.tensor([[0.243, 0.138, 0.03],[0.243, -0.138, 0.03],[-0.236, 0.137, 0.03],[-0.236, -0.137, 0.03]], device=self.device).unsqueeze(0).expand(self.num_envs, -1, -1).unsqueeze(-1) 
+        # p_rl= torch.zeros_like(self.p_lw , device=self.device) 
+        # F_rl= self._processed_actions.reshape([self.num_envs, self._num_legs, 3, self._prevision_horizon])*10
         ##<<<DEBUG
+
+        # Transform p_rl : foot touch down position centered arround the hip position projected onto the xy plane with robot heading -> transform to local world frame
+        self.p_lw = self.transform_from_rl_frame_to_lw(p_rl=p_rl)
+        self.p_lw[:,:,2] = 0.03
+
+        # Transform GRF into local world frame
+        self.F_lw = self.rotate_from_rl_frame_to_lw(F_rl=F_rl)
 
         # Optimize the latent variable with the model base controller
         self.p_star_lw, self.F_star_lw, self.c_star, self.pt_star_lw, self.full_pt_lw = self.controller.optimize_latent_variable(f=self.f, d=self.d, p_lw=self.p_lw, F_lw=self.F_lw)
@@ -498,6 +510,58 @@ class ModelBaseAction(ActionTerm):
         jacobian_w = torch.matmul(R_b_to_w.unsqueeze(1), jacobian_default_b) # (batch, 1, 3, 3) * (batch, legs, 3, joints_per_leg) -> (batch, legs, 3, joints_per_leg)
         
         return jacobian_w
+
+
+    def transform_from_rl_frame_to_lw(self, p_rl: torch.Tensor) -> torch.Tensor:
+        """ The RL policy output the foot touch down postion as an offset from the hip position projected on the xy plane
+        Moreover, p_rl is oriented like the robot's heading -> p_rl oriented like yaw_base wrt to world frame
+        This function transform the foot touch down position into local world frame
+
+        Args :
+            - p_rl (torch.Tensor): foot touch down position, centered arround the hip   of shape(batch_size, num_legs, 3, number_predicted_step)  
+
+        Return :
+            - p_lw (torch.Tensor): foot touch down position in local world frame        of shape(batch_size, num_legs, 3, number_predicted_step)
+        """
+        # Hip position in world frame : shape(batch, num_legs, 3)
+        p_hip_w = self._asset.data.body_pos_w[:, self._hip_idx, :]
+
+        # Hip position in local world frame : shape(batch, num_legs, 3) 
+        p_hip_lw = p_hip_w - self._env.scene.env_origins.unsqueeze(1)
+
+        # Project Hip position onto the xy plane : shape(batch, num_legs, 3)
+        p_hip_lw[:,:,2] = 0
+
+        # Foot touch down position centered arround the hip but rotated in the local world frame : shape(batch, num_legs, 3, number_predicted_step)
+        robot_yaw_in_w = math_utils.yaw_quat(self._asset.data.root_quat_w)
+        p_rl_flatten = p_rl.transpose(2,3).reshape(p_rl.shape[0], p_rl.shape[1]*p_rl.shape[3], p_rl.shape[2])
+        p_rl_rotated_in_lw_flatten = math_utils.transform_points(p_rl_flatten, quat=robot_yaw_in_w)
+        p_rl_rotated_in_lw = p_rl_rotated_in_lw_flatten.reshape(p_rl.shape[0], p_rl.shape[1], p_rl.shape[3], p_rl.shape[2]).transpose(2,3)
+
+        # Foot touch down position in local world frame : shape(batch, num_legs, 3)
+        p_lw = p_hip_lw.unsqueeze(-1) + p_rl_rotated_in_lw
+
+        return p_lw
+
+
+    def rotate_from_rl_frame_to_lw(self, F_rl: torch.Tensor) -> torch.Tensor:
+        """The RL policy output the Ground Reaction Forces oriented wrt to robot's heading
+        This function transform the Ground Reaction Forces into local world frame
+
+        Args:
+            - F_rl (torch.Tensor): Ground Reaction Forces in RL frame           of shape (batch_size, num_legs, 3, time_horizon)
+
+        Returns:
+            - F_lw (torch.Tensor): Ground Reaction Forces in local world frame  of shape (batch_size, num_legs, 3, time_horizon)
+        """
+
+        # Rotate the GRF : shape(batch_size, num_legs, 3, time_horizon)
+        robot_yaw_in_w = math_utils.yaw_quat(self._asset.data.root_quat_w)
+        F_rl_flatten = F_rl.transpose(2,3).reshape(F_rl.shape[0], F_rl.shape[1]*F_rl.shape[3], F_rl.shape[2])
+        F_lw_flatten = math_utils.transform_points(F_rl_flatten, quat=robot_yaw_in_w)
+        F_lw = F_lw_flatten.reshape(F_rl.shape[0], F_rl.shape[1], F_rl.shape[3], F_rl.shape[2]).transpose(2,3)
+
+        return F_lw
 
 #-------------------------------------------------- Helpers ------------------------------------------------------------
     def debug_apply_action(self, p_lw, p_dot_lw, q_dot, jacobian_lw, jacobian_dot_lw, mass_matrix, h, F0_star_lw, c0_star, pt_i_star_lw):
