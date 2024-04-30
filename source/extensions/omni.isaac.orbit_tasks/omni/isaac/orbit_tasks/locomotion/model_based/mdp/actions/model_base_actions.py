@@ -173,7 +173,8 @@ class ModelBaseAction(ActionTerm):
 
         # Retrieve series of information usefull for computation and generalisation
         # Feet Index in body, list [13, 14, 15, 16]
-        self._foot_idx = self._asset.find_bodies(".*foot")[0]
+        # self._foot_idx = self._asset.find_bodies(".*foot")[0]
+        self._foot_idx = self._asset.find_bodies(".*FOOT")[0]
         self._num_legs = len(self._foot_idx)
         self._num_joints_per_leg = self._num_joints // self._num_legs
         self._decimation = self._env.cfg.decimation  

@@ -21,7 +21,7 @@ class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
         super().__post_init__()
 
         # ----- Select the robot : Unitree Aliengo -----
-        self.scene.robot = UNITREE_ALIENGO_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+        # self.scene.robot = UNITREE_ALIENGO_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
         self.scene.robot = ANYMAL_C_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
 
 
