@@ -281,7 +281,7 @@ class ModelBaseAction(ActionTerm):
         ##>>>DEBUG
         #self.f = 2    Doesn't change from default
         #self.d = 0.55 Doesn't change from default 
-        self.p_lw = torch.tensor([[0.243, 0.138, 0],[0.243, -0.138, 0],[-0.236, 0.137, 0],[-0.236, -0.137, 0]], device=self.device).unsqueeze(0).expand(self.num_envs, -1, -1).unsqueeze(-1) 
+        self.p_lw = torch.tensor([[0.243, 0.138, 0.03],[0.243, -0.138, 0.03],[-0.236, 0.137, 0.03],[-0.236, -0.137, 0.03]], device=self.device).unsqueeze(0).expand(self.num_envs, -1, -1).unsqueeze(-1) 
         self.F_lw = self._processed_actions.reshape([self.num_envs, self._num_legs, 3, self._prevision_horizon])*10
         ##<<<DEBUG
 
@@ -511,9 +511,10 @@ class ModelBaseAction(ActionTerm):
             print('  Leg  frequency : ', self.f[0,...].flatten())
             print('   duty   cycle  : ', self.d[0,...].flatten())
             print('Touch-down pos   : ', self.p_lw[0,0,:,0])
-            print('Foot traj shape  : ', self.pt_star_lw.shape)
-            print('Foot traj : ', self.pt_star_lw[0,0,:3,:])
-            print('Foot Force :', self.F_star_lw[0,:,:])
+            print('Foot position : ', p_lw[0,...])
+            # print('Foot traj shape  : ', self.pt_star_lw.shape)
+            # print('Foot traj : ', self.pt_star_lw[0,0,:3,:])
+            # print('Foot Force :', self.F_star_lw[0,:,:])
             if (self.F_lw != self.F_star_lw).any():
                 assert ValueError('F value don\'t match...')
 
@@ -586,7 +587,7 @@ class ModelBaseAction(ActionTerm):
             pt_i_w = pt_i_lw_ + self._env.scene.env_origins.unsqueeze(1)
             
             # Visualize the traj only if it is used (ie. the foot is in swing -> c==0)
-            marker_indices = ~((c0_star.unsqueeze(-1).expand(self.num_envs,self._num_legs,22)).flatten(1,2).flatten(0,1))
+            marker_indices = ((c0_star.unsqueeze(-1).expand(self.num_envs,self._num_legs,22)).flatten(1,2).flatten(0,1))
             # marker_locations = pt_i_w[0,...]        
 
             self.my_visualizer['foot_traj'].visualize(translations=marker_locations, marker_indices=marker_indices)
@@ -644,7 +645,7 @@ class ModelBaseAction(ActionTerm):
             marker_locations = translation
 
             # Visualize the force only if it is used (ie. the foot is in contact -> c==1)
-            marker_indices = c0_star[0,...]
+            marker_indices = ~c0_star[0,...]
 
             self.my_visualizer['GRF'].visualize(translations=marker_locations, orientations=marker_orientations, scales=scale, marker_indices=marker_indices)
 

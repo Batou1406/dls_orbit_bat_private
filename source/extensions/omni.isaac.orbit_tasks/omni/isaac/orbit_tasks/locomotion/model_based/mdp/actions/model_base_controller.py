@@ -2,6 +2,7 @@ from abc import ABC
 from collections.abc import Sequence
 import torch
 
+FOOT_OFFSET = 0.03 #Offset between the foot and the ground
 
 class modelBaseController(ABC):
     """
@@ -436,7 +437,7 @@ class samplingController(modelBaseController):
         # p1 shape (batch_size, num_legs, 3)
         # TODO Not only choose height as step heigh but use +the terrain height or +the feet height at touch down
         p1_lw = (self.p0_lw[:,:,:2] + p2_lw[:,:,:2]) / 2     # p1(x,y) is in the middle of p0 and p2
-        p1_lw = torch.cat((p1_lw, step_height*torch.ones_like(p1_lw[:,:,:1])), dim=2) # Append a third dimension z : defined as step_height
+        p1_lw = torch.cat((p1_lw, step_height*torch.ones_like(p1_lw[:,:,:1]) + FOOT_OFFSET), dim=2) # Append a third dimension z : defined as step_height
 
 
         # Step 3. Compute the parameters for the interpolation (control points)
@@ -544,7 +545,7 @@ class samplingController(modelBaseController):
         # p1 shape (batch_size, num_legs, 3)
         # TODO Not only choose height as step heigh but use +the terrain height or +the feet height at touch down
         p1_lw = (self.p0_lw[:,:,:2] + p2_lw[:,:,:2]) / 2     # p1(x,y) is in the middle of p0 and p2
-        p1_lw = torch.cat((p1_lw, step_height*torch.ones_like(p1_lw[:,:,:1])), dim=2) # Append a third dimension z : defined as step_height
+        p1_lw = torch.cat((p1_lw, step_height*torch.ones_like(p1_lw[:,:,:1]) + FOOT_OFFSET), dim=2) # Append a third dimension z : defined as step_height
 
 
         # Step 2. Compute the parameters for the interpolation
@@ -668,7 +669,8 @@ class samplingController(modelBaseController):
         # Intermediary step : p_dot_dot
         # Compute the desired acceleration : with a PD controller thanks to the feedback linearization
         # Shape (batch_size, num_legs, 3)
-        p_dot_dot_lw = des_foot_acc_lw + self.swing_ctrl_pos_gain_fb * (pos_err) + self.swing_ctrl_vel_gain_fb * (vel_err)
+        # p_dot_dot_lw = des_foot_acc_lw + self.swing_ctrl_pos_gain_fb * (pos_err) + self.swing_ctrl_vel_gain_fb * (vel_err)
+        p_dot_dot_lw = self.swing_ctrl_pos_gain_fb * (pos_err) 
 
         # Compute  the inverse jacobian. This synchronise CPU and GPU
         # Compute pseudo-inverse -> to be resilient to any number of joint per legs (not restricted to square matrix)
@@ -696,7 +698,7 @@ class samplingController(modelBaseController):
         # T_swing = torch.add(M_J_inv_p_dot_dot_min_J_dot_x_q_dot, h)
 
         # Like Giulio did
-        T_swing =  torch.matmul(jacobian_lw.transpose(2,3), p_dot_dot_min_J_dot_x_q_dot.unsqueeze(-1)).squeeze(-1) + h
+        T_swing =  torch.matmul(jacobian_lw.transpose(2,3), p_dot_dot_min_J_dot_x_q_dot.unsqueeze(-1)).squeeze(-1) # + h
 
         return T_swing
     
