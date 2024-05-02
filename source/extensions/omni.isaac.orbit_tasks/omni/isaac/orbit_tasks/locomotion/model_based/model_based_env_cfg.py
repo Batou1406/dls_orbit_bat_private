@@ -134,13 +134,7 @@ class ActionsCfg:
     - Robot joint position - dim=12
     """
     model_base_variable = mdp.ModelBaseActionCfg(asset_name="robot", joint_names=[".*"], prevision_horizon=1, number_predict_step=1, controller=model_base_controller.samplingController(swing_ctrl_pos_gain_fb=10000, swing_ctrl_vel_gain_fb=-2))
-
     # joint_pos = mdp.JointPositionActionCfg(asset_name="robot", joint_names=[".*"], scale=0.5, use_default_offset=True)
-    # RR_foot = mdp.DifferentialInverseKinematicsActionCfg(asset_name="robot", joint_names=["RR.*"], body_name="RR_foot", controller=DifferentialIKControllerCfg(command_type="position", use_relative_mode=False, ik_method="dls"))
-    # RL_foot = mdp.DifferentialInverseKinematicsActionCfg(asset_name="robot", joint_names=["RL.*"], body_name="RL_foot", controller=DifferentialIKControllerCfg(command_type="position", use_relative_mode=False, ik_method="dls"))
-    # FR_foot = mdp.DifferentialInverseKinematicsActionCfg(asset_name="robot", joint_names=["FR.*"], body_name="FR_foot", controller=DifferentialIKControllerCfg(command_type="position", use_relative_mode=False, ik_method="dls"))
-    # FL_foot = mdp.DifferentialInverseKinematicsActionCfg(asset_name="robot", joint_names=["FL.*"], body_name="FL_foot", controller=DifferentialIKControllerCfg(command_type="position", use_relative_mode=False, ik_method="dls"))
-
 
 
 @configclass
@@ -163,13 +157,13 @@ class ObservationsCfg:
         # ---- Robot's pose ----
         base_lin_vel = ObsTerm(func=mdp.base_lin_vel)#, noise=Unoise(n_min=-0.1, n_max=0.1))
         base_ang_vel = ObsTerm(func=mdp.base_ang_vel)#, noise=Unoise(n_min=-0.2, n_max=0.2))
-        root_quat_w = ObsTerm(func=mdp.root_quat_w)
+        # root_quat_w = ObsTerm(func=mdp.root_quat_w)
         robot_height = ObsTerm(func=mdp.base_pos_z)
         # root_pos_w = ObsTerm(func=mdp.root_pos_w)
-        # projected_gravity = ObsTerm(
-        #     func=mdp.projected_gravity,
-        #     noise=Unoise(n_min=-0.05, n_max=0.05),
-        # )
+        projected_gravity = ObsTerm(
+            func=mdp.projected_gravity,
+            noise=Unoise(n_min=-0.05, n_max=0.05),
+        )
 
         # ---- Robot's joint variable ----
         joint_pos = ObsTerm(func=mdp.joint_pos_rel)#, noise=Unoise(n_min=-0.01, n_max=0.01))
@@ -191,6 +185,7 @@ class ObservationsCfg:
 
         # ---- Model-Base internal variable ----
         leg_phase = ObsTerm(func=leg_phase, params={"action_name": "model_base_variable"})
+        # TODO contact sequence
 
         def __post_init__(self):
             # self.enable_corruption = True

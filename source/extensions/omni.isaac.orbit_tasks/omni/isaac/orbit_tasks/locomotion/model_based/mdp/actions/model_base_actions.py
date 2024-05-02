@@ -44,7 +44,7 @@ def jax_to_torch(x: jax.Array):
 def torch_to_jax(x):
     return jax.dlpack.from_dlpack(torch.utils.dlpack.to_dlpack(x))
 
-verbose_mb = True
+verbose_mb = False
 verbose_loop = 40
 vizualise_debug = {'foot': False, 'jacobian': True, 'foot_traj': True, 'lift-off': True, 'touch-down': True, 'GRF': True}
 torch.set_printoptions(precision=2, linewidth=200, sci_mode=False)
@@ -111,7 +111,8 @@ class ModelBaseAction(ActionTerm):
         get_robot_state() -> tuple(torch.Tensor)
         get_jacobian() -> torch.Tensor
         get_reset_foot_position() -> torch.Tensors
-        transform_from_rl_frame_to_lw(p_rl) -> p_lw
+        transform_p_from_rl_frame_to_lw(p_rl) -> p_lw
+        rotate_GRF_from_rl_frame_to_lw(F_rl) -> F_lw
     """
 
     cfg: actions_cfg.ModelBaseActionCfg
@@ -276,10 +277,10 @@ class ModelBaseAction(ActionTerm):
         self._processed_actions = self._raw_actions * self._scale + self._offset
 
         # reconstruct the latent variable from the RL poliy actions
-        self.f = (self._processed_actions[:, :self._num_legs]).clamp(1.2,1.2) # 0:3 and clip frequency to valid range [0,20]
-        self.d = (self._processed_actions[:, self._num_legs:2*self._num_legs]).clamp(0.55,0.55) # 4:7 and clip leg duty cycle to valid range [0,1]
-        p_rl = 0.5*self._processed_actions[:, 2*self._num_legs:(2*self._num_legs + 3*self._num_legs*self._number_predict_step)].reshape([self.num_envs, self._num_legs, 3, self._number_predict_step]).clamp(-0.12,0.12)
-        F_rl = 50*self._processed_actions[:, (2*self._num_legs + 3*self._num_legs*self._number_predict_step):].reshape([self.num_envs, self._num_legs, 3, self._prevision_horizon]) #TODO change as scale parameter
+        # self.f = (self._processed_actions[:, :self._num_legs]).clamp(1.2,1.2) # 0:3 and clip frequency to valid range [0,20]
+        # self.d = (self._processed_actions[:, self._num_legs:2*self._num_legs]).clamp(0.55,0.55) # 4:7 and clip leg duty cycle to valid range [0,1]
+        # p_rl = 0.5*self._processed_actions[:, 2*self._num_legs:(2*self._num_legs + 3*self._num_legs*self._number_predict_step)].reshape([self.num_envs, self._num_legs, 3, self._number_predict_step]).clamp(-0.12,0.12)
+        # F_rl = 50*self._processed_actions[:, (2*self._num_legs + 3*self._num_legs*self._number_predict_step):].reshape([self.num_envs, self._num_legs, 3, self._prevision_horizon]) #TODO change as scale parameter
         # self.z = [self.f, self.d, self.p_lw, self.F_lw]
 
         ##>>>DEBUG
@@ -290,12 +291,21 @@ class ModelBaseAction(ActionTerm):
         # F_rl= self._processed_actions.reshape([self.num_envs, self._num_legs, 3, self._prevision_horizon])*10
         ##<<<DEBUG
 
+        # reconstruct the latent variable from the RL poliy actions
+        f_rl = self._processed_actions[:, :self._num_legs]
+        d_rl = self._processed_actions[:, self._num_legs:2*self._num_legs]
+        p_rl = self._processed_actions[:, 2*self._num_legs:(2*self._num_legs + 3*self._num_legs*self._number_predict_step)].reshape([self.num_envs, self._num_legs, 3, self._number_predict_step])
+        F_rl = self._processed_actions[:, (2*self._num_legs + 3*self._num_legs*self._number_predict_step):].reshape([self.num_envs, self._num_legs, 3, self._prevision_horizon])
+
+        # Normalize the actions
+        self.f, self.d, F_rl, p_rl = self.normalize_actions(f=f_rl, d=d_rl, F=F_rl, p=p_rl)
+
         # Transform p_rl : foot touch down position centered arround the hip position projected onto the xy plane with robot heading -> transform to local world frame
-        self.p_lw = self.transform_from_rl_frame_to_lw(p_rl=p_rl)
+        self.p_lw = self.transform_p_from_rl_frame_to_lw(p_rl=p_rl)
         self.p_lw[:,:,2] = 0.03
 
         # Transform GRF into local world frame
-        self.F_lw = self.rotate_from_rl_frame_to_lw(F_rl=F_rl)
+        self.F_lw = self.rotate_GRF_from_rl_frame_to_lw(F_rl=F_rl)
 
         # Optimize the latent variable with the model base controller
         self.p_star_lw, self.F_star_lw, self.c_star, self.pt_star_lw, self.full_pt_lw = self.controller.optimize_latent_variable(f=self.f, d=self.d, p_lw=self.p_lw, F_lw=self.F_lw)
@@ -512,7 +522,7 @@ class ModelBaseAction(ActionTerm):
         return jacobian_w
 
 
-    def transform_from_rl_frame_to_lw(self, p_rl: torch.Tensor) -> torch.Tensor:
+    def transform_p_from_rl_frame_to_lw(self, p_rl: torch.Tensor) -> torch.Tensor:
         """ The RL policy output the foot touch down postion as an offset from the hip position projected on the xy plane
         Moreover, p_rl is oriented like the robot's heading -> p_rl oriented like yaw_base wrt to world frame
         This function transform the foot touch down position into local world frame
@@ -544,7 +554,7 @@ class ModelBaseAction(ActionTerm):
         return p_lw
 
 
-    def rotate_from_rl_frame_to_lw(self, F_rl: torch.Tensor) -> torch.Tensor:
+    def rotate_GRF_from_rl_frame_to_lw(self, F_rl: torch.Tensor) -> torch.Tensor:
         """The RL policy output the Ground Reaction Forces oriented wrt to robot's heading
         This function transform the Ground Reaction Forces into local world frame
 
@@ -562,6 +572,63 @@ class ModelBaseAction(ActionTerm):
         F_lw = F_lw_flatten.reshape(F_rl.shape[0], F_rl.shape[1], F_rl.shape[3], F_rl.shape[2]).transpose(2,3)
 
         return F_lw
+
+
+    # TODO get the paramter as a config dict
+    def normalize_actions(self, f:torch.Tensor, d:torch.Tensor, F:torch.Tensor, p:torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor] :
+        """ Given the action with mean=0 and std=1 (~ [-1,+1])
+        Scale, offset and clip the actions in new range
+
+        Args :
+            - f (torch.Tensor): leg frequency  RL policy output in [-1,1] range of shape(batch_size, num_legs)
+            - d (torch.Tensor): leg duty cycle RL policy output in [-1,1] range of shape(batch_size, num_legs)
+            - F (torch.Tensor): GRF            RL policy output in [-1,1] range of shape(batch_size, num_legs, 3, time_horizon)
+            - p (torch.Tensor): touch down pos RL policy output in [-1,1] range of shape(batch_size, num_legs, 3, step_predict)
+
+        Returns :
+            - f (torch.Tensor): Scaled output in [Hz]    of shape(batch_size, num_legs)
+            - d (torch.Tensor): Scaled output in [1/rad] of shape(batch_size, num_legs)
+            - F (torch.Tensor): Scaled output in [N]     of shape(batch_size, num_legs, 3, time_horizon)
+            - p (torch.Tensor): Scaled output in [m]     of shape(batch_size, num_legs, 3, step_predict)
+        """
+
+        #--- Normalize f ---
+        # f:[-1,1]->[min,max]       : mean=(min+max)/2, std=(max-min)/2     : clipped to range
+        # shape(batch_size, num_legs)
+        max_f = 1.5#3
+        min_f = 1.5#0
+        f = ((f * ((max_f-min_f)/2)) + ((max_f+min_f)/2)).clamp(min_f,max_f)
+
+
+        #--- Normalize d ---
+        # d:[-1,1]->[min,max]       : mean=(min+max)/2, std=(max-min)/2     : clipped to range
+        # shape(batch_size, num_legs)
+        max_d = 0.6#1
+        min_d = 0.6#0
+        d = ((d * ((max_d-min_d)/2)) + ((max_d+min_d)/2)).clamp(min_d,max_d)
+
+
+        #--- Normalize F ---
+        # F_xy:[-1,1]->[-std,+std]  : mean=0, std=std
+        # F_z:[-1,1]->[0,mean]      : mean=mean/2, std=mean/2
+        # shape(batch_size, num_legs, 3, time_horizon)
+        std_xy = 1
+        F_x = F[:,:,0,:]*std_xy 
+        F_y = F[:,:,1,:]*std_xy
+
+        mean_z = 100
+        F_z = (F[:,:,2,:]  * (mean_z/2)) + (mean_z/2)
+
+        F = torch.cat((F_x, F_y, F_z), dim=2).reshape_as(self.F_lw)
+
+
+        #--- Normalize p ---
+        # p:[-1,1]->[min, max]      : mean=(min+max)/2, std=(max-min)/2     : clipped to range
+        max_p = +0.15
+        min_p = -0.15
+        p = ((p * ((max_p-min_p)/2)) + ((max_p+min_p)/2)).clamp(min_p,max_p)
+
+        return f, d, F, p
 
 #-------------------------------------------------- Helpers ------------------------------------------------------------
     def debug_apply_action(self, p_lw, p_dot_lw, q_dot, jacobian_lw, jacobian_dot_lw, mass_matrix, h, F0_star_lw, c0_star, pt_i_star_lw):
@@ -712,7 +779,6 @@ class ModelBaseAction(ActionTerm):
             marker_indices = ~c0_star[0,...]
 
             self.my_visualizer['GRF'].visualize(translations=marker_locations, orientations=marker_orientations, scales=scale, marker_indices=marker_indices)
-
 
 
 def define_markers(marker_type, param_dict) -> VisualizationMarkers:
