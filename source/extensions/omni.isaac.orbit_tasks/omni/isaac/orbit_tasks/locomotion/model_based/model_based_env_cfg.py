@@ -45,7 +45,7 @@ import omni.isaac.orbit_tasks.locomotion.model_based.mdp as mdp
 # Local MDP
 from .mdp.actions import model_base_controller
 # import .mdp.observations as local_mdp
-from .mdp.observations import leg_phase
+from .mdp.observations import leg_phase, leg_contact
 
 
 ##
@@ -110,7 +110,8 @@ class MySceneCfg(InteractiveSceneCfg):
 @configclass
 class CommandsCfg:
     """Command specifications for the MDP.
-    - base_velocity tuple[float, float, float, float] : (lin_vel_x, lin_vel_y, angl_vel_z, heading)
+    - base_velocity tuple[float, float, float, float] : (lin_vel_x, lin_vel_y, angl_vel_z or heading)
+        It is given in the robot base frame
     """
 
     # train the robot to follow a velocity command with arbitrary velocity, direction, yaw rate and heading
@@ -144,21 +145,22 @@ class ObservationsCfg:
     @configclass
     class PolicyCfg(ObsGroup):
         """Observations Term for policy group (order preserved).
-        - Robot base linear velocity    - uniform noise ±0.1    - dim=3 
-        - Robot base angular velocity   - uniform noise ±0.2    - dim=3
-        - Gravity proj. on robot base   - uniform noise ±0.05   - dim=3
-        - Robot base velocity commands  - no noise              - dim=4
-        - Robot joint position          - uniform noise ±0.01   - dim=12
-        - Robot joint velocity          - uniform noise ±1.5    - dim=12
-        - Last action term (joint pos)  - no noise              - dim=12
-        - height scan                   - uniform noise ±0.1    - dim=...
+        - Robot base linear velocity   - base frame     - uniform noise ±0.1    - dim=3 
+        - Robot base angular velocity  - base frame     - uniform noise ±0.2    - dim=3
+        - Robot base height            - world frame    -                       - dim=1
+        - Gravity proj. on robot base  - base frame     - uniform noise ±0.05   - dim=3
+        - Robot base velocity commands              - no noise              - dim=4
+        - Robot joint position                      - uniform noise ±0.01   - dim=12
+        - Robot joint velocity                      - uniform noise ±1.5    - dim=12
+        - Last action term (joint pos)              - no noise              - dim=12
+        - height scan                               - uniform noise ±0.1    - dim=...
         """
 
         # ---- Robot's pose ----
-        base_lin_vel = ObsTerm(func=mdp.base_lin_vel)#, noise=Unoise(n_min=-0.1, n_max=0.1))
-        base_ang_vel = ObsTerm(func=mdp.base_ang_vel)#, noise=Unoise(n_min=-0.2, n_max=0.2))
+        base_lin_vel = ObsTerm(func=mdp.base_lin_vel)#, noise=Unoise(n_min=-0.1, n_max=0.1))    # Base frame
+        base_ang_vel = ObsTerm(func=mdp.base_ang_vel)#, noise=Unoise(n_min=-0.2, n_max=0.2))    # Base frame
+        robot_height = ObsTerm(func=mdp.base_pos_z) # World Frame   
         # root_quat_w = ObsTerm(func=mdp.root_quat_w)
-        robot_height = ObsTerm(func=mdp.base_pos_z)
         # root_pos_w = ObsTerm(func=mdp.root_pos_w)
         projected_gravity = ObsTerm(
             func=mdp.projected_gravity,
@@ -173,7 +175,7 @@ class ObservationsCfg:
         actions = ObsTerm(func=mdp.last_action)
 
         # ---- Policy Commands ----
-        # velocity_commands = ObsTerm(func=mdp.generated_commands, params={"command_name": "base_velocity"})
+        velocity_commands = ObsTerm(func=mdp.generated_commands, params={"command_name": "base_velocity"})
         
         # ---- Exteroceptive sensors
         # height_scan = ObsTerm(
@@ -185,7 +187,7 @@ class ObservationsCfg:
 
         # ---- Model-Base internal variable ----
         leg_phase = ObsTerm(func=leg_phase, params={"action_name": "model_base_variable"})
-        # TODO contact sequence
+        leg_in_contact = ObsTerm(func=leg_contact, params={"action_name": "model_base_variable"})
 
         def __post_init__(self):
             # self.enable_corruption = True
@@ -289,19 +291,19 @@ class RewardsCfg:
     """
 
     # -- task
-    # track_lin_vel_xy_exp = RewTerm(
-    #     func=mdp.track_lin_vel_xy_exp, weight=1.0, params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
-    # )
-    # track_ang_vel_z_exp = RewTerm(
-    #     func=mdp.track_ang_vel_z_exp, weight=0.5, params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
-    # )
+    track_lin_vel_xy_exp = RewTerm(
+        func=mdp.track_lin_vel_xy_exp, weight=1.0, params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
+    )
+    track_ang_vel_z_exp = RewTerm(
+        func=mdp.track_ang_vel_z_exp, weight=0.5, params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
+    )
 
     # -- Additionnal penalties : Need a negative weight
-    # lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-2.0)
-    # ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
-    # dof_torques_l2 = RewTerm(func=mdp.joint_torques_l2, weight=-1.0e-5)
-    # dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-2.5e-7)
-    # action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.001)
+    lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-2.0)
+    ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
+    dof_torques_l2 = RewTerm(func=mdp.joint_torques_l2, weight=-1.0e-5)
+    dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-2.5e-7)
+    action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.001)
     # undesired_contacts = RewTerm(
     #     func=mdp.undesired_contacts,
     #     weight=-1.0,

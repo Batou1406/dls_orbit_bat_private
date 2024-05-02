@@ -617,7 +617,7 @@ class ModelBaseAction(ActionTerm):
         F_y = F[:,:,1,:]*std_xy
 
         mean_z = 100
-        F_z = (F[:,:,2,:]  * (mean_z/2)) + (mean_z/2)
+        F_z = ((F[:,:,2,:]  * (mean_z/2)) + (mean_z/2)).clamp(-200,200)
 
         F = torch.cat((F_x, F_y, F_z), dim=2).reshape_as(self.F_lw)
 
@@ -645,7 +645,7 @@ class ModelBaseAction(ActionTerm):
             print('Foot position : ', p_lw[0,...])
             # print('Foot traj shape  : ', self.pt_star_lw.shape)
             # print('Foot traj : ', self.pt_star_lw[0,0,:3,:])
-            # print('Foot Force :', self.F_star_lw[0,:,:])
+            print('Foot Force :', self.F_star_lw[0,:,:])
             if (self.F_lw != self.F_star_lw).any():
                 assert ValueError('F value don\'t match...')
 
