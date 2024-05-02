@@ -601,16 +601,16 @@ class ModelBaseAction(ActionTerm):
         #--- Normalize f ---
         # f:[-1,1]->[min,max]       : mean=(min+max)/2, std=(max-min)/2     : clipped to range
         # shape(batch_size, num_legs)
-        max_f = 3
-        min_f = 0
+        max_f = 1.8
+        min_f = 1.2
         f = ((f * ((max_f-min_f)/2)) + ((max_f+min_f)/2)).clamp(min_f,max_f)
 
 
         #--- Normalize d ---
         # d:[-1,1]->[min,max]       : mean=(min+max)/2, std=(max-min)/2     : clipped to range
         # shape(batch_size, num_legs)
-        max_d = 1
-        min_d = 0
+        max_d = 0.6
+        min_d = 0.5
         d = ((d * ((max_d-min_d)/2)) + ((max_d+min_d)/2)).clamp(min_d,max_d)
 
 

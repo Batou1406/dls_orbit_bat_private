@@ -312,7 +312,7 @@ class RewardsCfg:
     # dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=0.0)
 
     # -- Additionnal Reward : Need a positive weight
-    is_alive = RewTerm(func=mdp.is_alive, weight=5)
+    # is_alive = RewTerm(func=mdp.is_alive, weight=2)
     # feet_air_time = RewTerm(
     #     func=mdp.feet_air_time,
     #     weight=0.125,
