@@ -157,8 +157,8 @@ class ObservationsCfg:
         """
 
         # ---- Robot's pose ----
-        base_lin_vel = ObsTerm(func=mdp.base_lin_vel)#, noise=Unoise(n_min=-0.1, n_max=0.1))    # Base frame
-        base_ang_vel = ObsTerm(func=mdp.base_ang_vel)#, noise=Unoise(n_min=-0.2, n_max=0.2))    # Base frame
+        base_lin_vel = ObsTerm(func=mdp.base_lin_vel noise=Unoise(n_min=-0.1, n_max=0.1))    # Base frame
+        base_ang_vel = ObsTerm(func=mdp.base_ang_vel, noise=Unoise(n_min=-0.2, n_max=0.2))    # Base frame
         robot_height = ObsTerm(func=mdp.base_pos_z) # World Frame   
         # root_quat_w = ObsTerm(func=mdp.root_quat_w)
         # root_pos_w = ObsTerm(func=mdp.root_pos_w)
@@ -168,8 +168,8 @@ class ObservationsCfg:
         )
 
         # ---- Robot's joint variable ----
-        joint_pos = ObsTerm(func=mdp.joint_pos_rel)#, noise=Unoise(n_min=-0.01, n_max=0.01))
-        joint_vel = ObsTerm(func=mdp.joint_vel_rel)#, noise=Unoise(n_min=-1.5, n_max=1.5))
+        joint_pos = ObsTerm(func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.01, n_max=0.01))
+        joint_vel = ObsTerm(func=mdp.joint_vel_rel, noise=Unoise(n_min=-1.5, n_max=1.5))
 
         # ---- Policy Memory ----
         actions = ObsTerm(func=mdp.last_action)
@@ -312,7 +312,7 @@ class RewardsCfg:
     # dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=0.0)
 
     # -- Additionnal Reward : Need a positive weight
-    # is_alive = RewTerm(func=mdp.is_alive, weight=2)
+    is_alive = RewTerm(func=mdp.is_alive, weight=1)
     # feet_air_time = RewTerm(
     #     func=mdp.feet_air_time,
     #     weight=0.125,
