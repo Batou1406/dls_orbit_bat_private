@@ -293,9 +293,12 @@ class ModelBaseAction(ActionTerm):
 
         # reconstruct the latent variable from the RL poliy actions
         f_rl = self._processed_actions[:, :self._num_legs]
-        d_rl = self._processed_actions[:, self._num_legs:2*self._num_legs]
+        d_dot = self._processed_actions[:, self._num_legs:2*self._num_legs]
         p_rl = self._processed_actions[:, 2*self._num_legs:(2*self._num_legs + 3*self._num_legs*self._number_predict_step)].reshape([self.num_envs, self._num_legs, 3, self._number_predict_step])
         F_rl = self._processed_actions[:, (2*self._num_legs + 3*self._num_legs*self._number_predict_step):].reshape([self.num_envs, self._num_legs, 3, self._prevision_horizon])
+
+        # Increment d from d_dot
+        d_rl = self.d + d_dot.clamp(-0.05,0.05)
 
         # Normalize the actions
         self.f, self.d, F_rl, p_rl = self.normalize_actions(f=f_rl, d=d_rl, F=F_rl, p=p_rl)
@@ -542,6 +545,9 @@ class ModelBaseAction(ActionTerm):
         # Project Hip position onto the xy plane : shape(batch, num_legs, 3)
         p_hip_lw[:,:,2] = 0
 
+        # p_rl = p_rl*0
+        # p_rl[:,:,0,:] = 0.15
+
         # Foot touch down position centered arround the hip but rotated in the local world frame : shape(batch, num_legs, 3, number_predicted_step)
         robot_yaw_in_w = math_utils.yaw_quat(self._asset.data.root_quat_w)
         p_rl_flatten = p_rl.transpose(2,3).reshape(p_rl.shape[0], p_rl.shape[1]*p_rl.shape[3], p_rl.shape[2])
@@ -595,16 +601,16 @@ class ModelBaseAction(ActionTerm):
         #--- Normalize f ---
         # f:[-1,1]->[min,max]       : mean=(min+max)/2, std=(max-min)/2     : clipped to range
         # shape(batch_size, num_legs)
-        max_f = 1.5#3
-        min_f = 1.5#0
+        max_f = 3
+        min_f = 0
         f = ((f * ((max_f-min_f)/2)) + ((max_f+min_f)/2)).clamp(min_f,max_f)
 
 
         #--- Normalize d ---
         # d:[-1,1]->[min,max]       : mean=(min+max)/2, std=(max-min)/2     : clipped to range
         # shape(batch_size, num_legs)
-        max_d = 0.6#1
-        min_d = 0.6#0
+        max_d = 1
+        min_d = 0
         d = ((d * ((max_d-min_d)/2)) + ((max_d+min_d)/2)).clamp(min_d,max_d)
 
 
@@ -624,9 +630,14 @@ class ModelBaseAction(ActionTerm):
 
         #--- Normalize p ---
         # p:[-1,1]->[min, max]      : mean=(min+max)/2, std=(max-min)/2     : clipped to range
-        max_p = +0.15
-        min_p = -0.15
-        p = ((p * ((max_p-min_p)/2)) + ((max_p+min_p)/2)).clamp(min_p,max_p)
+        # shape(batch_size, num_legs, 3, step_predict)
+        max_p_x = +0.18
+        min_p_x = -0.12
+        max_p_y = +0.10
+        min_p_y = -0.10
+        p_x = ((p[:,:,0,:] * ((max_p_x-min_p_x)/2)) + ((max_p_x+min_p_x)/2)).clamp(min_p_x,max_p_x)
+        p_y = ((p[:,:,1,:] * ((max_p_y-min_p_y)/2)) + ((max_p_y+min_p_y)/2)).clamp(min_p_y,max_p_y)
+        p = torch.cat((p_x, p_y, p[:,:,2,:]), dim=2).reshape_as(p)
 
         return f, d, F, p
 

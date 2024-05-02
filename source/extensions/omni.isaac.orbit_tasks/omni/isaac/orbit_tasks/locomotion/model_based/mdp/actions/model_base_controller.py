@@ -303,7 +303,7 @@ class samplingController(modelBaseController):
         # Step 0. Define and Compute usefull variables
 
         # Heuristic TODO Save that on the right place, could also be a RL variable
-        step_height = 0.1
+        step_height = 0.08
 
 
         # Step 1. Compute the phase trajectory : shape (batch_size, num_legs, decimation)
