@@ -292,17 +292,17 @@ class RewardsCfg:
 
     # -- task
     track_lin_vel_xy_exp = RewTerm(
-        func=mdp.track_lin_vel_xy_exp, weight=1.0, params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
+        func=mdp.track_lin_vel_xy_exp, weight=1.5, params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
     )
     track_ang_vel_z_exp = RewTerm(
-        func=mdp.track_ang_vel_z_exp, weight=0.5, params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
+        func=mdp.track_ang_vel_z_exp, weight=0.75, params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
     )
 
     # -- Additionnal penalties : Need a negative weight
-    lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-2.0)
-    ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
+    lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-0.4)
+    ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.01)
     dof_torques_l2 = RewTerm(func=mdp.joint_torques_l2, weight=-1.0e-5)
-    dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-2.5e-7)
+    dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-1.0e-8)
     action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.001)
     # undesired_contacts = RewTerm(
     #     func=mdp.undesired_contacts,
@@ -312,7 +312,7 @@ class RewardsCfg:
     # dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=0.0)
 
     # -- Additionnal Reward : Need a positive weight
-    is_alive = RewTerm(func=mdp.is_alive, weight=1.0)
+    is_alive = RewTerm(func=mdp.is_alive, weight=1.5)
     # feet_air_time = RewTerm(
     #     func=mdp.feet_air_time,
     #     weight=0.125,
