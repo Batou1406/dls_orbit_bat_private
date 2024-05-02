@@ -51,8 +51,8 @@ class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
         self.events.base_external_force_torque.params["force_range"] = (0.0, 0.0)                                       # Unnecessary : already default
         self.events.base_external_force_torque.params["torque_range"] = (0.0, 0.0)                                      # Unnecessary : already default
         self.events.reset_base.params = {
-            # "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},
-            "pose_range": {"x": (0.0, 0.0), "y": (0.0, 0.0), "yaw": (0.0, 0.0)},
+            "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},
+            # "pose_range": {"x": (0.0, 0.0), "y": (0.0, 0.0), "yaw": (0.0, 0.0)},
             "velocity_range": {                                                                                         # Default was ±0.5
                 "x": (0.0, 0.0),
                 "y": (0.0, 0.0),
