@@ -25,3 +25,13 @@ def leg_phase(env: BaseEnv, action_name: str) -> torch.Tensor:
         - leg_phase : the internal leg phase used by the model base controller of shape(batch_size, num_legs)
     """
     return env.action_manager.get_term(action_name).controller.phase
+
+def leg_contact(env: BaseEnv, action_name: str) -> torch.Tensor:
+    """ The last contact used by the model based controller (computed by doing phase < d)
+    c==0 : Leg in swing
+    c==1 : Leg in stance
+
+    Returns :
+        - leg_contact : the internal leg phase used by the model base controller of shape(batch_size, num_legs)
+    """
+    return env.action_manager.get_term(action_name).c_star[...,0]
