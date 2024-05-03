@@ -645,7 +645,7 @@ class ModelBaseAction(ActionTerm):
             F_y = F[:,:,1,:]*std_xy
 
             mean_z = 100 # ~= 20[kg_aliengo] * 9.81 [m/s²] / 2 [leg in contact]
-            F_z = ((F[:,:,2,:]  * (mean_z/2)) + (mean_z/2)).clamp(-200,200)
+            F_z = ((F[:,:,2,:]  * (mean_z/2)) + (mean_z/2)) #.clamp(-200,200)
 
             F = torch.cat((F_x, F_y, F_z), dim=2).reshape_as(self.F_lw)
 

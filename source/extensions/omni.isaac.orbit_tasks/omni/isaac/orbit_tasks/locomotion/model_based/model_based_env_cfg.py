@@ -46,6 +46,7 @@ import omni.isaac.orbit_tasks.locomotion.model_based.mdp as mdp
 from .mdp.actions import model_base_controller
 # import .mdp.observations as local_mdp
 from .mdp.observations import leg_phase, leg_contact
+from .mdp.rewards import penalize_leg_frequency, penalize_large_Forces, penalize_big_steps, penalize_leg_duty_cycle
 
 
 ##
@@ -301,15 +302,21 @@ class RewardsCfg:
     # -- Additionnal penalties : Need a negative weight
     lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-0.4)
     ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.01)
-    dof_torques_l2 = RewTerm(func=mdp.joint_torques_l2, weight=-1.0e-5)
-    dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-1.0e-8)
-    action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.001)
+    # dof_torques_l2 = RewTerm(func=mdp.joint_torques_l2, weight=-1.0e-5)
+    # dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-1.0e-8)
+    # action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.001)
     # undesired_contacts = RewTerm(
     #     func=mdp.undesired_contacts,
     #     weight=-1.0,
     #     params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*THIGH"), "threshold": 1.0},
     # flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-0.5)
     # dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=0.0)
+
+    # -- Model based penalty : Positive weight -> penalty is already negative
+    leg_frequency_penalty = RewTerm(func=penalize_leg_frequency, weight=0.1, params={"action_name": "model_base_variable", "bound": (1.0,2.0)})
+    leg_duty_cycle_penalty = RewTerm(func=penalize_leg_duty_cycle, weight=0.2, params={"action_name": "model_base_variable", "bound": (0.35,0.7)})
+    large_force_penalty = RewTerm(func=penalize_large_Forces, weight=0.02, params={"action_name": "model_base_variable", "bound": (0.0,230.0)})
+    large_step_size_penalty = RewTerm(func=penalize_big_steps, weight=0.1, params={"action_name": "model_base_variable", "bound_x": (0.15,-0.8), "bound_y": (0.07,-0.07), "bound_z": (-1.0,1.0)})
 
     # -- Additionnal Reward : Need a positive weight
     is_alive = RewTerm(func=mdp.is_alive, weight=1)
