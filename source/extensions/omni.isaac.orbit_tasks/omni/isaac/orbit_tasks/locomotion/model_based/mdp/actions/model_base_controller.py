@@ -2,7 +2,7 @@ from abc import ABC
 from collections.abc import Sequence
 import torch
 
-FOOT_OFFSET = 0.03 #Offset between the foot and the ground
+FOOT_OFFSET = 0.015#0.03 #Offset between the foot and the ground
 
 class modelBaseController(ABC):
     """

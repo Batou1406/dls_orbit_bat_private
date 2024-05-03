@@ -601,21 +601,21 @@ class ModelBaseAction(ActionTerm):
         """
 
         #--- Normalize f ---
-        # f:[-1,1]->[min,max]       : mean=(min+max)/2, std=(max-min)/2     : clipped to range
+        # f:[-1,1]->[min/4,max/4]       : mean=(min+max)/2, std=(max-min)/2     : clipped to range
         # shape(batch_size, num_legs)
         if f is not None:
-            max_f = 1.8
-            min_f = 1.2
-            f = ((f * ((max_f-min_f)/2)) + ((max_f+min_f)/2)).clamp(min_f,max_f)
+            max_f = 3
+            min_f = 0
+            f = ((f * ((max_f-min_f)/(2*4))) + ((max_f+min_f)/2)).clamp(min_f,max_f)
 
 
         #--- Normalize d ---
         # d:[-1,1]->[min,max]       : mean=(min+max)/2, std=(max-min)/2     : clipped to range
         # shape(batch_size, num_legs)
         if d is not None:
-            max_d = 0.6
-            min_d = 0.5
-            d = ((d * ((max_d-min_d)/2)) + ((max_d+min_d)/2)).clamp(min_d,max_d)
+            max_d = 1.0
+            min_d = 0.0
+            d = ((d * ((max_d-min_d)/(2*4))) + ((max_d+min_d)/2)).clamp(min_d,max_d)
 
 
         #--- Normalize F ---
@@ -801,7 +801,7 @@ class ModelBaseAction(ActionTerm):
         if vizualise_debug['touch-down polygon']:
             """self.my_visualizer['touch-down polygon'] = omni_debug_draw.acquire_debug_draw_interface()"""
 
-            FOOT_OFFSET = 0.03
+            FOOT_OFFSET = 0.015
             # Find the corner points of the polygon - provide big values that will be clipped to corresponding bound
             # p shape(num_corners, 3)
             p_corner = torch.tensor([[10,10,FOOT_OFFSET],[10,-10,FOOT_OFFSET],[-10,-10,FOOT_OFFSET],[-10,10,FOOT_OFFSET]], device=self.device)
@@ -840,7 +840,7 @@ class ModelBaseAction(ActionTerm):
 
             # plain color for lines
             lines_colors = [[1.0, 1.0, 0.0, 1.0]] * source_pos.shape[0]
-            line_thicknesses = [5.0] * source_pos.shape[0]
+            line_thicknesses = [2.0] * source_pos.shape[0]
 
             self.my_visualizer['touch-down polygon'].draw_lines(source_pos.tolist(), target_pos.tolist(), lines_colors, line_thicknesses)
 
