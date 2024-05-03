@@ -49,7 +49,7 @@ fast_jac = True
 verbose_mb = False
 verbose_loop = 40
 vizualise_debug = {'foot': False, 'jacobian': True, 'foot_traj': True, 'lift-off': True, 'touch-down': True, 'GRF': True, 'touch-down polygon': True}
-torch.set_printoptions(precision=2, linewidth=200, sci_mode=False)
+torch.set_printoptions(precision=4, linewidth=200, sci_mode=False)
 if verbose_mb: import omni.isaac.debug_draw._debug_draw as omni_debug_draw
 
 class ModelBaseAction(ActionTerm):
@@ -96,6 +96,7 @@ class ModelBaseAction(ActionTerm):
         f     (torch.Tensor): Prior leg frequency                   of shape (batch_size, num_legs)
         d     (torch.Tensor): Prior stepping duty cycle             of shape (batch_size, num_legs)
         p_lw  (torch.Tensor): Prior foot pos. sequence              of shape (batch_size, num_legs, 3, time_horizon)
+        p_rl  (torch.Tensor): Prior foot pos. sequence hip center   of shape (batch_size, num_legs, 3, time_horizon)
         F_lw  (torch.Tensor): Prior Ground Reac. Forces (GRF) seq.  of shape (batch_size, num_legs, 3, time_horizon)
         p_star_lw (t.Tensor): Optimizied foot pos sequence          of shape (batch_size, num_legs, 3, time_horizon)
         F_star_lw (t.Tensor): Opt. Ground Reac. Forces (GRF) seq.   of shape (batch_size, num_legs, 3, time_horizon)
@@ -200,6 +201,7 @@ class ModelBaseAction(ActionTerm):
         self.f = 1*torch.ones(self.num_envs, self._num_legs, device=self.device)
         self.d = 0.55*torch.ones(self.num_envs, self._num_legs, device=self.device)
         self.p_lw = torch.zeros(self.num_envs, self._num_legs, 3, self._number_predict_step, device=self.device)
+        self.p_rl = torch.zeros(self.num_envs, self._num_legs, 3, self._number_predict_step, device=self.device) # Used to compute penalty term
         self.F_lw = torch.zeros(self.num_envs, self._num_legs, 3, self._prevision_horizon, device=self.device)
         self.z = [self.f, self.d, self.p_lw, self.F_lw]
 
@@ -300,18 +302,19 @@ class ModelBaseAction(ActionTerm):
 
         # reconstruct the latent variable from the RL poliy actions
         f_rl = self._processed_actions[:, :self._num_legs]
-        d_dot = self._processed_actions[:, self._num_legs:2*self._num_legs]
+        d_rl = self._processed_actions[:, self._num_legs:2*self._num_legs]
         p_rl = self._processed_actions[:, 2*self._num_legs:(2*self._num_legs + 3*self._num_legs*self._number_predict_step)].reshape([self.num_envs, self._num_legs, 3, self._number_predict_step])
         F_rl = self._processed_actions[:, (2*self._num_legs + 3*self._num_legs*self._number_predict_step):].reshape([self.num_envs, self._num_legs, 3, self._prevision_horizon])
+        # self.z = [self.f, self.d, self.p_lw, self.F_lw]
 
         # Increment d from d_dot
-        d_rl = self.d + d_dot.clamp(-0.05,0.05)
+        # d_rl = self.d + d_dot.clamp(-0.05,0.05) # TODO this must be normalize also !!
 
         # Normalize the actions
-        self.f, self.d, F_rl, p_rl = self.normalize_actions(f=f_rl, d=d_rl, F=F_rl, p=p_rl)
+        self.f, self.d, F_rl, self.p_rl = self.normalize_actions(f=f_rl, d=d_rl, F=F_rl, p=p_rl)
 
         # Transform p_rl : foot touch down position centered arround the hip position projected onto the xy plane with robot heading -> transform to local world frame
-        self.p_lw = self.transform_p_from_rl_frame_to_lw(p_rl=p_rl)
+        self.p_lw = self.transform_p_from_rl_frame_to_lw(p_rl=self.p_rl)
         self.p_lw[:,:,2] = 0.03
 
         # Transform GRF into local world frame
@@ -467,7 +470,6 @@ class ModelBaseAction(ActionTerm):
             self.count_jac+=1
             if self.count_jac < 4:
                 return self.temp_jac, self.temp_jac
-        
             self.count_jac=0
 
         # Retrieve Jacobian from sim
@@ -642,7 +644,7 @@ class ModelBaseAction(ActionTerm):
             F_x = F[:,:,0,:]*std_xy 
             F_y = F[:,:,1,:]*std_xy
 
-            mean_z = 100
+            mean_z = 100 # ~= 20[kg_aliengo] * 9.81 [m/s²] / 2 [leg in contact]
             F_z = ((F[:,:,2,:]  * (mean_z/2)) + (mean_z/2)).clamp(-200,200)
 
             F = torch.cat((F_x, F_y, F_z), dim=2).reshape_as(self.F_lw)

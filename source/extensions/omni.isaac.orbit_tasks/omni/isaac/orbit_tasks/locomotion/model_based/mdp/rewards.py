@@ -36,8 +36,11 @@ def feet_air_time(env: RLTaskEnv, command_name: str, sensor_cfg: SceneEntityCfg,
 
 
 def penalize_leg_frequency(env: RLTaskEnv, action_name: str, bound: tuple[float, float]) -> torch.Tensor:
-    """ Penalize leg frequency that are outside boundaries in ]-inf, 0]
+    """ Penalize leg frequency that are outside boundaries, penalty in ]-inf, 0]
     Penalize linearly with frequency violation
+
+    Args :
+        - bound   (float, float): Boundary in which the leg frequency isn't penalize
 
     Returns :
         - penalty (torch.Tensor): penalty term in ]-inf, 0] for leg frequency outside bound of shape(batch_size)
@@ -50,8 +53,11 @@ def penalize_leg_frequency(env: RLTaskEnv, action_name: str, bound: tuple[float,
 
 
 def penalize_leg_duty_cycle(env: RLTaskEnv, action_name: str, bound: tuple[float, float]) -> torch.Tensor:
-    """ Penalize leg duty cycle that are outside boundaries in ]-inf, 0]
+    """ Penalize leg duty cycle that are outside boundaries, penalty in ]-inf, 0]
     Penalize linearly with duty cycle violation
+
+    Args :
+        - bound   (float, float): Boundary in which the leg duty cycle isn't penalize
 
     Returns :
         - penalty (torch.Tensor): penalty term in ]-inf, 0] for leg duty cycle outside bound of shape(batch_size)
@@ -62,15 +68,47 @@ def penalize_leg_duty_cycle(env: RLTaskEnv, action_name: str, bound: tuple[float
 
     return penalty
 
-def penalize_big_steps(env: RLTaskEnv, action_name: str, bound_x: tuple[float, float], bound_y: tuple[float, float]) -> torch.Tensor:
-    """ Penalize leg duty cycle that are outside boundaries in ]-inf, 0]
-    Penalize linearly with duty cycle violation
+
+def penalize_big_steps(env: RLTaskEnv, action_name: str, bound_x: tuple[float, float], bound_y: tuple[float, float], bound_z: tuple[float, float]) -> torch.Tensor:
+    """ Penalize steps that are outside boundaries, penalty in ]-inf, 0]
+    Penalize linearly with steps size violation
+
+    Args :
+        - bound_x (float, float): Boundary in which the step size in x direction isn't penalize
+        - bound_y (float, float): Boundary in which the step size in y direction isn't penalize
+        - bound_z (float, float): Boundary in which the step size in z direction isn't penalize
 
     Returns :
-        - penalty (torch.Tensor): penalty term in ]-inf, 0] for leg duty cycle outside bound of shape(batch_size)
+        - penalty (torch.Tensor): penalty term in ]-inf, 0] for leg step size outside bound of shape(batch_size)
     """
-    d:torch.Tensor = env.action_manager.get_term(action_name).d
+    # Shape (batch_size, num_legs, 3, number_predict step) -> (batch_size, num_legs, 3)
+    p:torch.Tensor = env.action_manager.get_term(action_name).p_rl[...,0]
 
-    penalty = -torch.sum(torch.abs(d-d.clamp(bound[0], bound[1])), dim=1)
+    penalty_x = -torch.sum(torch.abs(p[:,:,0]-p[:,:,0].clamp(bound_x[0], bound_x[1])), dim=1)
+    penalty_y = -torch.sum(torch.abs(p[:,:,1]-p[:,:,1].clamp(bound_y[0], bound_y[1])), dim=1)
+    penalty_z = -torch.sum(torch.abs(p[:,:,2]-p[:,:,2].clamp(bound_z[0], bound_z[1])), dim=1)
+
+    penalty = penalty_x + penalty_y + penalty_z
+
+    return penalty
+
+
+def penalize_large_Forces(env: RLTaskEnv, action_name: str, bound: tuple[float, float]) -> torch.Tensor:
+    """ Penalize Forces that are outside boundaries, penalty in ]-inf, 0]
+    Penalize linearly with Forces violation
+
+    Args :
+        - bound   (float, float): Boundary in which the force isn't penalize
+
+    Returns :
+        - penalty (torch.Tensor): penalty term in ]-inf, 0] for Forces outside bound of shape(batch_size)
+    """
+    #shape (batch_size, num_legs, 3, time_horizon) ->(batch_size, num_legs, 3)
+    F:torch.Tensor = env.action_manager.get_term(action_name).F_lw[...,0]
+
+    # Compute the norm -> shape(batch_size, num_legs)
+    F = torch.linalg.vector_norm(F, dim=2)
+
+    penalty = -torch.sum(torch.abs(F-F.clamp(bound[0], bound[1])), dim=1)
 
     return penalty
