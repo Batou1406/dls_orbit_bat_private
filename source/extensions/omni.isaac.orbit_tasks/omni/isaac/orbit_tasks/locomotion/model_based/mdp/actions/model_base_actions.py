@@ -621,18 +621,18 @@ class ModelBaseAction(ActionTerm):
         # f:[-1,1]->[min/4,max/4]       : mean=(min+max)/2, std=(max-min)/2     : clipped to range
         # shape(batch_size, num_legs)
         if f is not None:
-            max_f = 3
-            min_f = 0
-            f = ((f * ((max_f-min_f)/(2*4))) + ((max_f+min_f)/2)).clamp(min_f,max_f)
+            max_f = 1.5#3
+            min_f = 1.5#0
+            f = ((f * ((max_f-min_f)/(2*1))) + ((max_f+min_f)/2)).clamp(min_f,max_f)
 
 
         #--- Normalize d ---
         # d:[-1,1]->[min,max]       : mean=(min+max)/2, std=(max-min)/2     : clipped to range
         # shape(batch_size, num_legs)
         if d is not None:
-            max_d = 1.0
-            min_d = 0.0
-            d = ((d * ((max_d-min_d)/(2*4))) + ((max_d+min_d)/2)).clamp(min_d,max_d)
+            max_d = 0.6#1.0
+            min_d = 0.6#0.0
+            d = ((d * ((max_d-min_d)/(2*1))) + ((max_d+min_d)/2)).clamp(min_d,max_d)
 
 
         #--- Normalize F ---
@@ -644,7 +644,7 @@ class ModelBaseAction(ActionTerm):
             F_x = F[:,:,0,:]*std_xy 
             F_y = F[:,:,1,:]*std_xy
 
-            mean_z = 100 # ~= 20[kg_aliengo] * 9.81 [m/s²] / 2 [leg in contact]
+            mean_z = 100 # 100~= 20[kg_aliengo] * 9.81 [m/s²] / 2 [leg in contact]
             F_z = ((F[:,:,2,:]  * (mean_z/2)) + (mean_z/2)) #.clamp(-200,200)
 
             F = torch.cat((F_x, F_y, F_z), dim=2).reshape_as(self.F_lw)
@@ -658,8 +658,8 @@ class ModelBaseAction(ActionTerm):
             min_p_x = -0.12
             max_p_y = +0.10
             min_p_y = -0.10
-            p_x = ((p[:,:,0,:] * ((max_p_x-min_p_x)/2)) + ((max_p_x+min_p_x)/2)).clamp(min_p_x,max_p_x)
-            p_y = ((p[:,:,1,:] * ((max_p_y-min_p_y)/2)) + ((max_p_y+min_p_y)/2)).clamp(min_p_y,max_p_y)
+            p_x = ((p[:,:,0,:] * ((max_p_x-min_p_x)/(2*1))) + ((max_p_x+min_p_x)/2)).clamp(min_p_x,max_p_x)
+            p_y = ((p[:,:,1,:] * ((max_p_y-min_p_y)/(2*1))) + ((max_p_y+min_p_y)/2)).clamp(min_p_y,max_p_y)
             p = torch.cat((p_x, p_y, p[:,:,2,:]), dim=2).reshape_as(p)
 
         return f, d, F, p

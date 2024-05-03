@@ -319,7 +319,7 @@ class RewardsCfg:
     large_step_size_penalty = RewTerm(func=penalize_big_steps, weight=0.3, params={"action_name": "model_base_variable", "bound_x": (0.12,-0.5), "bound_y": (0.06,-0.06), "bound_z": (-1.0,1.0)})
 
     # -- Additionnal Reward : Need a positive weight
-    is_alive = RewTerm(func=mdp.is_alive, weight=1)
+    # is_alive = RewTerm(func=mdp.is_alive, weight=1)
     # feet_air_time = RewTerm(
     #     func=mdp.feet_air_time,
     #     weight=0.125,
