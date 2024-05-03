@@ -37,7 +37,7 @@ from omni.isaac.orbit.markers import VisualizationMarkers, VisualizationMarkersC
 from omni.isaac.orbit.sim import SimulationContext
 from omni.isaac.orbit.utils.assets import ISAAC_NUCLEUS_DIR, ISAAC_ORBIT_NUCLEUS_DIR
 from omni.isaac.orbit.utils.math import quat_from_angle_axis
-import omni.isaac.debug_draw._debug_draw as omni_debug_draw
+
 ## <<<Visualization
 
 # def jax_to_torch(x: jax.Array):
@@ -45,10 +45,11 @@ import omni.isaac.debug_draw._debug_draw as omni_debug_draw
 # def torch_to_jax(x):
 #     return jax.dlpack.from_dlpack(torch.utils.dlpack.to_dlpack(x))
 
-verbose_mb = True
+verbose_mb = False
 verbose_loop = 40
 vizualise_debug = {'foot': False, 'jacobian': True, 'foot_traj': True, 'lift-off': True, 'touch-down': True, 'GRF': True, 'touch-down polygon': True}
 torch.set_printoptions(precision=2, linewidth=200, sci_mode=False)
+if verbose_mb: import omni.isaac.debug_draw._debug_draw as omni_debug_draw
 
 class ModelBaseAction(ActionTerm):
     """Base class for model base actions.
