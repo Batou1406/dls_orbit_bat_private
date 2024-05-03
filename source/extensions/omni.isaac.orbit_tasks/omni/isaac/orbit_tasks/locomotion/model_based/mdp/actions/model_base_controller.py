@@ -3,6 +3,11 @@ from collections.abc import Sequence
 import torch
 
 FOOT_OFFSET = 0.015#0.03 #Offset between the foot and the ground
+import numpy as np
+import matplotlib.pyplot as plt
+np.set_printoptions(precision=2, linewidth=200)
+# force=[[],[],[],[],[],[],[],[],[],[],[],[]]
+torque=[[],[],[],[],[],[],[],[],[],[],[],[]]
 
 class modelBaseController(ABC):
     """
@@ -439,6 +444,43 @@ class samplingController(modelBaseController):
         # Save variables
         self.p_lw_sim_prev = p_lw # Used in genereate trajectory
 
+
+        # if c0_star[0,0]:
+        #     torque[0].append(T_stance.cpu()[0,0,0])
+        #     torque[1].append(T_stance.cpu()[0,0,1])
+        #     torque[2].append(T_stance.cpu()[0,0,2])
+        # if c0_star[0,1]:
+        #     torque[3].append(T_stance.cpu()[0,1,0])
+        #     torque[4].append(T_stance.cpu()[0,1,1])
+        #     torque[5].append(T_stance.cpu()[0,1,2])
+        # if c0_star[0,2]:
+        #     torque[6].append(T_stance.cpu()[0,2,0])
+        #     torque[7].append(T_stance.cpu()[0,2,1])
+        #     torque[8].append(T_stance.cpu()[0,2,2])
+        # if c0_star[0,3]:
+        #     torque[9].append(T_stance.cpu()[0,3,0])
+        #     torque[10].append(T_stance.cpu()[0,3,1])
+        #     torque[11].append(T_stance.cpu()[0,3,2])
+
+        # if len(torque[0]) == 1000:
+        #     row_labels = ['FL [Nm]', 'FR [Nm]', 'RL [Nm]', 'RR [Nm]']
+        #     col_labels = ['Hip', 'Thigh', 'Calf']
+
+        #     fig, axs = plt.subplots(4, 3,sharey='col')
+        #     for i, ax in enumerate(axs.flat):
+        #         ax.plot(torque[i])
+        #         if (i%3) == 0:
+        #             ax.set_ylabel(row_labels[i//3])
+        #         if i >=9 :
+        #             ax.set_xlabel(col_labels[i-9])
+
+        #     fig.suptitle('Robot\'s Joint Torque over time', fontsize=16)
+        #     for i in range(len(torque)):
+        #         print('%s %s - mean:%2.2f \t std:%.2f' % (row_labels[i//3],col_labels[i%3],np.mean(torque[i]),np.std(torque[i])))
+
+        #     # plt.show()
+        #     plt.savefig("mygraph.png")
+
         return T
 
 
@@ -522,7 +564,7 @@ class samplingController(modelBaseController):
         Returns:
             - T_stance(t.Tensor): Stance Leg joint Torques              of shape(batch_size, num_legs, num_joints_per_leg)
         """
-        
+
         # Transpose the jacobian -> In batch operation : permut the last two dimensions 
         # shape(batch_size, num_legs, 3, num_joints_per_leg) -> shape(batch_size, num_legs, num_joints_per_leg, 3)
         jacobian_lw_T = jacobian_lw.transpose(-1,-2)
