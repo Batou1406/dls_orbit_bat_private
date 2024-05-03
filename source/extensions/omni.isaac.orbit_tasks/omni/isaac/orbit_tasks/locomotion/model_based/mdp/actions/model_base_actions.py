@@ -45,6 +45,7 @@ from omni.isaac.orbit.utils.math import quat_from_angle_axis
 # def torch_to_jax(x):
 #     return jax.dlpack.from_dlpack(torch.utils.dlpack.to_dlpack(x))
 
+fast_jac = True
 verbose_mb = False
 verbose_loop = 40
 vizualise_debug = {'foot': False, 'jacobian': True, 'foot_traj': True, 'lift-off': True, 'touch-down': True, 'GRF': True, 'touch-down polygon': True}
@@ -218,6 +219,9 @@ class ModelBaseAction(ActionTerm):
 
         # Variable for intermediary computaion
         self.jacobian_prev_lw = self.get_reset_jacobian() # Jacobian is translation independant thus jacobian_w = jacobian_lw
+        if fast_jac : 
+            self.temp_jac = self.jacobian_prev_lw.clone().detach()
+            self.count_jac = 4
 
         # Instance of control class. Gets Z and output u
         self.controller = cfg.controller
@@ -436,14 +440,15 @@ class ModelBaseAction(ActionTerm):
         # This is done with complex indexing operations
         # mass_matrix_full = self._asset.root_physx_view.get_mass_matrices()
         # mass_matrix_FL = mass_matrix_full[:,[0,4,8],:][:, [0,4,8]]
-        joints_idx_tensor = torch.Tensor(self._joints_idx).unsqueeze(2).unsqueeze(3).long() # long to use it to access indexes -> float trow an error
-        mass_matrix = self._asset.root_physx_view.get_mass_matrices()[:, joints_idx_tensor, joints_idx_tensor.transpose(1,2)].squeeze(-1)
-        
+        # joints_idx_tensor = torch.Tensor(self._joints_idx).unsqueeze(2).unsqueeze(3).long() # long to use it to access indexes -> float trow an error
+        # mass_matrix = self._asset.root_physx_view.get_mass_matrices()[:, joints_idx_tensor, joints_idx_tensor.transpose(1,2)].squeeze(-1)
+        mass_matrix = torch.tensor([1])
         # Retrieve Corriolis, centrifugial and gravitationnal term
         # get_coriolis_and_centrifugal_forces -> (batch_size, num_joints)
         # get_generalized_gravity_forces -> (batch_size, num_joints)
         # Reshape and tranpose to get the correct shape in correct joint order-> (batch_size, num_legs, num_joints_per_leg)
-        h = (self._asset.root_physx_view.get_coriolis_and_centrifugal_forces() + self._asset.root_physx_view.get_generalized_gravity_forces()).view(self.num_envs, self._num_joints_per_leg, self._num_legs).permute(0,2,1)
+        # h = (self._asset.root_physx_view.get_coriolis_and_centrifugal_forces() + self._asset.root_physx_view.get_generalized_gravity_forces()).view(self.num_envs, self._num_joints_per_leg, self._num_legs).permute(0,2,1)
+        h = torch.Tensor([1])
 
         return p_lw, p_dot_lw, q_dot, jacobian_lw, jacobian_dot_lw, mass_matrix, h
     
@@ -458,6 +463,13 @@ class ModelBaseAction(ActionTerm):
             - jacobian_w (Tensor): Jacobian in the world frame          of shape (batch_size, num_legs, 3, num_joints_per_leg)
             - jacobian_b (Tensor): Jacobian in the base frame           of shape (batch_size, num_legs, 3, num_joints_per_leg)            
         """
+        if fast_jac:
+            self.count_jac+=1
+            if self.count_jac < 4:
+                return self.temp_jac, self.temp_jac
+        
+            self.count_jac=0
+
         # Retrieve Jacobian from sim
         # shape(batch_size, num_legs, 3, num_joints_per_leg)
         # Intermediary step : extract feet jacobian [batch_size, num_bodies=17, 6, num_joints+6=18] -> [..., 4, 3, 18]
@@ -477,6 +489,8 @@ class ModelBaseAction(ActionTerm):
 
         # Finally, rotate the jacobian from world frame (fixed) to base frame (attached at the robot's base)
         jacobian_b = torch.matmul(R_w_to_b.unsqueeze(1), jacobian_w) # (batch, 1, 3, 3) * (batch, legs, 3, 3) -> (batch, legs, 3, 3)
+
+        self.temp_jac = jacobian_w.clone().detach()
 
         return jacobian_w, jacobian_b
     

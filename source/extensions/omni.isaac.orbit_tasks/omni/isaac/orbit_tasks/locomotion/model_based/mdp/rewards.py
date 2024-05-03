@@ -34,3 +34,43 @@ def feet_air_time(env: RLTaskEnv, command_name: str, sensor_cfg: SceneEntityCfg,
     reward *= torch.norm(env.command_manager.get_command(command_name)[:, :2], dim=1) > 0.1
     return reward
 
+
+def penalize_leg_frequency(env: RLTaskEnv, action_name: str, bound: tuple[float, float]) -> torch.Tensor:
+    """ Penalize leg frequency that are outside boundaries in ]-inf, 0]
+    Penalize linearly with frequency violation
+
+    Returns :
+        - penalty (torch.Tensor): penalty term in ]-inf, 0] for leg frequency outside bound of shape(batch_size)
+    """
+    f:torch.Tensor = env.action_manager.get_term(action_name).f
+
+    penalty = -torch.sum(torch.abs(f-f.clamp(bound[0], bound[1])), dim=1)
+
+    return penalty
+
+
+def penalize_leg_duty_cycle(env: RLTaskEnv, action_name: str, bound: tuple[float, float]) -> torch.Tensor:
+    """ Penalize leg duty cycle that are outside boundaries in ]-inf, 0]
+    Penalize linearly with duty cycle violation
+
+    Returns :
+        - penalty (torch.Tensor): penalty term in ]-inf, 0] for leg duty cycle outside bound of shape(batch_size)
+    """
+    d:torch.Tensor = env.action_manager.get_term(action_name).d
+
+    penalty = -torch.sum(torch.abs(d-d.clamp(bound[0], bound[1])), dim=1)
+
+    return penalty
+
+def penalize_big_steps(env: RLTaskEnv, action_name: str, bound_x: tuple[float, float], bound_y: tuple[float, float]) -> torch.Tensor:
+    """ Penalize leg duty cycle that are outside boundaries in ]-inf, 0]
+    Penalize linearly with duty cycle violation
+
+    Returns :
+        - penalty (torch.Tensor): penalty term in ]-inf, 0] for leg duty cycle outside bound of shape(batch_size)
+    """
+    d:torch.Tensor = env.action_manager.get_term(action_name).d
+
+    penalty = -torch.sum(torch.abs(d-d.clamp(bound[0], bound[1])), dim=1)
+
+    return penalty

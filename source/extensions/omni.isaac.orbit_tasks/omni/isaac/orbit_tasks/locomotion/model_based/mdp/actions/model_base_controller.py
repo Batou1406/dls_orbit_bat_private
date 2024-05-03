@@ -494,7 +494,7 @@ class samplingController(modelBaseController):
 
         # Intermediary step : M(q)*J⁻¹[p_dot_dot - J(q)*q_dot]  : (batch_size, num_legs, num_joints_per_leg, num_joints_per_leg) * (batch_size, num_legs, num_joints_per_leg)
         # Shape is (batch_size, num_legs, num_joints_per_leg)
-        M_J_inv_p_dot_dot_min_J_dot_x_q_dot = torch.matmul(mass_matrix, J_inv_p_dot_dot_min_J_dot_x_q_dot.unsqueeze(-1)).squeeze(-1)
+        # M_J_inv_p_dot_dot_min_J_dot_x_q_dot = torch.matmul(mass_matrix, J_inv_p_dot_dot_min_J_dot_x_q_dot.unsqueeze(-1)).squeeze(-1)
 
         # Final step        : # Shape is (batch_size, num_legs, num_joints_per_leg, num_joints_per_leg)
         # T_swing = torch.add(M_J_inv_p_dot_dot_min_J_dot_x_q_dot, h)
