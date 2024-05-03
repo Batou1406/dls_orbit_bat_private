@@ -16,7 +16,7 @@ class modelBaseControllerTest():
 
         device='cpu'
         num_env=2
-        num_leg=3
+        num_leg=4
         time_horizon=4
         dt_out=0.5
         decimation=5
