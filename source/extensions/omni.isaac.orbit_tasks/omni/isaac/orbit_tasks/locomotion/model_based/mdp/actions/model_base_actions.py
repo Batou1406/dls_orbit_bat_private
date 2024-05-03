@@ -24,10 +24,10 @@ if TYPE_CHECKING:
 
 from . import model_base_controller #import modelBaseController, samplingController
 
-import jax
-import jax.dlpack
-import torch
-import torch.utils.dlpack
+# import jax
+# import jax.dlpack
+# import torch
+# import torch.utils.dlpack
 
 import numpy as np
 
@@ -37,16 +37,17 @@ from omni.isaac.orbit.markers import VisualizationMarkers, VisualizationMarkersC
 from omni.isaac.orbit.sim import SimulationContext
 from omni.isaac.orbit.utils.assets import ISAAC_NUCLEUS_DIR, ISAAC_ORBIT_NUCLEUS_DIR
 from omni.isaac.orbit.utils.math import quat_from_angle_axis
+import omni.isaac.debug_draw._debug_draw as omni_debug_draw
 ## <<<Visualization
 
-def jax_to_torch(x: jax.Array):
-    return torch.utils.dlpack.from_dlpack(jax.dlpack.to_dlpack(x))
-def torch_to_jax(x):
-    return jax.dlpack.from_dlpack(torch.utils.dlpack.to_dlpack(x))
+# def jax_to_torch(x: jax.Array):
+#     return torch.utils.dlpack.from_dlpack(jax.dlpack.to_dlpack(x))
+# def torch_to_jax(x):
+#     return jax.dlpack.from_dlpack(torch.utils.dlpack.to_dlpack(x))
 
-verbose_mb = False
+verbose_mb = True
 verbose_loop = 40
-vizualise_debug = {'foot': False, 'jacobian': True, 'foot_traj': True, 'lift-off': True, 'touch-down': True, 'GRF': True}
+vizualise_debug = {'foot': False, 'jacobian': True, 'foot_traj': True, 'lift-off': True, 'touch-down': True, 'GRF': True, 'touch-down polygon': True}
 torch.set_printoptions(precision=2, linewidth=200, sci_mode=False)
 
 class ModelBaseAction(ActionTerm):
@@ -230,6 +231,7 @@ class ModelBaseAction(ActionTerm):
             self.my_visualizer['lift-off'] = define_markers('sphere', {'radius': 0.02, 'color': (0.678,1.0,0.184)})
             self.my_visualizer['touch-down'] = define_markers('sphere', {'radius': 0.02, 'color': (0.196,0.804,0.196)})
             self.my_visualizer['GRF']= define_markers('arrow_x', {'scale':(0.1,0.1,1.0), 'color': (0.196,0.804,0.196)})#'scale':(0.03,0.03,0.15), 
+            self.my_visualizer['touch-down polygon'] = omni_debug_draw.acquire_debug_draw_interface()
 
 
     """
@@ -581,7 +583,7 @@ class ModelBaseAction(ActionTerm):
 
 
     # TODO get the paramter as a config dict
-    def normalize_actions(self, f:torch.Tensor, d:torch.Tensor, F:torch.Tensor, p:torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor] :
+    def normalize_actions(self, f:torch.Tensor|None, d:torch.Tensor|None, F:torch.Tensor|None, p:torch.Tensor|None) -> tuple[torch.Tensor|None, torch.Tensor|None, torch.Tensor|None, torch.Tensor|None] :
         """ Given the action with mean=0 and std=1 (~ [-1,+1])
         Scale, offset and clip the actions in new range
 
@@ -601,43 +603,47 @@ class ModelBaseAction(ActionTerm):
         #--- Normalize f ---
         # f:[-1,1]->[min,max]       : mean=(min+max)/2, std=(max-min)/2     : clipped to range
         # shape(batch_size, num_legs)
-        max_f = 1.8
-        min_f = 1.2
-        f = ((f * ((max_f-min_f)/2)) + ((max_f+min_f)/2)).clamp(min_f,max_f)
+        if f is not None:
+            max_f = 1.8
+            min_f = 1.2
+            f = ((f * ((max_f-min_f)/2)) + ((max_f+min_f)/2)).clamp(min_f,max_f)
 
 
         #--- Normalize d ---
         # d:[-1,1]->[min,max]       : mean=(min+max)/2, std=(max-min)/2     : clipped to range
         # shape(batch_size, num_legs)
-        max_d = 0.6
-        min_d = 0.5
-        d = ((d * ((max_d-min_d)/2)) + ((max_d+min_d)/2)).clamp(min_d,max_d)
+        if d is not None:
+            max_d = 0.6
+            min_d = 0.5
+            d = ((d * ((max_d-min_d)/2)) + ((max_d+min_d)/2)).clamp(min_d,max_d)
 
 
         #--- Normalize F ---
         # F_xy:[-1,1]->[-std,+std]  : mean=0, std=std
         # F_z:[-1,1]->[0,mean]      : mean=mean/2, std=mean/2
         # shape(batch_size, num_legs, 3, time_horizon)
-        std_xy = 1
-        F_x = F[:,:,0,:]*std_xy 
-        F_y = F[:,:,1,:]*std_xy
+        if F is not None :
+            std_xy = 1
+            F_x = F[:,:,0,:]*std_xy 
+            F_y = F[:,:,1,:]*std_xy
 
-        mean_z = 100
-        F_z = ((F[:,:,2,:]  * (mean_z/2)) + (mean_z/2)).clamp(-200,200)
+            mean_z = 100
+            F_z = ((F[:,:,2,:]  * (mean_z/2)) + (mean_z/2)).clamp(-200,200)
 
-        F = torch.cat((F_x, F_y, F_z), dim=2).reshape_as(self.F_lw)
+            F = torch.cat((F_x, F_y, F_z), dim=2).reshape_as(self.F_lw)
 
 
         #--- Normalize p ---
         # p:[-1,1]->[min, max]      : mean=(min+max)/2, std=(max-min)/2     : clipped to range
         # shape(batch_size, num_legs, 3, step_predict)
-        max_p_x = +0.18
-        min_p_x = -0.12
-        max_p_y = +0.10
-        min_p_y = -0.10
-        p_x = ((p[:,:,0,:] * ((max_p_x-min_p_x)/2)) + ((max_p_x+min_p_x)/2)).clamp(min_p_x,max_p_x)
-        p_y = ((p[:,:,1,:] * ((max_p_y-min_p_y)/2)) + ((max_p_y+min_p_y)/2)).clamp(min_p_y,max_p_y)
-        p = torch.cat((p_x, p_y, p[:,:,2,:]), dim=2).reshape_as(p)
+        if p is not None:
+            max_p_x = +0.18
+            min_p_x = -0.12
+            max_p_y = +0.10
+            min_p_y = -0.10
+            p_x = ((p[:,:,0,:] * ((max_p_x-min_p_x)/2)) + ((max_p_x+min_p_x)/2)).clamp(min_p_x,max_p_x)
+            p_y = ((p[:,:,1,:] * ((max_p_y-min_p_y)/2)) + ((max_p_y+min_p_y)/2)).clamp(min_p_y,max_p_y)
+            p = torch.cat((p_x, p_y, p[:,:,2,:]), dim=2).reshape_as(p)
 
         return f, d, F, p
 
@@ -790,6 +796,53 @@ class ModelBaseAction(ActionTerm):
             marker_indices = ~c0_star[0,...]
 
             self.my_visualizer['GRF'].visualize(translations=marker_locations, orientations=marker_orientations, scales=scale, marker_indices=marker_indices)
+
+        # --- Visualize Foot touch-down polygon ---
+        if vizualise_debug['touch-down polygon']:
+            """self.my_visualizer['touch-down polygon'] = omni_debug_draw.acquire_debug_draw_interface()"""
+
+            FOOT_OFFSET = 0.03
+            # Find the corner points of the polygon - provide big values that will be clipped to corresponding bound
+            # p shape(num_corners, 3)
+            p_corner = torch.tensor([[10,10,FOOT_OFFSET],[10,-10,FOOT_OFFSET],[-10,-10,FOOT_OFFSET],[-10,10,FOOT_OFFSET]], device=self.device)
+
+            # Reshape p to be passed to transform_p_from_rl_to_lw -> (num_corner, num_legs, 3, 1)
+            p_corner = p_corner.unsqueeze(1).expand(4,4,3).unsqueeze(-1)
+
+            # Normalize to find the correct bound
+            _, _, _, p_corner_rl = self.normalize_actions(f=None, d=None, F=None, p=p_corner)
+
+            # shape (batch, num_corner, num_leg, 3, 1)
+            p_corner_batched_rl = p_corner_rl.unsqueeze(0).expand(self.num_envs,4,4,3,1)
+            
+            # Needs p shape(batch, num_corner, num_legs, 3, 1) -> (batch, num_legs, 3, 1)
+            p_corner_1_lw = self.transform_p_from_rl_frame_to_lw(p_corner_batched_rl[:,0,:,:,:])
+            p_corner_2_lw = self.transform_p_from_rl_frame_to_lw(p_corner_batched_rl[:,1,:,:,:])
+            p_corner_3_lw = self.transform_p_from_rl_frame_to_lw(p_corner_batched_rl[:,2,:,:,:])
+            p_corner_4_lw = self.transform_p_from_rl_frame_to_lw(p_corner_batched_rl[:,3,:,:,:])
+            # p_lw = self.transform_p_from_rl_frame_to_lw(p_corner_rl)
+
+            # shape (batch_size, num_corner, num_legs, 3, 1)
+            p_lw = torch.cat((p_corner_1_lw.unsqueeze(1), p_corner_2_lw.unsqueeze(1), p_corner_3_lw.unsqueeze(1), p_corner_4_lw.unsqueeze(1)), dim=1)
+
+            # Reshape according to our needs -> shape(batch, num_legs, num_corner,3)
+            p_lw = p_lw.squeeze(-1).permute(0,2,1,3)
+
+            # Transform to world frame
+            p_w = p_lw + (self._env.scene.env_origins).unsqueeze(1).unsqueeze(2) #
+
+            # Create the list to display the line
+            source_pos = p_w.flatten(0,2)
+            target_pos = p_w.roll(-1,dims=2).flatten(0,2)
+
+            # Start by clearing the eventual previous line
+            self.my_visualizer['touch-down polygon'].clear_lines()
+
+            # plain color for lines
+            lines_colors = [[1.0, 1.0, 0.0, 1.0]] * source_pos.shape[0]
+            line_thicknesses = [5.0] * source_pos.shape[0]
+
+            self.my_visualizer['touch-down polygon'].draw_lines(source_pos.tolist(), target_pos.tolist(), lines_colors, line_thicknesses)
 
 
 def define_markers(marker_type, param_dict) -> VisualizationMarkers:
