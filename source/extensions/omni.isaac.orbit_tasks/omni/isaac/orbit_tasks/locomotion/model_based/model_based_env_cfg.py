@@ -314,10 +314,10 @@ class RewardsCfg:
     # dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=0.0)
 
     # -- Model based penalty : Positive weight -> penalty is already negative
-    leg_frequency_penalty = RewTerm(func=penalize_leg_frequency, weight=0.1, params={"action_name": "model_base_variable", "bound": (1.2,1.8)})
-    leg_duty_cycle_penalty = RewTerm(func=penalize_leg_duty_cycle, weight=0.2, params={"action_name": "model_base_variable", "bound": (0.5,0.6)})
-    large_force_penalty = RewTerm(func=penalize_large_Forces, weight=0.01, params={"action_name": "model_base_variable", "bound": (0.0,230.0)})
-    large_step_size_penalty = RewTerm(func=penalize_big_steps, weight=0.1, params={"action_name": "model_base_variable", "bound_x": (0.12,-0.5), "bound_y": (0.06,-0.06), "bound_z": (-1.0,1.0)})
+    leg_frequency_penalty = RewTerm(func=penalize_leg_frequency, weight=0.1, params={"action_name": "model_base_variable", "bound": (1.4,1.6)})
+    leg_duty_cycle_penalty = RewTerm(func=penalize_leg_duty_cycle, weight=0.4, params={"action_name": "model_base_variable", "bound": (0.5,0.6)})
+    large_force_penalty = RewTerm(func=penalize_large_Forces, weight=0.01, params={"action_name": "model_base_variable", "bound": (80.0,120.0)})
+    large_step_size_penalty = RewTerm(func=penalize_big_steps, weight=0.1, params={"action_name": "model_base_variable", "bound_x": (0.08,-0.02), "bound_y": (0.02,-0.02), "bound_z": (-1.0,1.0)})
 
     # -- Additionnal Reward : Need a positive weight
     is_alive = RewTerm(func=mdp.is_alive, weight=1)
