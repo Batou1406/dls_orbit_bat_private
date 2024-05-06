@@ -311,6 +311,9 @@ class ModelBaseAction(ActionTerm):
         # F_rl= self._processed_actions.reshape([self.num_envs, self._num_legs, 3, self._prevision_horizon])*10
         ##<<<DEBUG
 
+        # TODO PLOT DISTRIBUTION OF OUTPUT TO SEE THE RANGE : IS IT IN THE [-1,1] RANGE ?
+
+        # TODO CHECK THIS AND MAKE IT WITH THE SHAPE OF f,d,F, and p
         # reconstruct the latent variable from the RL poliy actions
         f_rl = self._processed_actions[:, :self._num_legs]
         d_rl = self._processed_actions[:, self._num_legs:2*self._num_legs]
@@ -639,10 +642,10 @@ class ModelBaseAction(ActionTerm):
         # f:[-1,1]->[std_n,std_p]       : mean=(std_n+std_p)/2, std=(std_p-std_n)/2     : clipped to (min, max)
         # shape(batch_size, num_legs)
         if f is not None:
-            std_p_f = 1.8
-            std_n_f = 1.2
-            max_f = 1.5#3
-            min_f = 1.5#0
+            std_p_f = 1.5
+            std_n_f = 1.4
+            max_f = 1.8#1.5#3
+            min_f = 1.2#1.5#0
             f = ((f * ((std_p_f-std_n_f)/2)) + ((std_p_f+std_n_f)/2)).clamp(min_f,max_f)
 
 
@@ -650,10 +653,10 @@ class ModelBaseAction(ActionTerm):
         # d:[-1,1]->[std_n,std_p]       : mean=(std_n+std_p)/2, std=(std_p-std_n)/2     : clipped to (min, max)
         # shape(batch_size, num_legs)
         if d is not None:
-            std_d_p = 0.65
-            std_d_n = 0.45
-            max_d = 0.6#1.0
-            min_d = 0.6#0.0
+            std_d_p = 0.58
+            std_d_n = 0.53
+            max_d = 0.7#0.6#1.0
+            min_d = 0.4#0.6#0.0
             d = ((d * ((std_d_p-std_d_n)/2)) + ((std_d_p+std_d_n)/2)).clamp(min_d,max_d)
 
 
@@ -667,7 +670,7 @@ class ModelBaseAction(ActionTerm):
             F_y = F[:,:,1,:]*std_xy
 
             mean_z = 100 # 100~= 20[kg_aliengo] * 9.81 [m/s²] / 2 [leg in contact]
-            F_z = ((F[:,:,2,:]  * (mean_z/2)) + (mean_z/2)) #.clamp(-200,200)
+            F_z = ((F[:,:,2,:]  * (mean_z/2)) + (mean_z)) #.clamp(-200,200)
 
             F = torch.cat((F_x, F_y, F_z), dim=2).reshape_as(self.F_lw)
 
@@ -676,10 +679,10 @@ class ModelBaseAction(ActionTerm):
         # p:[-1,1]->[std_n, std_p]      : mean=(std_n+std_p)/2, std=(std_p-std_n)/2     : clipped to (min, max)
         # shape(batch_size, num_legs, 3, step_predict)
         if p is not None:
-            std_p_x = +0.18
-            std_n_x = -0.12
-            std_p_y = +0.10
-            std_n_y = -0.10
+            std_p_x = +0.12
+            std_n_x = -0.02
+            std_p_y = +0.02
+            std_n_y = -0.02
             max_p_x = +0.36
             min_p_x = -0.24
             max_p_y = +0.20
