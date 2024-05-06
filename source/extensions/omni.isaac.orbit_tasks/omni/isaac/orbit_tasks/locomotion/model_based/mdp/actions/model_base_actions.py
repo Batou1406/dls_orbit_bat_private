@@ -636,21 +636,25 @@ class ModelBaseAction(ActionTerm):
         """
 
         #--- Normalize f ---
-        # f:[-1,1]->[min/4,max/4]       : mean=(min+max)/2, std=(max-min)/2     : clipped to range
+        # f:[-1,1]->[std_n,std_p]       : mean=(std_n+std_p)/2, std=(std_p-std_n)/2     : clipped to (min, max)
         # shape(batch_size, num_legs)
         if f is not None:
+            std_p_f = 1.8
+            std_n_f = 1.2
             max_f = 1.5#3
             min_f = 1.5#0
-            f = ((f * ((max_f-min_f)/(2*1))) + ((max_f+min_f)/2)).clamp(min_f,max_f)
+            f = ((f * ((std_p_f-std_n_f)/2)) + ((std_p_f+std_n_f)/2)).clamp(min_f,max_f)
 
 
         #--- Normalize d ---
-        # d:[-1,1]->[min,max]       : mean=(min+max)/2, std=(max-min)/2     : clipped to range
+        # d:[-1,1]->[std_n,std_p]       : mean=(std_n+std_p)/2, std=(std_p-std_n)/2     : clipped to (min, max)
         # shape(batch_size, num_legs)
         if d is not None:
+            std_d_p = 0.65
+            std_d_n = 0.45
             max_d = 0.6#1.0
             min_d = 0.6#0.0
-            d = ((d * ((max_d-min_d)/(2*1))) + ((max_d+min_d)/2)).clamp(min_d,max_d)
+            d = ((d * ((std_d_p-std_d_n)/2)) + ((std_d_p+std_d_n)/2)).clamp(min_d,max_d)
 
 
         #--- Normalize F ---
