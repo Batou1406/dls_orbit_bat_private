@@ -10,9 +10,9 @@ from __future__ import annotations
 """Launch Isaac Sim Simulator first."""
 
 
-import jax
-print('alo alo')
-jax.devices()
+# import jax
+# print('alo alo')
+# jax.devices()
 
 import argparse
 import os

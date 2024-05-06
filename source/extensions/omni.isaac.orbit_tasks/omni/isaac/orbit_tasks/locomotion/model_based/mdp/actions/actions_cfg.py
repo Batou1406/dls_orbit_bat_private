@@ -47,6 +47,18 @@ class ModelBaseActionCfg(ActionTermCfg):
     controller: model_base_controller.samplingController = MISSING
     """Model base controller that compute u: output torques from z: latent variable""" 
 
+    @configclass
+    class FootTrajectoryCfg:
+        """ Config class for foot trajectory generator hyperparameters
+        """
+        step_height: float = 0.05
+        """ Default step height : used by the swing trajectory generator to determine the apex height in the middle of the trajectory  """
+
+        foot_offset: float = 0.03
+        """ Offset between the foot position (as returned in body view by the simulator) and the ground when in contact. """
+
+    footTrajectoryCfg: FootTrajectoryCfg = FootTrajectoryCfg()
+    """ Hyperparameter of the foot trajectory generator"""
 
     # @configclass
     # class OffsetCfg:

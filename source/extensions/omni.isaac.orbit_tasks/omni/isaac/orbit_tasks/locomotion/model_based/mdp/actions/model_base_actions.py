@@ -106,6 +106,8 @@ class ModelBaseAction(ActionTerm):
         u     (torch.Tensor): output joint torques                  of shape (batch_size, num_joints)
         jacobian_prev_lw (T): jacobian from prev. dt for jac_dot    of shape (batch_size, num_leg, 3, num_joints_per_leg) 
         inner_loop     (int): Counter of inner loop wrt. outer loop
+        hip0_pos_lw (Tensor): Hip position when leg lift-off        of shape (batch_size, num_legs, 3)
+        hip0_yaw_quat_lw (T): Robot yaw when leg lift-off           of shape (batch_size, num_legs, 4)
 
     Method :
         reset(env_ids: Sequence[int] | None = None) -> None:                                                            Inherited from ManagerTermBaseCfg (not implemented)
@@ -195,7 +197,11 @@ class ModelBaseAction(ActionTerm):
         rr_joints = self._asset.find_joints("RR.*")[0]		# list [3, 7, 11]
         self._joints_idx = [fl_joints, fr_joints, rl_joints, rr_joints]
 
+        # Intermediary variable - Hip variable for p centering
         self._hip_idx = self._asset.find_bodies(".*thigh")[0]
+        self.hip0_pos_lw = torch.zeros(self.num_envs, self._num_legs, 3, device=self.device)
+        self.hip0_yaw_quat_lw =torch.zeros(self.num_envs, self._num_legs, 4, device=self.device)
+
 
         # Latent variable
         self.f = 1*torch.ones(self.num_envs, self._num_legs, device=self.device)
@@ -227,7 +233,12 @@ class ModelBaseAction(ActionTerm):
 
         # Instance of control class. Gets Z and output u
         self.controller = cfg.controller
-        self.controller.late_init(device=self.device, num_envs=self.num_envs, num_legs=self._num_legs, time_horizon=self._prevision_horizon, dt_out=self._decimation*self._env.physics_dt, decimation=self._decimation, dt_in=self._env.physics_dt, p_default_lw=self.get_reset_foot_position()) 
+        self.controller.late_init(
+            device=self.device, num_envs=self.num_envs, num_legs=self._num_legs, time_horizon=self._prevision_horizon,
+            dt_out=self._decimation*self._env.physics_dt, decimation=self._decimation, dt_in=self._env.physics_dt,
+            p_default_lw=self.get_reset_foot_position(), step_height=cfg.footTrajectoryCfg.step_height,
+            foot_offset=cfg.footTrajectoryCfg.foot_offset
+            ) 
 
         if verbose_mb:
             self.my_visualizer = {}
@@ -315,7 +326,7 @@ class ModelBaseAction(ActionTerm):
 
         # Transform p_rl : foot touch down position centered arround the hip position projected onto the xy plane with robot heading -> transform to local world frame
         self.p_lw = self.transform_p_from_rl_frame_to_lw(p_rl=self.p_rl)
-        self.p_lw[:,:,2] = 0.03
+        self.p_lw[:,:,2] = self.cfg.footTrajectoryCfg.foot_offset
 
         # Transform GRF into local world frame
         self.F_lw = self.rotate_GRF_from_rl_frame_to_lw(F_rl=F_rl)
@@ -564,17 +575,24 @@ class ModelBaseAction(ActionTerm):
         # Project Hip position onto the xy plane : shape(batch, num_legs, 3)
         p_hip_lw[:,:,2] = 0
 
-        # p_rl = p_rl*0
-        # p_rl[:,:,0,:] = 0.15
+        # Retrieve the robot yaw as quaternion : shape (batch_size, 4) -> (batch_size, 1, 4)
+        robot_yaw_in_w = math_utils.yaw_quat(self._asset.data.root_quat_w).unsqueeze(1)
+
+        # Update hip position and orientation while leg in contact (so it's saved for the entire swing trajectory with lift-off position)
+        in_contact = (self.c_star[:,:,0]==1).unsqueeze(-1)    # True if foot in contact, False in in swing, shape (batch_size, num_legs, 1)
+        self.hip0_pos_lw = (p_hip_lw * in_contact) + (self.hip0_pos_lw * (~in_contact)) # (batch_size, num_legs, 3)
+        self.hip0_yaw_quat_lw = (robot_yaw_in_w * in_contact) + (self.hip0_yaw_quat_lw * (~in_contact)) # (batch, 1, 4)*(batch, legs, 1) -> (batch, legs, 4)
 
         # Foot touch down position centered arround the hip but rotated in the local world frame : shape(batch, num_legs, 3, number_predicted_step)
-        robot_yaw_in_w = math_utils.yaw_quat(self._asset.data.root_quat_w)
-        p_rl_flatten = p_rl.transpose(2,3).reshape(p_rl.shape[0], p_rl.shape[1]*p_rl.shape[3], p_rl.shape[2])
-        p_rl_rotated_in_lw_flatten = math_utils.transform_points(p_rl_flatten, quat=robot_yaw_in_w)
-        p_rl_rotated_in_lw = p_rl_rotated_in_lw_flatten.reshape(p_rl.shape[0], p_rl.shape[1], p_rl.shape[3], p_rl.shape[2]).transpose(2,3)
+        p_rl_permuted = p_rl.permute(0,3,1,2) # Shape (batch, predict, legs, 3)
+        p0_rl_rotated_in_lw = math_utils.transform_points(p_rl_permuted[:,:,0,:], quat=self.hip0_yaw_quat_lw[:,0,:]).unsqueeze(1) # shape(batch_size, 1,number_predicted_step, 3)
+        p1_rl_rotated_in_lw = math_utils.transform_points(p_rl_permuted[:,:,1,:], quat=self.hip0_yaw_quat_lw[:,1,:]).unsqueeze(1) # shape(batch_size, 1,number_predicted_step, 3)
+        p2_rl_rotated_in_lw = math_utils.transform_points(p_rl_permuted[:,:,2,:], quat=self.hip0_yaw_quat_lw[:,2,:]).unsqueeze(1) # shape(batch_size, 1,number_predicted_step, 3)
+        p3_rl_rotated_in_lw = math_utils.transform_points(p_rl_permuted[:,:,3,:], quat=self.hip0_yaw_quat_lw[:,3,:]).unsqueeze(1) # shape(batch_size, 1,number_predicted_step, 3)
+        p_rl_rotated_in_lw = torch.cat((p0_rl_rotated_in_lw, p1_rl_rotated_in_lw, p2_rl_rotated_in_lw, p3_rl_rotated_in_lw), dim=1).permute(0,1,3,2) # shape(batch, legs, 3, perdict)
 
-        # Foot touch down position in local world frame : shape(batch, num_legs, 3)
-        p_lw = p_hip_lw.unsqueeze(-1) + p_rl_rotated_in_lw
+        # Foot touch down position in local world frame : shape(batch, num_legs, 3, number_predicted_step)
+        p_lw = self.hip0_pos_lw.unsqueeze(-1) + p_rl_rotated_in_lw
 
         return p_lw
 
@@ -651,15 +669,19 @@ class ModelBaseAction(ActionTerm):
 
 
         #--- Normalize p ---
-        # p:[-1,1]->[min, max]      : mean=(min+max)/2, std=(max-min)/2     : clipped to range
+        # p:[-1,1]->[std_n, std_p]      : mean=(std_n+std_p)/2, std=(std_p-std_n)/2     : clipped to (min, max)
         # shape(batch_size, num_legs, 3, step_predict)
         if p is not None:
-            max_p_x = +0.18
-            min_p_x = -0.12
-            max_p_y = +0.10
-            min_p_y = -0.10
-            p_x = ((p[:,:,0,:] * ((max_p_x-min_p_x)/(2*1))) + ((max_p_x+min_p_x)/2)).clamp(min_p_x,max_p_x)
-            p_y = ((p[:,:,1,:] * ((max_p_y-min_p_y)/(2*1))) + ((max_p_y+min_p_y)/2)).clamp(min_p_y,max_p_y)
+            std_p_x = +0.18
+            std_n_x = -0.12
+            std_p_y = +0.10
+            std_n_y = -0.10
+            max_p_x = +0.36
+            min_p_x = -0.24
+            max_p_y = +0.20
+            min_p_y = -0.20
+            p_x = ((p[:,:,0,:] * ((std_p_x-std_n_x)/(2*1))) + ((std_p_x+std_n_x)/2)).clamp(min_p_x,max_p_x)
+            p_y = ((p[:,:,1,:] * ((std_p_y-std_n_y)/(2*1))) + ((std_p_y+std_n_y)/2)).clamp(min_p_y,max_p_y)
             p = torch.cat((p_x, p_y, p[:,:,2,:]), dim=2).reshape_as(p)
 
         return f, d, F, p
@@ -818,7 +840,7 @@ class ModelBaseAction(ActionTerm):
         if vizualise_debug['touch-down polygon']:
             """self.my_visualizer['touch-down polygon'] = omni_debug_draw.acquire_debug_draw_interface()"""
 
-            FOOT_OFFSET = 0.015
+            FOOT_OFFSET = self.cfg.footTrajectoryCfg.foot_offset
             # Find the corner points of the polygon - provide big values that will be clipped to corresponding bound
             # p shape(num_corners, 3)
             p_corner = torch.tensor([[10,10,FOOT_OFFSET],[10,-10,FOOT_OFFSET],[-10,-10,FOOT_OFFSET],[-10,10,FOOT_OFFSET]], device=self.device)

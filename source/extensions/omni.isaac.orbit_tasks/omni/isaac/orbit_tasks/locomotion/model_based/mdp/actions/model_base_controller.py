@@ -2,7 +2,6 @@ from abc import ABC
 from collections.abc import Sequence
 import torch
 
-FOOT_OFFSET = 0.015#0.03 #Offset between the foot and the ground
 import numpy as np
 import matplotlib.pyplot as plt
 np.set_printoptions(precision=2, linewidth=200)
@@ -141,6 +140,8 @@ class samplingController(modelBaseController):
         - p0_lw (Tensor): Lift-off position                                     of shape (batch_size, num_legs, 3)
         - swing_time (T): time progression of the leg in swing phase            of shape (batch_size, num_legs)  
         - p_lw_sim_prev : Last foot position from sim. upd in comp_ctrl in _lw  of shape (batch_size, num_legs, 3)
+        - step_height   : Apex height of the swing trajectory
+        - FOOT_OFFSET   : Offset between the foot (as return by the sim.) and the ground when in contact
 
     Method :
         - late_init(device, num_envs, num_legs) : save environment variable and allow for lazy init of variables        Inherited from modelBaseController
@@ -166,7 +167,7 @@ class samplingController(modelBaseController):
         self.swing_ctrl_vel_gain_fb = swing_ctrl_vel_gain_fb
 
 
-    def late_init(self, device, num_envs, num_legs, time_horizon, dt_out, decimation, dt_in, p_default_lw: torch.Tensor):
+    def late_init(self, device, num_envs, num_legs, time_horizon, dt_out, decimation, dt_in, p_default_lw: torch.Tensor, step_height, foot_offset):
         """ Initialise Model Base variable after the model base action class has been initialised
         Note :
             The variable are in the 'local' world frame _wl. This notation is introduced to avoid confusion with the 'global' world frame, where all the batches coexists.
@@ -186,6 +187,8 @@ class samplingController(modelBaseController):
         self.p0_lw = p_default_lw.clone().detach()
         self.swing_time = torch.zeros(num_envs, num_legs, device=device)
         self.p_lw_sim_prev = p_default_lw.clone().detach()
+        self.step_height = step_height
+        self.FOOT_OFFSET = foot_offset
 
 
     def reset(self, env_ids: Sequence[int] | None,  p_default_lw: torch.Tensor) -> None:
@@ -305,12 +308,6 @@ class samplingController(modelBaseController):
         Returns:
             - pt_lw (tch.Tensor): Desired Swing Leg traj. in _lw frame  of shape(batch_size, num_legs, 9, decimation)   (9 = xyz_pos, xzy_vel, xyz_acc)
         """
-        # Step 0. Define and Compute usefull variables
-
-        # Heuristic TODO Save that on the right place, could also be a RL variable
-        step_height = 0.08
-
-
         # Step 1. Compute the phase trajectory : shape (batch_size, num_legs, decimation)
         # ie. retrieve the actual leg phase -> and compute the trajectory (phase evolution) for the next outer loop period (ie. for decimation inner loop iteration) 
 
@@ -330,7 +327,7 @@ class samplingController(modelBaseController):
         # Retrieve p0 : update p0 with latest foot position when in contact, don't update when in swing
         # p0 shape (batch_size, num_legs, 3)
         in_contact = (c[:,:,0]==1).unsqueeze(-1)    # True if foot in contact, False in in swing, shape (batch_size, num_legs, 1)
-        self.p0_lw = (self.p_lw_sim_prev * in_contact) + (self.p0_lw * (~in_contact))
+        self.p0_lw = (self.p_lw_sim_prev * in_contact) + (self.p0_lw * (~in_contact)) # TODO correct this ! This is wrong as it will save p one step before lift-off
 
         # Retrieve p2 : this is simply the foot touch down prior given as input
         # p2 shape (batch_size, num_legs, 3) 
@@ -340,7 +337,7 @@ class samplingController(modelBaseController):
         # p1 shape (batch_size, num_legs, 3)
         # TODO Not only choose height as step heigh but use +the terrain height or +the feet height at touch down
         p1_lw = (self.p0_lw[:,:,:2] + p2_lw[:,:,:2]) / 2     # p1(x,y) is in the middle of p0 and p2
-        p1_lw = torch.cat((p1_lw, step_height*torch.ones_like(p1_lw[:,:,:1]) + FOOT_OFFSET), dim=2) # Append a third dimension z : defined as step_height
+        p1_lw = torch.cat((p1_lw, self.step_height*torch.ones_like(p1_lw[:,:,:1]) + self.FOOT_OFFSET), dim=2) # Append a third dimension z : defined as step_height
 
 
         # Step 3. Compute the parameters for the interpolation (control points)
@@ -444,7 +441,7 @@ class samplingController(modelBaseController):
         # Save variables
         self.p_lw_sim_prev = p_lw # Used in genereate trajectory
 
-
+        # ---- Plot Torques ----
         # if c0_star[0,0]:
         #     torque[0].append(T_stance.cpu()[0,0,0])
         #     torque[1].append(T_stance.cpu()[0,0,1])
@@ -461,11 +458,10 @@ class samplingController(modelBaseController):
         #     torque[9].append(T_stance.cpu()[0,3,0])
         #     torque[10].append(T_stance.cpu()[0,3,1])
         #     torque[11].append(T_stance.cpu()[0,3,2])
-
+        #
         # if len(torque[0]) == 1000:
         #     row_labels = ['FL [Nm]', 'FR [Nm]', 'RL [Nm]', 'RR [Nm]']
         #     col_labels = ['Hip', 'Thigh', 'Calf']
-
         #     fig, axs = plt.subplots(4, 3,sharey='col')
         #     for i, ax in enumerate(axs.flat):
         #         ax.plot(torque[i])
@@ -473,11 +469,9 @@ class samplingController(modelBaseController):
         #             ax.set_ylabel(row_labels[i//3])
         #         if i >=9 :
         #             ax.set_xlabel(col_labels[i-9])
-
         #     fig.suptitle('Robot\'s Joint Torque over time', fontsize=16)
         #     for i in range(len(torque)):
         #         print('%s %s - mean:%2.2f \t std:%.2f' % (row_labels[i//3],col_labels[i%3],np.mean(torque[i]),np.std(torque[i])))
-
         #     # plt.show()
         #     plt.savefig("mygraph.png")
 
