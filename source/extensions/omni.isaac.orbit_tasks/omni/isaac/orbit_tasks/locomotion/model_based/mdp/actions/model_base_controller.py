@@ -327,7 +327,7 @@ class samplingController(modelBaseController):
         # Retrieve p0 : update p0 with latest foot position when in contact, don't update when in swing
         # p0 shape (batch_size, num_legs, 3)
         in_contact = (c[:,:,0]==1).unsqueeze(-1)    # True if foot in contact, False in in swing, shape (batch_size, num_legs, 1)
-        self.p0_lw = (self.p_lw_sim_prev * in_contact) + (self.p0_lw * (~in_contact)) # TODO correct this ! This is wrong as it will save p one step before lift-off
+        self.p0_lw = (self.p_lw_sim_prev * in_contact) + (self.p0_lw * (~in_contact)) # p_lw_sim_prev : last data from sim available
 
         # Retrieve p2 : this is simply the foot touch down prior given as input
         # p2 shape (batch_size, num_legs, 3) 
