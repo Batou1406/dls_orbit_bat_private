@@ -16,7 +16,7 @@ class UnitreeAliengoBasePPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
     max_iterations = 1500
     save_interval = 50
-    experiment_name = "aliengo_model_based_base"
+    experiment_name = "aliengo_model_based_2"
     empirical_normalization = False
     policy = RslRlPpoActorCriticCfg(
         init_noise_std=1.0,
