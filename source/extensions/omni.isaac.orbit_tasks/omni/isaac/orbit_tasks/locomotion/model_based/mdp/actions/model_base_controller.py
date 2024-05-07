@@ -7,6 +7,9 @@ import matplotlib.pyplot as plt
 np.set_printoptions(precision=2, linewidth=200)
 # force=[[],[],[],[],[],[],[],[],[],[],[],[]]
 torque=[[],[],[],[],[],[],[],[],[],[],[],[]]
+pos_tracking_error = [[],[],[],[]]
+vel_tracking_error = [[],[],[],[]]
+acc_tracking_error = [[],[],[],[]]
 
 class modelBaseController(ABC):
     """
@@ -318,7 +321,7 @@ class samplingController(modelBaseController):
 
         # swing phase trajectpry [phase, phase + delta_phase, ...],   shape (batch_size, num_legs, decimation)
         # (batch_size, num_legs, 1) + [(1, 1, decimation) * (batch_size, num_legs, 1)] -> (batch_size, num_legs, decimation)
-        swing_phase_traj = (swing_phase.unsqueeze(-1)) + ((torch.arange(self._decimation, device=self._device).unsqueeze(0).unsqueeze(0)) * delta_phase.unsqueeze(-1))
+        swing_phase_traj = (swing_phase.unsqueeze(-1)) + ((1+torch.arange(self._decimation, device=self._device).unsqueeze(0).unsqueeze(0)) * delta_phase.unsqueeze(-1))
 
 
         # Step 2. Retrieve the three interpolation points : p0, p1, p2 (lift-off, middle point, touch down)
@@ -474,6 +477,43 @@ class samplingController(modelBaseController):
         #     # plt.show()
         #     plt.savefig("mygraph.png")
 
+        # ---- plot swing tracking error ----
+        # pos_err_rmse = (pt_i_star_lw[:,:,0:3] - p_lw).pow(2).mean(dim=-1).sqrt()
+        # vel_err_rmse = (pt_i_star_lw[:,:,3:6] - p_dot_lw).pow(2).mean(dim=-1).sqrt()
+        # if c0_star[0,0]:
+        #     if pos_err_rmse[0,0] < 0.2:
+        #         pos_tracking_error[0].append(pos_err_rmse[0,0].cpu())
+        #         vel_tracking_error[0].append(vel_err_rmse[0,0].cpu())
+        # if c0_star[0,1]:
+        #     if pos_err_rmse[0,1] < 0.2:
+        #         pos_tracking_error[1].append(pos_err_rmse[0,1].cpu())
+        #         vel_tracking_error[1].append(vel_err_rmse[0,1].cpu())
+        # if c0_star[0,2]:
+        #     if pos_err_rmse[0,2] < 0.2:
+        #         pos_tracking_error[2].append(pos_err_rmse[0,2].cpu())
+        #         vel_tracking_error[2].append(vel_err_rmse[0,2].cpu())
+        # if c0_star[0,3]:
+        #     if pos_err_rmse[0,3] < 0.2:
+        #         pos_tracking_error[3].append(pos_err_rmse[0,3].cpu())
+        #         vel_tracking_error[3].append(vel_err_rmse[0,3].cpu())
+        # if len(pos_tracking_error[0]) == 1000:
+        #     row_labels = ['FL [Nm]', 'FR [Nm]', 'RL [Nm]', 'RR [Nm]']
+        #     col_labels = ['Position RMSE', 'Velocity RMSE']
+        #     fig, axs = plt.subplots(4, 2, figsize=(19.20,10.80))#,sharey='col')
+        #     for i, ax in enumerate(axs.flat):
+        #         if (i%2) == 0:
+        #             ax.set_ylabel(row_labels[i//3])
+        #             ax.plot(pos_tracking_error[i//2][10:])
+        #         else:
+        #             ax.plot(vel_tracking_error[(i//2)][10:])
+        #         if i >=6 :
+        #             ax.set_xlabel(col_labels[i-6])
+        #     fig.suptitle('Swing Tracking Error', fontsize=16)
+        #     # for i in range(len(pos_tracking_error)):
+        #     #     print('%s %s - mean:%2.2f \t std:%.2f' % (row_labels[i//2],col_labels[i%2],(pos_tracking_error[i]).mean(),(pos_tracking_error[i]).std))
+        #     # plt.show()
+        #     plt.savefig("Tracking Error - Kp=10'000, Kd=-1.0, kff=1.png",dpi=600)
+
         return T
 
 
@@ -507,6 +547,7 @@ class samplingController(modelBaseController):
         # Compute the desired acceleration : with a PD controller thanks to the feedback linearization
         # Shape (batch_size, num_legs, 3)
         # p_dot_dot_lw = des_foot_acc_lw + self.swing_ctrl_pos_gain_fb * (pos_err) + self.swing_ctrl_vel_gain_fb * (vel_err)
+        # p_dot_dot_lw = self.swing_ctrl_pos_gain_fb * (pos_err) + self.swing_ctrl_vel_gain_fb * (vel_err)
         p_dot_dot_lw = self.swing_ctrl_pos_gain_fb * (pos_err) 
 
         # Compute  the inverse jacobian. This synchronise CPU and GPU

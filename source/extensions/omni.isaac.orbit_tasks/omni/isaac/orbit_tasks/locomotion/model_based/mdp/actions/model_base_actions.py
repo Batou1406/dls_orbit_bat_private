@@ -552,10 +552,10 @@ class ModelBaseAction(ActionTerm):
         This function transform the foot touch down position into local world frame
 
         Args :
-            - p_rl (torch.Tensor): foot touch down position, centered arround the hip   of shape(batch_size, num_legs, 3, number_predicted_step)  
+            - p_rl (torch.Tensor): foot touch down position, centered arround the hip   of shape(batch_size, num_legs, 2 or 3, number_predicted_step)  
 
         Return :
-            - p_lw (torch.Tensor): foot touch down position in local world frame        of shape(batch_size, num_legs, 3, number_predicted_step)
+            - p_lw (torch.Tensor): foot touch down position in local world frame        of shape(batch_size, num_legs, 2 or 3, number_predicted_step)
         """
         # Hip position in world frame : shape(batch, num_legs, 3)
         p_hip_w = self._asset.data.body_pos_w[:, self._hip_idx, :]
@@ -575,7 +575,7 @@ class ModelBaseAction(ActionTerm):
         self.hip0_yaw_quat_lw = (robot_yaw_in_w * in_contact) + (self.hip0_yaw_quat_lw * (~in_contact)) # (batch, 1, 4)*(batch, legs, 1) -> (batch, legs, 4)
 
         # If we don't optimize for the height - p_rl is two dimensionnal (x,y), thus we need to happend the z dimension, filled with zeros.
-        if not self.cfg.optimize_step_height:
+        if p_rl.shape[2] == 2:#not self.cfg.optimize_step_height:
             p_rl = torch.cat([p_rl, torch.zeros_like(p_rl[:, :, :1, :])], dim=2) # not in place operation -> doesn't modify p_rl outside function
 
         # Foot touch down position centered arround the hip but rotated in the local world frame : shape(batch, num_legs, 3, number_predicted_step)
@@ -621,13 +621,13 @@ class ModelBaseAction(ActionTerm):
             - f (torch.Tensor): leg frequency  RL policy output in [-1,1] range of shape(batch_size, num_legs)
             - d (torch.Tensor): leg duty cycle RL policy output in [-1,1] range of shape(batch_size, num_legs)
             - F (torch.Tensor): GRF            RL policy output in [-1,1] range of shape(batch_size, num_legs, 3, time_horizon)
-            - p (torch.Tensor): touch down pos RL policy output in [-1,1] range of shape(batch_size, num_legs, 3, step_predict)
+            - p (torch.Tensor): touch down pos RL policy output in [-1,1] range of shape(batch_size, num_legs, 2 or 3, step_predict)
 
         Returns :
             - f (torch.Tensor): Scaled output in [Hz]    of shape(batch_size, num_legs)
             - d (torch.Tensor): Scaled output in [1/rad] of shape(batch_size, num_legs)
             - F (torch.Tensor): Scaled output in [N]     of shape(batch_size, num_legs, 3, time_horizon)
-            - p (torch.Tensor): Scaled output in [m]     of shape(batch_size, num_legs, 3, step_predict)
+            - p (torch.Tensor): Scaled output in [m]     of shape(batch_size, num_legs, 2 or 3, step_predict)
         """
 
         #--- Normalize f ---
@@ -687,7 +687,7 @@ class ModelBaseAction(ActionTerm):
             p_y = ((p[:,:,1,:] * ((std_p_y-std_n_y)/(2*1))) + ((std_p_y+std_n_y)/2)).clamp(min_p_y,max_p_y)
 
             # If we don't optimize for step height p is two dimensional (x,y)
-            if self.cfg.optimize_step_height:
+            if p.shape[2] == 3:# self.cfg.optimize_step_height:
                 std_p_z = +0.1
                 std_n_z = -0.1
                 max_p_z = +0.2
@@ -864,6 +864,7 @@ class ModelBaseAction(ActionTerm):
 
             # Normalize to find the correct bound
             _, _, _, p_corner_rl = self.normalize_actions(f=None, d=None, F=None, p=p_corner)
+            p_corner_rl[:,:,2,:] = FOOT_OFFSET # This is overwritten by the normalization
 
             # shape (batch, num_corner, num_leg, 3, 1)
             p_corner_batched_rl = p_corner_rl.unsqueeze(0).expand(self.num_envs,4,4,3,1)
