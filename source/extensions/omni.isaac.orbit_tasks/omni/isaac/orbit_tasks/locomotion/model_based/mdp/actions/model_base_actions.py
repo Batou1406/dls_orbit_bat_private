@@ -658,7 +658,7 @@ class ModelBaseAction(ActionTerm):
         # shape(batch_size, num_legs, 3, time_horizon)
         if F is not None :
             # shape (batch_size,1)
-            number_leg_in_contact = torch.sum(self.c_star, dim=1)
+            number_leg_in_contact = torch.clamp_min(torch.sum(self.c_star, dim=1),1) # set a minimum of 1 to avoid div by 0
 
             std_xy = (2 / number_leg_in_contact).unsqueeze(-1) # shape (batch_size,1,1)
             F_x = F[:,:,0,:]*std_xy 
