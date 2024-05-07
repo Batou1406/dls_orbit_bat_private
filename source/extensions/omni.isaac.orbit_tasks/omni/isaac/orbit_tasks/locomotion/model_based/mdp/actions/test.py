@@ -22,7 +22,9 @@ class modelBaseControllerTest():
         decimation=5
         dt_in=0.1
         p_default=torch.tensor([[1,1,1],[0,0,0],[0.1, 0.2, 0.5]]).unsqueeze(0).expand(num_env, -1, -1)
-        self.controller.late_init(device, num_env, num_leg, time_horizon, dt_out, decimation, dt_in, p_default)
+        step_height = 0.05
+        foot_offset = 0.03
+        self.controller.late_init(device, num_env, num_leg, time_horizon, dt_out, decimation, dt_in, p_default, step_height, foot_offset)
 
     def test_optimize_latent_variable(self):
         raise NotImplementedError

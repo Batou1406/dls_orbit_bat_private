@@ -160,14 +160,11 @@ class samplingController(modelBaseController):
     swing_time : torch.Tensor
     p_lw_sim_prev : torch.Tensor
 
-    def __init__(self, swing_ctrl_pos_gain_fb = 5000, swing_ctrl_vel_gain_fb=100):
+    def __init__(self):
         super().__init__()
 
-        self.swing_ctrl_pos_gain_fb = swing_ctrl_pos_gain_fb
-        self.swing_ctrl_vel_gain_fb = swing_ctrl_vel_gain_fb
 
-
-    def late_init(self, device, num_envs, num_legs, time_horizon, dt_out, decimation, dt_in, p_default_lw: torch.Tensor, step_height, foot_offset):
+    def late_init(self, device, num_envs, num_legs, time_horizon, dt_out, decimation, dt_in, p_default_lw: torch.Tensor, step_height, foot_offset, swing_ctrl_pos_gain_fb, swing_ctrl_vel_gain_fb):
         """ Initialise Model Base variable after the model base action class has been initialised
         Note :
             The variable are in the 'local' world frame _wl. This notation is introduced to avoid confusion with the 'global' world frame, where all the batches coexists.
@@ -189,6 +186,8 @@ class samplingController(modelBaseController):
         self.p_lw_sim_prev = p_default_lw.clone().detach()
         self.step_height = step_height
         self.FOOT_OFFSET = foot_offset
+        self.swing_ctrl_pos_gain_fb = swing_ctrl_pos_gain_fb
+        self.swing_ctrl_vel_gain_fb = swing_ctrl_vel_gain_fb        
 
 
     def reset(self, env_ids: Sequence[int] | None,  p_default_lw: torch.Tensor) -> None:

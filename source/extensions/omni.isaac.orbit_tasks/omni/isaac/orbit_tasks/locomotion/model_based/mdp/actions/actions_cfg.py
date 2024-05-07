@@ -43,6 +43,8 @@ class ModelBaseActionCfg(ActionTermCfg):
     number_predict_step: int = 3
     """number of predicted touch down position (used by sampling controller, prior by RL)"""
 
+    optimize_step_height: bool = False
+
     # controller: model_base_controller.modelBaseController = MISSING
     controller: model_base_controller.samplingController = MISSING
     """Model base controller that compute u: output torques from z: latent variable""" 
@@ -60,26 +62,19 @@ class ModelBaseActionCfg(ActionTermCfg):
     footTrajectoryCfg: FootTrajectoryCfg = FootTrajectoryCfg()
     """ Hyperparameter of the foot trajectory generator"""
 
-    # @configclass
-    # class OffsetCfg:
-    #     """The offset pose from parent frame to child frame.
+    @configclass
+    class SwingControllerCfg:
+        """ Config class for swing foot trajectory controller hyperparameters
+        """
+        swing_ctrl_pos_gain_fb: float = 10000.0
+        """ Position gain feedback for swing trajectory tracking in [0, +inf] """
 
-    #     On many robots, end-effector frames are fictitious frames that do not have a corresponding
-    #     rigid body. In such cases, it is easier to define this transform w.r.t. their parent rigid body.
-    #     For instance, for the Franka Emika arm, the end-effector is defined at an offset to the the
-    #     "panda_hand" frame.
-    #     """
+        swing_ctrl_vel_gain_fb: float = 0.0
+        """ Velocity gain feedback for swing trajectory tracking in [0, +inf] """
 
-    #     pos: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    #     """Translation w.r.t. the parent frame. Defaults to (0.0, 0.0, 0.0)."""
-    #     rot: tuple[float, float, float, float] = (1.0, 0.0, 0.0, 0.0)
-    #     """Quaternion rotation ``(w, x, y, z)`` w.r.t. the parent frame. Defaults to (1.0, 0.0, 0.0, 0.0)."""
+    swingControllerCfg: SwingControllerCfg = SwingControllerCfg()
+    """ Hyperparameter of the swing foot controller"""
 
-    # body_name: str = MISSING
-    # """Name of the body or frame for which IK is performed."""
-
-    # body_offset: OffsetCfg | None = None
-    # """Offset of target frame w.r.t. to the body frame. Defaults to None, in which case no offset is applied."""
 
 
 

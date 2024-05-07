@@ -86,10 +86,13 @@ def penalize_big_steps(env: RLTaskEnv, action_name: str, bound_x: tuple[float, f
 
     penalty_x = -torch.sum(torch.abs(p[:,:,0]-p[:,:,0].clamp(bound_x[0], bound_x[1])), dim=1)
     penalty_y = -torch.sum(torch.abs(p[:,:,1]-p[:,:,1].clamp(bound_y[0], bound_y[1])), dim=1)
-    penalty_z = -torch.sum(torch.abs(p[:,:,2]-p[:,:,2].clamp(bound_z[0], bound_z[1])), dim=1)
+    penalty_z = 0
+
+    # if we optimize also for the step height, p is 3 dimensional (x,y,z)
+    if env.action_manager.get_term(action_name).cfg.optimize_step_height :
+        penalty_z = -torch.sum(torch.abs(p[:,:,2]-p[:,:,2].clamp(bound_z[0], bound_z[1])), dim=1)
 
     penalty = penalty_x + penalty_y + penalty_z
-
     return penalty
 
 

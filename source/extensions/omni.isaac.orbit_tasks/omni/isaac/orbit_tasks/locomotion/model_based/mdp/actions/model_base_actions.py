@@ -24,11 +24,6 @@ if TYPE_CHECKING:
 
 from . import model_base_controller #import modelBaseController, samplingController
 
-# import jax
-# import jax.dlpack
-# import torch
-# import torch.utils.dlpack
-
 import numpy as np
 
 ## >>>Visualization
@@ -37,15 +32,21 @@ from omni.isaac.orbit.markers import VisualizationMarkers, VisualizationMarkersC
 from omni.isaac.orbit.sim import SimulationContext
 from omni.isaac.orbit.utils.assets import ISAAC_NUCLEUS_DIR, ISAAC_ORBIT_NUCLEUS_DIR
 from omni.isaac.orbit.utils.math import quat_from_angle_axis
-
 ## <<<Visualization
+
+import matplotlib.pyplot as plt
+plt_i = 0
+
+# import jax
+# import jax.dlpack
+# import torch
+# import torch.utils.dlpack
 
 # def jax_to_torch(x: jax.Array):
 #     return torch.utils.dlpack.from_dlpack(jax.dlpack.to_dlpack(x))
 # def torch_to_jax(x):
 #     return jax.dlpack.from_dlpack(torch.utils.dlpack.to_dlpack(x))
 
-fast_jac = False
 verbose_mb = False
 verbose_loop = 40
 vizualise_debug = {'foot': False, 'jacobian': True, 'foot_traj': True, 'lift-off': True, 'touch-down': True, 'GRF': True, 'touch-down polygon': True}
@@ -98,6 +99,10 @@ class ModelBaseAction(ActionTerm):
         p_lw  (torch.Tensor): Prior foot pos. sequence              of shape (batch_size, num_legs, 3, time_horizon)
         p_rl  (torch.Tensor): Prior foot pos. sequence hip center   of shape (batch_size, num_legs, 3, time_horizon)
         F_lw  (torch.Tensor): Prior Ground Reac. Forces (GRF) seq.  of shape (batch_size, num_legs, 3, time_horizon)
+        f_len               : To ease the actions extraction
+        d_len               : To ease the actions extraction
+        p_len               : To ease the actions extraction
+        F_len               : To ease the actions extraction
         p_star_lw (t.Tensor): Optimizied foot pos sequence          of shape (batch_size, num_legs, 3, time_horizon)
         F_star_lw (t.Tensor): Opt. Ground Reac. Forces (GRF) seq.   of shape (batch_size, num_legs, 3, time_horizon)
         c_star (trch.Tensor): Optimizied foot contact sequence      of shape (batch_size, num_legs, time_horizon)
@@ -204,12 +209,21 @@ class ModelBaseAction(ActionTerm):
 
 
         # Latent variable
+        if self.cfg.optimize_step_height:
+            p_dim=3
+        else : 
+            p_dim=2
         self.f = 1*torch.ones(self.num_envs, self._num_legs, device=self.device)
         self.d = 0.55*torch.ones(self.num_envs, self._num_legs, device=self.device)
         self.p_lw = torch.zeros(self.num_envs, self._num_legs, 3, self._number_predict_step, device=self.device)
-        self.p_rl = torch.zeros(self.num_envs, self._num_legs, 3, self._number_predict_step, device=self.device) # Used to compute penalty term
+        self.p_rl = torch.zeros(self.num_envs, self._num_legs, p_dim, self._number_predict_step, device=self.device) # Used to compute penalty term
         self.F_lw = torch.zeros(self.num_envs, self._num_legs, 3, self._prevision_horizon, device=self.device)
-        self.z = [self.f, self.d, self.p_lw, self.F_lw]
+        self.z = [self.f, self.d, self.p_rl, self.F_lw]
+        # For ease of reshaping variables
+        self.f_len = self.f.shape[1:].numel()
+        self.d_len = self.d.shape[1:].numel()
+        self.p_len = self.p_rl.shape[1:].numel()
+        self.F_len = self.F_lw.shape[1:].numel()
 
         # create tensors for raw and processed actions
         self._raw_actions = torch.zeros(self.num_envs, self.action_dim, device=self.device)
@@ -227,9 +241,6 @@ class ModelBaseAction(ActionTerm):
 
         # Variable for intermediary computaion
         self.jacobian_prev_lw = self.get_reset_jacobian() # Jacobian is translation independant thus jacobian_w = jacobian_lw
-        if fast_jac : 
-            self.temp_jac = self.jacobian_prev_lw.clone().detach()
-            self.count_jac = 4
 
         # Instance of control class. Gets Z and output u
         self.controller = cfg.controller
@@ -237,7 +248,8 @@ class ModelBaseAction(ActionTerm):
             device=self.device, num_envs=self.num_envs, num_legs=self._num_legs, time_horizon=self._prevision_horizon,
             dt_out=self._decimation*self._env.physics_dt, decimation=self._decimation, dt_in=self._env.physics_dt,
             p_default_lw=self.get_reset_foot_position(), step_height=cfg.footTrajectoryCfg.step_height,
-            foot_offset=cfg.footTrajectoryCfg.foot_offset
+            foot_offset=cfg.footTrajectoryCfg.foot_offset, swing_ctrl_pos_gain_fb=self.cfg.swingControllerCfg.swing_ctrl_pos_gain_fb , 
+            swing_ctrl_vel_gain_fb=self.cfg.swingControllerCfg.swing_ctrl_vel_gain_fb
             ) 
 
         if verbose_mb:
@@ -259,9 +271,6 @@ class ModelBaseAction(ActionTerm):
     @property
     def action_dim(self) -> int:
         return sum(variable.shape[1:].numel() for variable in self.z) # shape[1:], return all the dimension exept dim0=batch_size
-        ##>>>DEBUG
-        # return self.F_lw.shape[1:].numel()
-        ##<<<DEBUG
 
     @property
     def raw_actions(self) -> torch.Tensor:
@@ -297,29 +306,13 @@ class ModelBaseAction(ActionTerm):
         self._processed_actions = self._raw_actions * self._scale + self._offset
 
         # reconstruct the latent variable from the RL poliy actions
-        # self.f = (self._processed_actions[:, :self._num_legs]).clamp(1.2,1.2) # 0:3 and clip frequency to valid range [0,20]
-        # self.d = (self._processed_actions[:, self._num_legs:2*self._num_legs]).clamp(0.55,0.55) # 4:7 and clip leg duty cycle to valid range [0,1]
-        # p_rl = 0.5*self._processed_actions[:, 2*self._num_legs:(2*self._num_legs + 3*self._num_legs*self._number_predict_step)].reshape([self.num_envs, self._num_legs, 3, self._number_predict_step]).clamp(-0.12,0.12)
-        # F_rl = 50*self._processed_actions[:, (2*self._num_legs + 3*self._num_legs*self._number_predict_step):].reshape([self.num_envs, self._num_legs, 3, self._prevision_horizon]) #TODO change as scale parameter
-        # self.z = [self.f, self.d, self.p_lw, self.F_lw]
+        f_rl = (self._processed_actions[:, 0                                    : self.f_len                                       ]).reshape_as(self.f)
+        d_rl = (self._processed_actions[:, self.f_len                           : self.f_len + self.d_len                          ]).reshape_as(self.d)
+        p_rl = (self._processed_actions[:, self.f_len + self.d_len              : self.f_len + self.d_len + self.p_len             ]).reshape_as(self.p_rl)
+        F_rl = (self._processed_actions[:, self.f_len + self.d_len + self.p_len : self.f_len + self.d_len + self.p_len + self.F_len]).reshape_as(self.F_lw)
 
-        ##>>>DEBUG
-        #self.f = 2    Doesn't change from default
-        #self.d = 0.55 Doesn't change from default 
-        # p_rl= torch.tensor([[0.243, 0.138, 0.03],[0.243, -0.138, 0.03],[-0.236, 0.137, 0.03],[-0.236, -0.137, 0.03]], device=self.device).unsqueeze(0).expand(self.num_envs, -1, -1).unsqueeze(-1) 
-        # p_rl= torch.zeros_like(self.p_lw , device=self.device) 
-        # F_rl= self._processed_actions.reshape([self.num_envs, self._num_legs, 3, self._prevision_horizon])*10
-        ##<<<DEBUG
-
-        # TODO PLOT DISTRIBUTION OF OUTPUT TO SEE THE RANGE : IS IT IN THE [-1,1] RANGE ?
-
-        # TODO CHECK THIS AND MAKE IT WITH THE SHAPE OF f,d,F, and p
-        # reconstruct the latent variable from the RL poliy actions
-        f_rl = self._processed_actions[:, :self._num_legs]
-        d_rl = self._processed_actions[:, self._num_legs:2*self._num_legs]
-        p_rl = self._processed_actions[:, 2*self._num_legs:(2*self._num_legs + 3*self._num_legs*self._number_predict_step)].reshape([self.num_envs, self._num_legs, 3, self._number_predict_step])
-        F_rl = self._processed_actions[:, (2*self._num_legs + 3*self._num_legs*self._number_predict_step):].reshape([self.num_envs, self._num_legs, 3, self._prevision_horizon])
-        # self.z = [self.f, self.d, self.p_lw, self.F_lw]
+        if actions.numel() != (f_rl.numel() + d_rl.numel() + p_rl.numel() + F_rl.numel()):
+            print('OH NOOOOOOO')
 
         # Increment d from d_dot
         # d_rl = self.d + d_dot.clamp(-0.05,0.05) # TODO this must be normalize also !!
@@ -329,10 +322,13 @@ class ModelBaseAction(ActionTerm):
 
         # Transform p_rl : foot touch down position centered arround the hip position projected onto the xy plane with robot heading -> transform to local world frame
         self.p_lw = self.transform_p_from_rl_frame_to_lw(p_rl=self.p_rl)
-        self.p_lw[:,:,2] = self.cfg.footTrajectoryCfg.foot_offset
+        if not self.cfg.optimize_step_height:
+            self.p_lw[:,:,2] = self.cfg.footTrajectoryCfg.foot_offset
 
         # Transform GRF into local world frame
         self.F_lw = self.rotate_GRF_from_rl_frame_to_lw(F_rl=F_rl)
+
+        # self.z = [self.f, self.d, self.p_lw, self.F_lw]
 
         # Optimize the latent variable with the model base controller
         self.p_star_lw, self.F_star_lw, self.c_star, self.pt_star_lw, self.full_pt_lw = self.controller.optimize_latent_variable(f=self.f, d=self.d, p_lw=self.p_lw, F_lw=self.F_lw)
@@ -382,7 +378,7 @@ class ModelBaseAction(ActionTerm):
         """
         # check if specific environment ids are provided otherwise all environments must be reseted
         if env_ids is None:
-            env_ids = slice(None)   # TODO Check the behaviour
+            env_ids = slice(None) 
 
         # variable to count the number of inner loop with respect to outer loop
         self.inner_loop = 0
@@ -480,12 +476,6 @@ class ModelBaseAction(ActionTerm):
             - jacobian_w (Tensor): Jacobian in the world frame          of shape (batch_size, num_legs, 3, num_joints_per_leg)
             - jacobian_b (Tensor): Jacobian in the base frame           of shape (batch_size, num_legs, 3, num_joints_per_leg)            
         """
-        if fast_jac:
-            self.count_jac+=1
-            if self.count_jac < 4:
-                return self.temp_jac, self.temp_jac
-            self.count_jac=0
-
         # Retrieve Jacobian from sim
         # shape(batch_size, num_legs, 3, num_joints_per_leg)
         # Intermediary step : extract feet jacobian [batch_size, num_bodies=17, 6, num_joints+6=18] -> [..., 4, 3, 18]
@@ -505,8 +495,6 @@ class ModelBaseAction(ActionTerm):
 
         # Finally, rotate the jacobian from world frame (fixed) to base frame (attached at the robot's base)
         jacobian_b = torch.matmul(R_w_to_b.unsqueeze(1), jacobian_w) # (batch, 1, 3, 3) * (batch, legs, 3, 3) -> (batch, legs, 3, 3)
-
-        self.temp_jac = jacobian_w.clone().detach()
 
         return jacobian_w, jacobian_b
     
@@ -586,6 +574,10 @@ class ModelBaseAction(ActionTerm):
         self.hip0_pos_lw = (p_hip_lw * in_contact) + (self.hip0_pos_lw * (~in_contact)) # (batch_size, num_legs, 3)
         self.hip0_yaw_quat_lw = (robot_yaw_in_w * in_contact) + (self.hip0_yaw_quat_lw * (~in_contact)) # (batch, 1, 4)*(batch, legs, 1) -> (batch, legs, 4)
 
+        # If we don't optimize for the height - p_rl is two dimensionnal (x,y), thus we need to happend the z dimension, filled with zeros.
+        if not self.cfg.optimize_step_height:
+            p_rl = torch.cat([p_rl, torch.zeros_like(p_rl[:, :, :1, :])], dim=2) # not in place operation -> doesn't modify p_rl outside function
+
         # Foot touch down position centered arround the hip but rotated in the local world frame : shape(batch, num_legs, 3, number_predicted_step)
         p_rl_permuted = p_rl.permute(0,3,1,2) # Shape (batch, predict, legs, 3)
         p0_rl_rotated_in_lw = math_utils.transform_points(p_rl_permuted[:,:,0,:], quat=self.hip0_yaw_quat_lw[:,0,:]).unsqueeze(1) # shape(batch_size, 1,number_predicted_step, 3)
@@ -662,7 +654,7 @@ class ModelBaseAction(ActionTerm):
 
         #--- Normalize F ---
         # F_xy:[-1,1]->[-std,+std]  : mean=0, std=std
-        # F_z:[-1,1]->[0,mean]      : mean=mean/2, std=mean/2
+        # F_z:[-1,1]->[mean-std,mean+std]      : mean=m*g/2, std=mean/10
         # shape(batch_size, num_legs, 3, time_horizon)
         if F is not None :
             std_xy = 1
@@ -670,7 +662,8 @@ class ModelBaseAction(ActionTerm):
             F_y = F[:,:,1,:]*std_xy
 
             mean_z = 100 # 100~= 20[kg_aliengo] * 9.81 [m/s²] / 2 [leg in contact]
-            F_z = ((F[:,:,2,:]  * (mean_z/2)) + (mean_z)) #.clamp(-200,200)
+            std_z = mean_z/10
+            F_z = ((F[:,:,2,:]  * (std_z)) + (mean_z)) #.clamp(-200,200)
 
             F = torch.cat((F_x, F_y, F_z), dim=2).reshape_as(self.F_lw)
 
@@ -689,7 +682,17 @@ class ModelBaseAction(ActionTerm):
             min_p_y = -0.20
             p_x = ((p[:,:,0,:] * ((std_p_x-std_n_x)/(2*1))) + ((std_p_x+std_n_x)/2)).clamp(min_p_x,max_p_x)
             p_y = ((p[:,:,1,:] * ((std_p_y-std_n_y)/(2*1))) + ((std_p_y+std_n_y)/2)).clamp(min_p_y,max_p_y)
-            p = torch.cat((p_x, p_y, p[:,:,2,:]), dim=2).reshape_as(p)
+
+            # If we don't optimize for step height p is two dimensional (x,y)
+            if self.cfg.optimize_step_height:
+                std_p_z = +0.1
+                std_n_z = -0.1
+                max_p_z = +0.2
+                min_p_z = -0.2
+                p_z = ((p[:,:,1,:] * ((std_p_z-std_n_z)/(2*1))) + ((std_p_z+std_n_z)/2)).clamp(min_p_z,max_p_z)
+                p = torch.cat((p_x, p_y, p_z), dim=2).reshape_as(p)
+            else:
+                p = torch.cat((p_x, p_y), dim=2).reshape_as(p)
 
         return f, d, F, p
 
@@ -705,10 +708,11 @@ class ModelBaseAction(ActionTerm):
             print('  Leg  frequency : ', self.f[0,...].flatten())
             print('   duty   cycle  : ', self.d[0,...].flatten())
             print('Touch-down pos   : ', self.p_lw[0,0,:,0])
-            print('Foot position : ', p_lw[0,...])
+            print(' Foot  position  : ', p_lw[0,...])
+            print(' Robot position  : ', self._asset.data.root_pos_w[0,...])
             # print('Foot traj shape  : ', self.pt_star_lw.shape)
             # print('Foot traj : ', self.pt_star_lw[0,0,:3,:])
-            print('Foot Force :', self.F_star_lw[0,:,:])
+            # print('Foot Force :', self.F_star_lw[0,:,:])
             if (self.F_lw != self.F_star_lw).any():
                 assert ValueError('F value don\'t match...')
 
