@@ -312,7 +312,7 @@ class ModelBaseAction(ActionTerm):
         F_rl = (self._processed_actions[:, self.f_len + self.d_len + self.p_len : self.f_len + self.d_len + self.p_len + self.F_len]).reshape_as(self.F_lw)
         
         # Force The robot to be still
-        p_rl = torch.zeros(self.num_envs, self._num_legs, 2, self._number_predict_step, device=self.device) 
+        # p_rl = torch.zeros(self.num_envs, self._num_legs, 2, self._number_predict_step, device=self.device) 
 
         if actions.numel() != (f_rl.numel() + d_rl.numel() + p_rl.numel() + F_rl.numel()):
             raise IndexError('Error in Model Based Actions : Wrong encoding of actions')
@@ -663,7 +663,7 @@ class ModelBaseAction(ActionTerm):
             # shape (batch_size,1)
             number_leg_in_contact = torch.clamp_min(torch.sum(self.c_star, dim=1),1) # set a minimum of 1 to avoid div by 0
 
-            std_xy = (2 / number_leg_in_contact).unsqueeze(-1) # shape (batch_size,1,1)
+            std_xy = (10 / number_leg_in_contact).unsqueeze(-1) # shape (batch_size,1,1)
             F_x = F[:,:,0,:]*std_xy 
             F_y = F[:,:,1,:]*std_xy
 

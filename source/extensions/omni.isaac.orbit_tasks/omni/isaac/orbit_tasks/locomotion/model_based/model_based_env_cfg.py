@@ -299,28 +299,28 @@ class RewardsCfg:
     """
 
     # -- task
-    # track_lin_vel_xy_exp   = RewTerm(func=mdp.track_lin_vel_xy_exp, weight=2.5, params={"command_name": "base_velocity", "std": math.sqrt(0.25)})
-    # track_ang_vel_z_exp    = RewTerm(func=mdp.track_ang_vel_z_exp, weight=0.75, params={"command_name": "base_velocity", "std": math.sqrt(0.25)})
-    track_robot_height     = RewTerm(func=mdp.base_height_l2, weight=-10, params={"target_height": 0.3}) #TODO Change that with a custom function
+    track_lin_vel_xy_exp   = RewTerm(func=mdp.track_lin_vel_xy_exp, weight=2.5, params={"command_name": "base_velocity", "std": math.sqrt(0.25)})
+    track_ang_vel_z_exp    = RewTerm(func=mdp.track_ang_vel_z_exp, weight=0.75, params={"command_name": "base_velocity", "std": math.sqrt(0.25)})
+    track_robot_height     = RewTerm(func=mdp.base_height_l2, weight=-10, params={"target_height": 0.38}) #TODO Change that with a custom function
 
     # -- Additionnal penalties : Need a negative weight
-    # penalty_lin_vel_z_l2   = RewTerm(func=mdp.lin_vel_z_l2, weight=-0.4)
-    # penalty_ang_vel_xy_l2  = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.01)
+    penalty_lin_vel_z_l2   = RewTerm(func=mdp.lin_vel_z_l2, weight=-0.4)
+    penalty_ang_vel_xy_l2  = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.01)
     # penalty_dof_torques_l2 = RewTerm(func=mdp.joint_torques_l2, weight=-0.0001)
     # penalty_dof_acc_l2     = RewTerm(func=mdp.joint_acc_l2, weight=-2.5e-8)
-    # penalty_action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.001)
+    penalty_action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.001)
     # undesired_contacts = RewTerm(
     #     func=mdp.undesired_contacts,
     #     weight=-1.0,
     #     params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*THIGH"), "threshold": 1.0},
-    # flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-0.5)
+    flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-0.5)
     # dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=0.0)
 
     # -- Model based penalty : Positive weight -> penalty is already negative
     # penalty_leg_frequency  = RewTerm(func=penalize_leg_frequency, weight=1, params={"action_name": "model_base_variable", "bound": (1.4,1.6)})
     # penalty_leg_duty_cycle = RewTerm(func=penalize_leg_duty_cycle, weight=2, params={"action_name": "model_base_variable", "bound": (0.5,0.6)})
-    # penalty_large_force    = RewTerm(func=penalize_large_Forces, weight=0.1, params={"action_name": "model_base_variable", "bound": (80.0,120.0)})
-    # penalty_large_step     = RewTerm(func=penalize_big_steps, weight=1, params={"action_name": "model_base_variable", "bound_x": (0.08,-0.02), "bound_y": (0.02,-0.02), "bound_z": (-1.0,1.0)})
+    penalty_large_force    = RewTerm(func=penalize_large_Forces, weight=0.1, params={"action_name": "model_base_variable", "bound": (0.0,120.0)})
+    penalty_large_step     = RewTerm(func=penalize_big_steps, weight=1, params={"action_name": "model_base_variable", "bound_x": (0.08,-0.02), "bound_y": (0.02,-0.02), "bound_z": (-1.0,1.0)})
 
     # -- Additionnal Reward : Need a positive weight
     reward_is_alive        = RewTerm(func=mdp.is_alive, weight=1)
