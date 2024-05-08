@@ -310,9 +310,12 @@ class ModelBaseAction(ActionTerm):
         d_rl = (self._processed_actions[:, self.f_len                           : self.f_len + self.d_len                          ]).reshape_as(self.d)
         p_rl = (self._processed_actions[:, self.f_len + self.d_len              : self.f_len + self.d_len + self.p_len             ]).reshape_as(self.p_rl)
         F_rl = (self._processed_actions[:, self.f_len + self.d_len + self.p_len : self.f_len + self.d_len + self.p_len + self.F_len]).reshape_as(self.F_lw)
+        
+        # Force The robot to be still
+        p_rl = torch.zeros(self.num_envs, self._num_legs, 2, self._number_predict_step, device=self.device) 
 
         if actions.numel() != (f_rl.numel() + d_rl.numel() + p_rl.numel() + F_rl.numel()):
-            print('OH NOOOOOOO')
+            raise IndexError('Error in Model Based Actions : Wrong encoding of actions')
 
         # Increment d from d_dot
         # d_rl = self.d + d_dot.clamp(-0.05,0.05) # TODO this must be normalize also !!
@@ -636,8 +639,8 @@ class ModelBaseAction(ActionTerm):
         if f is not None:
             std_p_f = 1.5
             std_n_f = 1.4
-            max_f = 1.8#1.5#3
-            min_f = 1.2#1.5#0
+            max_f = 1.5#1.8#1.5#3
+            min_f = 1.5#1.2#1.5#0
             f = ((f * ((std_p_f-std_n_f)/2)) + ((std_p_f+std_n_f)/2)).clamp(min_f,max_f)
 
 
@@ -647,8 +650,8 @@ class ModelBaseAction(ActionTerm):
         if d is not None:
             std_d_p = 0.58
             std_d_n = 0.53
-            max_d = 0.7#0.6#1.0
-            min_d = 0.4#0.6#0.0
+            max_d = 0.6#0.7#0.6#1.0
+            min_d = 0.6#0.4#0.6#0.0
             d = ((d * ((std_d_p-std_d_n)/2)) + ((std_d_p+std_d_n)/2)).clamp(min_d,max_d)
 
 
