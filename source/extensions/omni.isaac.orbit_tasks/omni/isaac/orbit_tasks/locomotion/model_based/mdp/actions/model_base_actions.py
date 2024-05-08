@@ -47,7 +47,7 @@ plt_i = 0
 # def torch_to_jax(x):
 #     return jax.dlpack.from_dlpack(torch.utils.dlpack.to_dlpack(x))
 
-verbose_mb = False
+verbose_mb = True
 verbose_loop = 40
 vizualise_debug = {'foot': False, 'jacobian': True, 'foot_traj': True, 'lift-off': True, 'touch-down': True, 'GRF': True, 'touch-down polygon': True}
 torch.set_printoptions(precision=4, linewidth=200, sci_mode=False)
@@ -484,10 +484,10 @@ class ModelBaseAction(ActionTerm):
         # Intermediary step : extract feet jacobian [batch_size, num_bodies=17, 6, num_joints+6=18] -> [..., 4, 3, 18]
         # Shift from 6 due to an offset. This is due to how the model is define I think
         jacobian_feet_full_w = self._asset.root_physx_view.get_jacobians()[:, self._foot_idx, :3, :]
-        jacobian_w = torch.cat((jacobian_feet_full_w[:, 0, :, 6+np.asarray(self._joints_idx[0])].unsqueeze(1),
-                                jacobian_feet_full_w[:, 1, :, 6+np.asarray(self._joints_idx[1])].unsqueeze(1),
-                                jacobian_feet_full_w[:, 2, :, 6+np.asarray(self._joints_idx[2])].unsqueeze(1),
-                                jacobian_feet_full_w[:, 3, :, 6+np.asarray(self._joints_idx[3])].unsqueeze(1)), dim=1)
+        jacobian_w = torch.cat((jacobian_feet_full_w[:, 0, :, 6+np.asarray(self._joints_idx[0])].unsqueeze(1),          # FL (idx 13)
+                                jacobian_feet_full_w[:, 1, :, 6+np.asarray(self._joints_idx[1])].unsqueeze(1),          # FR (idx 14)
+                                jacobian_feet_full_w[:, 2, :, 6+np.asarray(self._joints_idx[2])].unsqueeze(1),          # RL (idx 15)
+                                jacobian_feet_full_w[:, 3, :, 6+np.asarray(self._joints_idx[3])].unsqueeze(1)), dim=1)  # RR (idx 16)
 
         # Retrieve the robot base orientation in the world frame as quaternions : shape(batch_size, 4)
         quat_robot_base_w = self._asset.data.root_quat_w 
@@ -671,6 +671,11 @@ class ModelBaseAction(ActionTerm):
             std_z = mean_z/10   # shape (batch_size, 1, 1)
             F_z = ((F[:,:,2,:]  * (std_z)) + (mean_z)) #.clamp(-200,200)
 
+            # F_x = 0*F_x
+            # F_y = 0*F_y
+            # F_z = mean_z * torch.ones_like(F_z) - 1*(self._asset.data.root_pos_w[:,2].unsqueeze(-1).unsqueeze(-1))
+            # F_z = torch.zeros_like(F_z)
+
             F = torch.cat((F_x, F_y, F_z), dim=2).reshape_as(self.F_lw)
 
 
@@ -713,12 +718,12 @@ class ModelBaseAction(ActionTerm):
             print('\nContact sequence : ', c0_star[0,...].flatten())
             print('  Leg  frequency : ', self.f[0,...].flatten())
             print('   duty   cycle  : ', self.d[0,...].flatten())
-            print('Touch-down pos   : ', self.p_lw[0,0,:,0])
-            print(' Foot  position  : ', p_lw[0,...])
+            # print('Touch-down pos   : ', self.p_lw[0,0,:,0])
+            # print(' Foot  position  : ', p_lw[0,...])
             print(' Robot position  : ', self._asset.data.root_pos_w[0,...])
             # print('Foot traj shape  : ', self.pt_star_lw.shape)
             # print('Foot traj : ', self.pt_star_lw[0,0,:3,:])
-            # print('Foot Force :', self.F_star_lw[0,:,:])
+            print('Foot Force :', self.F_star_lw[0,:,:])
             if (self.F_lw != self.F_star_lw).any():
                 assert ValueError('F value don\'t match...')
 

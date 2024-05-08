@@ -10,7 +10,7 @@ from omni.isaac.orbit_tasks.locomotion.model_based.model_based_env_cfg import Lo
 ##
 # Pre-defined configs
 ##
-from omni.isaac.orbit_assets.unitree import UNITREE_ALIENGO_CFG, UNITREE_GO2_CFG  # isort: skip
+from omni.isaac.orbit_assets.unitree import UNITREE_ALIENGO_CFG, UNITREE_GO2_CFG, UNITREE_ALIENGO_TORQUE_CONTROL_CFG  # isort: skip
 from omni.isaac.orbit_assets.anymal import ANYMAL_C_CFG  # isort: skip
 
 
@@ -21,9 +21,10 @@ class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
         super().__post_init__()
 
         # # ----- Select the robot : Unitree Aliengo -----
-        self.scene.robot = UNITREE_ALIENGO_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+        # self.scene.robot = UNITREE_ALIENGO_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
         # self.scene.robot = UNITREE_GO2_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
         # self.scene.robot = ANYMAL_C_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+        self.scene.robot = UNITREE_ALIENGO_TORQUE_CONTROL_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
 
 
         # ----- Select the prime path of the height sensor : already default setting -----
@@ -46,11 +47,11 @@ class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
 
         # ----- Event randomization -----
         # -- startup
-        self.events.add_base_mass.params["mass_range"] = (0.0, 0.0)                                                     # Default was ±5
+        # self.events.add_base_mass.params["mass_range"] = (0.0, 0.0)                                                     # Default was ±5
         # self.events.add_base_mass.params["mass_range"] = (-1.0, 1.0)                                                     # Default was ±5
         # -- Reset
-        self.events.base_external_force_torque.params["force_range"] = (0.0, 0.0)                                       # Unnecessary : already default
-        self.events.base_external_force_torque.params["torque_range"] = (0.0, 0.0)                                      # Unnecessary : already default
+        # self.events.base_external_force_torque.params["force_range"] = (0.0, 0.0)                                       # Unnecessary : already default
+        # self.events.base_external_force_torque.params["torque_range"] = (0.0, 0.0)                                      # Unnecessary : already default
         self.events.reset_base.params = {
             # "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},
             "pose_range": {"x": (0.0, 0.0), "y": (0.0, 0.0), "yaw": (0.0, 0.0)},
@@ -67,7 +68,7 @@ class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
         # self.events.reset_robot_joints.params["position_range"] = (0.8, 1.2)
         # -- Interval
         self.events.push_robot = None                                                                                   # Default was activated
-        
+        # 
 
         # ----- rewards -----
         # self.rewards.feet_air_time.params["sensor_cfg"].body_names = ".*_foot"                                          # Changed regex expression
