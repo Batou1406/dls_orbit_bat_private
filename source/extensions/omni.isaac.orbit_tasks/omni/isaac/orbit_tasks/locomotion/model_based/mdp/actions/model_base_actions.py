@@ -699,7 +699,7 @@ class ModelBaseAction(ActionTerm):
             F_x = F[:,:,0,:]*std_xy 
             F_y = F[:,:,1,:]*std_xy
 
-            mean_z = (200 / number_leg_in_contact).unsqueeze(-1) # 200/x~= 20[kg_aliengo] * 9.81 [m/s²] / x [leg in contact]
+            mean_z = (240 / number_leg_in_contact).unsqueeze(-1) # 200/x~= 20[kg_aliengo] * 9.81 [m/s²] / x [leg in contact]
             std_z = mean_z/10   # shape (batch_size, 1, 1)
             F_z = ((F[:,:,2,:]  * (std_z)) + (mean_z)) #.clamp(-200,200)
 
@@ -715,8 +715,8 @@ class ModelBaseAction(ActionTerm):
         # p:[-1,1]->[std_n, std_p]      : mean=(std_n+std_p)/2, std=(std_p-std_n)/2     : clipped to (min, max)
         # shape(batch_size, num_legs, 3, step_predict)
         if p is not None:
-            std_p_x = +0.04
-            std_n_x = -0.02
+            std_p_x = +0.03
+            std_n_x = -0.01
             std_p_y = +0.01
             std_n_y = -0.02
             max_p_x = +0.36
