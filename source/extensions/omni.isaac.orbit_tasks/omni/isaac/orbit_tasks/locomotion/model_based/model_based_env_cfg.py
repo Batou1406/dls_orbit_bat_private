@@ -170,7 +170,7 @@ class ObservationsCfg:
         base_lin_vel = ObsTerm(func=mdp.base_lin_vel, noise=Unoise(n_min=-0.1, n_max=0.1))    # Base frame
         base_ang_vel = ObsTerm(func=mdp.base_ang_vel, noise=Unoise(n_min=-0.2, n_max=0.2))    # Base frame
         robot_height = ObsTerm(func=mdp.base_pos_z) # World Frame   
-        root_quat_w = ObsTerm(func=mdp.root_quat_w)
+        # root_quat_w = ObsTerm(func=mdp.root_quat_w)
         # root_pos_w = ObsTerm(func=mdp.root_pos_w)
         projected_gravity = ObsTerm(
             func=mdp.projected_gravity,
@@ -306,8 +306,8 @@ class RewardsCfg:
     track_robot_height     = RewTerm(func=mdp.base_height_l2, weight=-10, params={"target_height": 0.4}) #TODO Change that with a custom function
 
     # -- Additionnal penalties : Need a negative weight
-    penalty_lin_vel_z_l2   = RewTerm(func=mdp.lin_vel_z_l2, weight=-0.4)
-    penalty_ang_vel_xy_l2  = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.01)
+    penalty_lin_vel_z_l2   = RewTerm(func=mdp.lin_vel_z_l2, weight=-2.0)
+    penalty_ang_vel_xy_l2  = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
     # penalty_dof_torques_l2 = RewTerm(func=mdp.joint_torques_l2, weight=-0.0001)
     # penalty_dof_acc_l2     = RewTerm(func=mdp.joint_acc_l2, weight=-2.5e-8)
     penalty_action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.001)
@@ -315,17 +315,17 @@ class RewardsCfg:
     #     func=mdp.undesired_contacts,
     #     weight=-1.0,
     #     params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*THIGH"), "threshold": 1.0},
-    flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-0.5)
+    flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-1.0)
     # dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=0.0)
 
     # -- Model based penalty : Positive weight -> penalty is already negative
     # penalty_leg_frequency        = RewTerm(func=penalize_large_leg_frequency_L1,  weight=1.0,  params={"action_name": "model_base_variable", "bound": (1.4,1.6)})
     # penalty_leg_duty_cycle       = RewTerm(func=penalize_large_leg_duty_cycle_L1, weight=1.0,  params={"action_name": "model_base_variable", "bound": (0.5,0.6)})
     penalty_large_force          = RewTerm(func=penalize_large_Forces_L1,         weight=0.1,  params={"action_name": "model_base_variable", "bound": (0.0,130.0)})
-    penalty_large_step           = RewTerm(func=penalize_large_steps_L1,          weight=1.0,  params={"action_name": "model_base_variable", "bound_x": (0.08,-0.02), "bound_y": (0.02,-0.02), "bound_z": (-1.0,1.0)})
+    penalty_large_step           = RewTerm(func=penalize_large_steps_L1,          weight=1.0,  params={"action_name": "model_base_variable", "bound_x": (0.10,-0.04), "bound_y": (0.04,-0.04), "bound_z": (-1.0,1.0)})
     # penalty_frequency_variation  = RewTerm(func=penalize_frequency_variation_L2,  weight=1.0,  params={"action_name": "model_base_variable" })
     # penatly_duty_cycle_variation = RewTerm(func=penalize_duty_cycle_variation_L2, weight=1.0,  params={"action_name": "model_base_variable" })
-    penalty_step_variation       = RewTerm(func=penalize_steps_variation_L2,      weight=0.1,  params={"action_name": "model_base_variable" })
+    penalty_step_variation       = RewTerm(func=penalize_steps_variation_L2,      weight=0.2,  params={"action_name": "model_base_variable" })
     penatly_force_variation      = RewTerm(func=penalize_Forces_variation_L2,     weight=1e-4, params={"action_name": "model_base_variable" })
 
 
