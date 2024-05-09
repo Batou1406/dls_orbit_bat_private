@@ -321,7 +321,7 @@ class samplingController(modelBaseController):
 
         # swing phase trajectpry [phase, phase + delta_phase, ...],   shape (batch_size, num_legs, decimation)
         # (batch_size, num_legs, 1) + [(1, 1, decimation) * (batch_size, num_legs, 1)] -> (batch_size, num_legs, decimation)
-        swing_phase_traj = (swing_phase.unsqueeze(-1)) + ((1+torch.arange(self._decimation, device=self._device).unsqueeze(0).unsqueeze(0)) * delta_phase.unsqueeze(-1))
+        swing_phase_traj = (swing_phase.unsqueeze(-1)) + ((0+torch.arange(self._decimation, device=self._device).unsqueeze(0).unsqueeze(0)) * delta_phase.unsqueeze(-1))
 
 
         # Step 2. Retrieve the three interpolation points : p0, p1, p2 (lift-off, middle point, touch down)
@@ -546,9 +546,9 @@ class samplingController(modelBaseController):
         # Intermediary step : p_dot_dot
         # Compute the desired acceleration : with a PD controller thanks to the feedback linearization
         # Shape (batch_size, num_legs, 3)
-        # p_dot_dot_lw = des_foot_acc_lw + self.swing_ctrl_pos_gain_fb * (pos_err) + self.swing_ctrl_vel_gain_fb * (vel_err)
+        p_dot_dot_lw = des_foot_acc_lw + self.swing_ctrl_pos_gain_fb * (pos_err) + self.swing_ctrl_vel_gain_fb * (vel_err)
         # p_dot_dot_lw = self.swing_ctrl_pos_gain_fb * (pos_err) + self.swing_ctrl_vel_gain_fb * (vel_err)
-        p_dot_dot_lw = self.swing_ctrl_pos_gain_fb * (pos_err) 
+        # p_dot_dot_lw = self.swing_ctrl_pos_gain_fb * (pos_err) 
 
         # Compute  the inverse jacobian. This synchronise CPU and GPU
         # Compute pseudo-inverse -> to be resilient to any number of joint per legs (not restricted to square matrix)
@@ -570,16 +570,16 @@ class samplingController(modelBaseController):
 
         # Intermediary step : M(q)*J⁻¹[p_dot_dot - J(q)*q_dot]  : (batch_size, num_legs, num_joints_per_leg, num_joints_per_leg) * (batch_size, num_legs, num_joints_per_leg)
         # Shape is (batch_size, num_legs, num_joints_per_leg)
-        # M_J_inv_p_dot_dot_min_J_dot_x_q_dot = torch.matmul(mass_matrix, J_inv_p_dot_dot_min_J_dot_x_q_dot.unsqueeze(-1)).squeeze(-1)
+        M_J_inv_p_dot_dot_min_J_dot_x_q_dot = torch.matmul(mass_matrix, J_inv_p_dot_dot_min_J_dot_x_q_dot.unsqueeze(-1)).squeeze(-1)
 
         # Final step        : # Shape is (batch_size, num_legs, num_joints_per_leg, num_joints_per_leg)
-        # T_swing = torch.add(M_J_inv_p_dot_dot_min_J_dot_x_q_dot, h)
+        T_swing = torch.add(M_J_inv_p_dot_dot_min_J_dot_x_q_dot, h)
 
         # Without the h
         # T_swing = M_J_inv_p_dot_dot_min_J_dot_x_q_dot
 
         # Like Giulio did
-        T_swing =  torch.matmul(jacobian_lw.transpose(2,3), p_dot_dot_min_J_dot_x_q_dot.unsqueeze(-1)).squeeze(-1) # + h
+        # T_swing =  torch.matmul(jacobian_lw.transpose(2,3), p_dot_dot_min_J_dot_x_q_dot.unsqueeze(-1)).squeeze(-1) + h
 
         return T_swing
     

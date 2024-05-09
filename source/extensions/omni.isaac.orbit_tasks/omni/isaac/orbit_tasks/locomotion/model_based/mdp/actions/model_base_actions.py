@@ -49,7 +49,7 @@ plt_i = 0
 
 verbose_mb = False
 verbose_loop = 40
-vizualise_debug = {'foot': False, 'jacobian': True, 'foot_traj': True, 'lift-off': True, 'touch-down': True, 'GRF': True, 'touch-down polygon': True}
+vizualise_debug = {'foot': False, 'jacobian': False, 'foot_traj': True, 'lift-off': True, 'touch-down': True, 'GRF': True, 'touch-down polygon': False}
 torch.set_printoptions(precision=4, linewidth=200, sci_mode=False)
 if verbose_mb: import omni.isaac.debug_draw._debug_draw as omni_debug_draw
 
@@ -488,15 +488,16 @@ class ModelBaseAction(ActionTerm):
         # This is done with complex indexing operations
         # mass_matrix_full = self._asset.root_physx_view.get_mass_matrices()
         # mass_matrix_FL = mass_matrix_full[:,[0,4,8],:][:, [0,4,8]]
-        # joints_idx_tensor = torch.Tensor(self._joints_idx).unsqueeze(2).unsqueeze(3).long() # long to use it to access indexes -> float trow an error
-        # mass_matrix = self._asset.root_physx_view.get_mass_matrices()[:, joints_idx_tensor, joints_idx_tensor.transpose(1,2)].squeeze(-1)
-        mass_matrix = torch.tensor([1])
+        joints_idx_tensor = torch.Tensor(self._joints_idx).unsqueeze(2).unsqueeze(3).long() # long to use it to access indexes -> float trow an error
+        mass_matrix = self._asset.root_physx_view.get_mass_matrices()[:, joints_idx_tensor, joints_idx_tensor.transpose(1,2)].squeeze(-1)
+        # mass_matrix = torch.tensor([1])
+
         # Retrieve Corriolis, centrifugial and gravitationnal term
         # get_coriolis_and_centrifugal_forces -> (batch_size, num_joints)
         # get_generalized_gravity_forces -> (batch_size, num_joints)
         # Reshape and tranpose to get the correct shape in correct joint order-> (batch_size, num_legs, num_joints_per_leg)
-        # h = (self._asset.root_physx_view.get_coriolis_and_centrifugal_forces() + self._asset.root_physx_view.get_generalized_gravity_forces()).view(self.num_envs, self._num_joints_per_leg, self._num_legs).permute(0,2,1)
-        h = torch.Tensor([1])
+        h = (self._asset.root_physx_view.get_coriolis_and_centrifugal_forces() + self._asset.root_physx_view.get_generalized_gravity_forces()).view(self.num_envs, self._num_joints_per_leg, self._num_legs).permute(0,2,1)
+        # h = torch.Tensor([1])
 
         return p_lw, p_dot_lw, q_dot, jacobian_lw, jacobian_dot_lw, mass_matrix, h
     

@@ -66,10 +66,10 @@ class ModelBaseActionCfg(ActionTermCfg):
     class SwingControllerCfg:
         """ Config class for swing foot trajectory controller hyperparameters
         """
-        swing_ctrl_pos_gain_fb: float = 10000.0
+        swing_ctrl_pos_gain_fb: float = 5000.0
         """ Position gain feedback for swing trajectory tracking in [0, +inf] """
 
-        swing_ctrl_vel_gain_fb: float = 0.0
+        swing_ctrl_vel_gain_fb: float = 100.0
         """ Velocity gain feedback for swing trajectory tracking in [0, +inf] """
 
     swingControllerCfg: SwingControllerCfg = SwingControllerCfg()
