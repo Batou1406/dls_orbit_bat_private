@@ -46,7 +46,8 @@ import omni.isaac.orbit_tasks.locomotion.model_based.mdp as mdp
 from .mdp.actions import model_base_controller
 # import .mdp.observations as local_mdp
 from .mdp.observations import leg_phase, leg_contact
-from .mdp.rewards import penalize_leg_frequency, penalize_large_Forces, penalize_big_steps, penalize_leg_duty_cycle
+from .mdp.rewards import (penalize_large_leg_frequency_L1, penalize_large_leg_duty_cycle_L1, penalize_large_steps_L1, penalize_large_Forces_L1,
+                          penalize_frequency_variation_L2, penalize_duty_cycle_variation_L2, penalize_steps_variation_L2, penalize_Forces_variation_L2)
 
 
 ##
@@ -317,10 +318,15 @@ class RewardsCfg:
     # dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=0.0)
 
     # -- Model based penalty : Positive weight -> penalty is already negative
-    # penalty_leg_frequency  = RewTerm(func=penalize_leg_frequency, weight=1, params={"action_name": "model_base_variable", "bound": (1.4,1.6)})
-    # penalty_leg_duty_cycle = RewTerm(func=penalize_leg_duty_cycle, weight=2, params={"action_name": "model_base_variable", "bound": (0.5,0.6)})
-    penalty_large_force    = RewTerm(func=penalize_large_Forces, weight=0.1, params={"action_name": "model_base_variable", "bound": (0.0,120.0)})
-    penalty_large_step     = RewTerm(func=penalize_big_steps, weight=1, params={"action_name": "model_base_variable", "bound_x": (0.08,-0.02), "bound_y": (0.02,-0.02), "bound_z": (-1.0,1.0)})
+    penalty_leg_frequency        = RewTerm(func=penalize_large_leg_frequency_L1,  weight=1.0, params={"action_name": "model_base_variable", "bound": (1.4,1.6)})
+    penalty_leg_duty_cycle       = RewTerm(func=penalize_large_leg_duty_cycle_L1, weight=1.0, params={"action_name": "model_base_variable", "bound": (0.5,0.6)})
+    penalty_large_force          = RewTerm(func=penalize_large_Forces_L1,         weight=0.1, params={"action_name": "model_base_variable", "bound": (0.0,130.0)})
+    penalty_large_step           = RewTerm(func=penalize_large_steps_L1,          weight=1.0, params={"action_name": "model_base_variable", "bound_x": (0.08,-0.02), "bound_y": (0.02,-0.02), "bound_z": (-1.0,1.0)})
+    penalty_frequency_variation  = RewTerm(func=penalize_frequency_variation_L2,  weight=1.0, params={"action_name": "model_base_variable" })
+    penatly_duty_cycle_variation = RewTerm(func=penalize_duty_cycle_variation_L2, weight=1.0, params={"action_name": "model_base_variable" })
+    penalty_step_variation       = RewTerm(func=penalize_steps_variation_L2,      weight=1.0, params={"action_name": "model_base_variable" })
+    penatly_force_variation      = RewTerm(func=penalize_Forces_variation_L2,     weight=1.0, params={"action_name": "model_base_variable" })
+
 
     # -- Additionnal Reward : Need a positive weight
     reward_is_alive        = RewTerm(func=mdp.is_alive, weight=1)

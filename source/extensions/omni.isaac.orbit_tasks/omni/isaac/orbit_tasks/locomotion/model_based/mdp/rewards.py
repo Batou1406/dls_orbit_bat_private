@@ -35,7 +35,7 @@ def feet_air_time(env: RLTaskEnv, command_name: str, sensor_cfg: SceneEntityCfg,
     return reward
 
 
-def penalize_leg_frequency(env: RLTaskEnv, action_name: str, bound: tuple[float, float]) -> torch.Tensor:
+def penalize_large_leg_frequency_L1(env: RLTaskEnv, action_name: str, bound: tuple[float, float]) -> torch.Tensor:
     """ Penalize leg frequency that are outside boundaries, penalty in ]-inf, 0]
     Penalize linearly with frequency violation
 
@@ -52,7 +52,7 @@ def penalize_leg_frequency(env: RLTaskEnv, action_name: str, bound: tuple[float,
     return penalty
 
 
-def penalize_leg_duty_cycle(env: RLTaskEnv, action_name: str, bound: tuple[float, float]) -> torch.Tensor:
+def penalize_large_leg_duty_cycle_L1(env: RLTaskEnv, action_name: str, bound: tuple[float, float]) -> torch.Tensor:
     """ Penalize leg duty cycle that are outside boundaries, penalty in ]-inf, 0]
     Penalize linearly with duty cycle violation
 
@@ -69,7 +69,7 @@ def penalize_leg_duty_cycle(env: RLTaskEnv, action_name: str, bound: tuple[float
     return penalty
 
 
-def penalize_big_steps(env: RLTaskEnv, action_name: str, bound_x: tuple[float, float], bound_y: tuple[float, float], bound_z: tuple[float, float]) -> torch.Tensor:
+def penalize_large_steps_L1(env: RLTaskEnv, action_name: str, bound_x: tuple[float, float], bound_y: tuple[float, float], bound_z: tuple[float, float]) -> torch.Tensor:
     """ Penalize steps that are outside boundaries, penalty in ]-inf, 0]
     Penalize linearly with steps size violation
 
@@ -82,7 +82,7 @@ def penalize_big_steps(env: RLTaskEnv, action_name: str, bound_x: tuple[float, f
         - penalty (torch.Tensor): penalty term in ]-inf, 0] for leg step size outside bound of shape(batch_size)
     """
     # Shape (batch_size, num_legs, 3, number_predict step) -> (batch_size, num_legs, 3)
-    p:torch.Tensor = env.action_manager.get_term(action_name).p_rl[...,0]
+    p:torch.Tensor = env.action_manager.get_term(action_name).p_norm[...,0]
 
     penalty_x = -torch.sum(torch.abs(p[:,:,0]-p[:,:,0].clamp(bound_x[0], bound_x[1])), dim=1)
     penalty_y = -torch.sum(torch.abs(p[:,:,1]-p[:,:,1].clamp(bound_y[0], bound_y[1])), dim=1)
@@ -96,7 +96,7 @@ def penalize_big_steps(env: RLTaskEnv, action_name: str, bound_x: tuple[float, f
     return penalty
 
 
-def penalize_large_Forces(env: RLTaskEnv, action_name: str, bound: tuple[float, float]) -> torch.Tensor:
+def penalize_large_Forces_L1(env: RLTaskEnv, action_name: str, bound: tuple[float, float]) -> torch.Tensor:
     """ Penalize Forces that are outside boundaries, penalty in ]-inf, 0]
     Penalize linearly with Forces violation
 
@@ -113,5 +113,65 @@ def penalize_large_Forces(env: RLTaskEnv, action_name: str, bound: tuple[float, 
     F = torch.linalg.vector_norm(F, dim=2)
 
     penalty = -torch.sum(torch.abs(F-F.clamp(bound[0], bound[1])), dim=1)
+
+    return penalty
+
+
+def penalize_frequency_variation_L2(env: RLTaskEnv, action_name: str) -> torch.Tensor:
+    """ Penalize leg frequency variation quadraticaly with L2 kernel (penalty term in ]-inf, 0])
+
+    Returns :
+        - penalty (torch.Tensor): penalty term in ]-inf, 0] for leg frequency variation of shape(batch_size)
+    """
+    # Shape (batch_size, num_legs, 3, number_predict step) -> (batch_size, num_legs * 3 * number_predict_step)
+    f:     torch.Tensor = env.action_manager.get_term(action_name).f.flatten(1,-1)
+    f_prev:torch.Tensor = env.action_manager.get_term(action_name).f_prev.flatten(1,-1)
+
+    penalty = -torch.sum(torch.square(f-f_prev), dim=1)
+
+    return penalty
+
+
+def penalize_duty_cycle_variation_L2(env: RLTaskEnv, action_name: str) -> torch.Tensor:
+    """ Penalize leg duty cycle variation quadraticaly with L2 kernel (penalty term in ]-inf, 0])
+
+    Returns :
+        - penalty (torch.Tensor): penalty term in ]-inf, 0] for leg duty cycle variation of shape(batch_size)
+    """
+    # Shape (batch_size, num_legs, 3, number_predict step) -> (batch_size, num_legs * 3 * number_predict_step)
+    d:     torch.Tensor = env.action_manager.get_term(action_name).d.flatten(1,-1)
+    d_prev:torch.Tensor = env.action_manager.get_term(action_name).d_prev.flatten(1,-1)
+
+    penalty = -torch.sum(torch.square(d-d_prev), dim=1)
+
+    return penalty
+
+
+def penalize_steps_variation_L2(env: RLTaskEnv, action_name: str) -> torch.Tensor:
+    """ Penalize steps variation quadraticaly with L2 kernel (penalty term in ]-inf, 0])
+
+    Returns :
+        - penalty (torch.Tensor): penalty term in ]-inf, 0] for step variation of shape(batch_size)
+    """
+    # Shape (batch_size, num_legs, 3, number_predict step) -> (batch_size, num_legs * 3 * number_predict_step)
+    p:     torch.Tensor = env.action_manager.get_term(action_name).p_norm.flatten(1,-1)
+    p_prev:torch.Tensor = env.action_manager.get_term(action_name).p_norm_prev.flatten(1,-1)
+
+    penalty = -torch.sum(torch.square(p-p_prev), dim=1)
+
+    return penalty
+
+
+def penalize_Forces_variation_L2(env: RLTaskEnv, action_name: str) -> torch.Tensor:
+    """ Penalize Ground Reaction Forces variation quadraticaly with L2 kernel (penalty term in ]-inf, 0])
+
+    Returns :
+        - penalty (torch.Tensor): penalty term in ]-inf, 0] for Forces (GRF) variation of shape(batch_size)
+    """
+    # Shape (batch_size, num_legs, 3, prediction_horizon) -> (batch_size, num_legs * 3 * prediction_horizon)
+    F:     torch.Tensor = env.action_manager.get_term(action_name).F_norm.flatten(1,-1)
+    F_prev:torch.Tensor = env.action_manager.get_term(action_name).F_norm_prev.flatten(1,-1)
+
+    penalty = -torch.sum(torch.square(F-F_prev), dim=1)
 
     return penalty
