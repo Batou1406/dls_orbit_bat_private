@@ -68,7 +68,7 @@ class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
         # self.events.reset_robot_joints.params["position_range"] = (0.8, 1.2)
         # -- Interval
         self.events.push_robot = None                                                                                   # Default was activated
-        # 
+
 
         # ----- rewards -----
         # self.rewards.feet_air_time.params["sensor_cfg"].body_names = ".*_foot"                                          # Changed regex expression

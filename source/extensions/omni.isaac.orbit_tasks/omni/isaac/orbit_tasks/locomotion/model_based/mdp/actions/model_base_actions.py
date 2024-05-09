@@ -699,7 +699,7 @@ class ModelBaseAction(ActionTerm):
             F_x = F[:,:,0,:]*std_xy 
             F_y = F[:,:,1,:]*std_xy
 
-            mean_z = (200 / number_leg_in_contact).unsqueeze(-1) # 200/x~= 20[kg_aliengo] * 9.81 [m/s²] / x [leg in contact]
+            mean_z = (220 / number_leg_in_contact).unsqueeze(-1) # 200/x~= 20[kg_aliengo] * 9.81 [m/s²] / x [leg in contact]
             std_z = mean_z/10   # shape (batch_size, 1, 1)
             F_z = ((F[:,:,2,:]  * (std_z)) + (mean_z)) #.clamp(-200,200)
 
