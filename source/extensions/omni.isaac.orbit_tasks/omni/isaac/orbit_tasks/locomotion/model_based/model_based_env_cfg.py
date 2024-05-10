@@ -41,7 +41,7 @@ from omni.isaac.orbit.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
 import omni.isaac.orbit_tasks.locomotion.model_based.mdp as mdp
 
-# from omni.isaac.orbit.terrains.config.rough import ROUGH_TERRAINS_CFG  # isort: skip
+from omni.isaac.orbit.terrains.config.rough import ROUGH_TERRAINS_CFG  # isort: skip
 
 
 ##
@@ -56,9 +56,9 @@ class MySceneCfg(InteractiveSceneCfg):
     # ground terrain
     terrain = TerrainImporterCfg(
         prim_path="/World/ground",
-        terrain_type="plane", # "generator"
-        terrain_generator=None,#ROUGH_TERRAINS_CFG,
-        max_init_terrain_level=None,#5,
+        terrain_type="generator", #"plane",
+        terrain_generator=ROUGH_TERRAINS_CFG,
+        max_init_terrain_level=5,
         collision_group=-1,
         physics_material=sim_utils.RigidBodyMaterialCfg(
             friction_combine_mode="multiply",
@@ -348,7 +348,7 @@ class CurriculumCfg:
     """
 
     # --- Terrains Curriculum
-    terrain_levels = None #CurrTerm(func=mdp.terrain_levels_vel) # None
+    terrain_levels = CurrTerm(func=mdp.terrain_levels_vel) # None
 
     # --- Rewards Curriculum
     # action_rate = CurrTerm(func=mdp.modify_reward_weight, params={"term_name": "action_rate", "weight": -1e-1, "num_steps": 10000})
