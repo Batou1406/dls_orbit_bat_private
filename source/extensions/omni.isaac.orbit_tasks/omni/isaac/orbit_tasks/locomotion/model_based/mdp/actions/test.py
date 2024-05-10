@@ -12,7 +12,7 @@ class modelBaseControllerTest():
     controller : modelBaseController
 
     def __init__(self, controller: modelBaseController):
-        self.controller = controller()
+        
 
         device='cpu'
         num_env=2
@@ -26,7 +26,7 @@ class modelBaseControllerTest():
         foot_offset = 0.03
         swing_ctrl_pos_gain_fb=5
         swing_ctrl_vel_gain_fb=1
-        self.controller.late_init(device, num_env, num_leg, time_horizon, dt_out, decimation, dt_in, p_default, step_height, foot_offset, swing_ctrl_pos_gain_fb, swing_ctrl_vel_gain_fb)
+        self.controller = controller(device, num_env, num_leg, time_horizon, dt_out, decimation, dt_in, p_default, step_height, foot_offset, swing_ctrl_pos_gain_fb, swing_ctrl_vel_gain_fb)
 
     def test_optimize_latent_variable(self):
         raise NotImplementedError
