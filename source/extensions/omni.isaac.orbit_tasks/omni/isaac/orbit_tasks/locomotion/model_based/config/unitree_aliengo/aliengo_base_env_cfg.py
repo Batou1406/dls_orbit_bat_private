@@ -27,12 +27,12 @@ class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
         # self.scene.robot = ANYMAL_C_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
         self.scene.robot = UNITREE_ALIENGO_TORQUE_CONTROL_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")                 
 
-        # --- Select the prime path of the height sensor : already default setting
+        # --- Select the prime path of the height sensor
         self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/base"                                               # Unnecessary : already default 
 
 
         """ ----- Terrain curriculum ----- """
-        # self.curriculum.terrain_levels = None                                                                           # By default activated
+        # self.curriculum.terrain_levels = None                                                                         # By default activated
 
         # --- scale down the terrains because the robot is small
         # self.scene.terrain.terrain_generator.sub_terrains["boxes"].grid_height_range = (0.025, 0.1)
@@ -42,11 +42,11 @@ class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
 
         """ ----- Event randomization ----- """
         # --- startup
-        self.events.add_base_mass.params["mass_range"] = (-3.0, 3.0) #(0.0, 0.0)                                         # Default was ±5
+        self.events.add_base_mass.params["mass_range"] = (-3.0, 3.0) #(0.0, 0.0)                                        # Default was ±5
         
         # --- Reset
-        self.events.base_external_force_torque.params["force_range"]  = (-10.0, 10.0) # (0.0, 0.0)                         # Default was 0
-        self.events.base_external_force_torque.params["torque_range"] = (-1.0, 1.0) # (0.0, 0.0)                         # Default was 0
+        self.events.base_external_force_torque.params["force_range"]  = (-10.0, 10.0) # (0.0, 0.0)                      # Default was 0
+        self.events.base_external_force_torque.params["torque_range"] = (-1.0, 1.0) # (0.0, 0.0)                        # Default was 0
         self.events.reset_base.params = {
             "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},
             # "pose_range": {"x": (0.0, 0.0), "y": (0.0, 0.0), "yaw": (0.0, 0.0)},
@@ -63,7 +63,7 @@ class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
         self.events.reset_robot_joints.params["position_range"] = (0.8, 1.2)                                            # default was (0.5, 1.5)
         
         # --- Interval
-        # self.events.push_robot = None                                                                                   # Default was activated
+        # self.events.push_robot = None                                                                                 # Default was activated
 
 
         """ ----- rewards ----- """

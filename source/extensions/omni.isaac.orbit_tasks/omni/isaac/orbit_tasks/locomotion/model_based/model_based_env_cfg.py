@@ -364,7 +364,12 @@ class CurriculumCfg:
     - terrain_levels - adapt the terrain difficulty to the performance - default off
     """
 
-    terrain_levels = None   # CurrTerm(func=mdp.terrain_levels_vel)
+    # --- Terrains Curriculum
+    terrain_levels = None #CurrTerm(func=mdp.terrain_levels_vel) # None
+
+    # --- Rewards Curriculum
+    # action_rate = CurrTerm(func=mdp.modify_reward_weight, params={"term_name": "action_rate", "weight": -1e-1, "num_steps": 10000})
+    # joint_vel = CurrTerm(func=mdp.modify_reward_weight, params={"term_name": "joint_vel", "weight": -1e-1, "num_steps": 10000})
 
 
 ##
