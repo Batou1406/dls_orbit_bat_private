@@ -275,14 +275,13 @@ class ModelBaseAction(ActionTerm):
         self.jacobian_prev_lw = self.get_reset_jacobian() # Jacobian is translation independant thus jacobian_w = jacobian_lw
 
         # Instance of control class. Gets Z and output u
-        self.controller = cfg.controller
-        self.controller.late_init(
+        self.controller = cfg.controller(
             device=self.device, num_envs=self.num_envs, num_legs=self._num_legs, time_horizon=self._prevision_horizon,
             dt_out=self._decimation*self._env.physics_dt, decimation=self._decimation, dt_in=self._env.physics_dt,
             p_default_lw=self.get_reset_foot_position(), step_height=cfg.footTrajectoryCfg.step_height,
             foot_offset=cfg.footTrajectoryCfg.foot_offset, swing_ctrl_pos_gain_fb=self.cfg.swingControllerCfg.swing_ctrl_pos_gain_fb , 
             swing_ctrl_vel_gain_fb=self.cfg.swingControllerCfg.swing_ctrl_vel_gain_fb
-            ) 
+        )
 
         if verbose_mb:
             self.my_visualizer = {}

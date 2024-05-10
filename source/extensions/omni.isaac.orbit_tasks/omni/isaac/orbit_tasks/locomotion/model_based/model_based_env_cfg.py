@@ -39,15 +39,9 @@ from omni.isaac.orbit.terrains import TerrainImporterCfg
 from omni.isaac.orbit.utils import configclass
 from omni.isaac.orbit.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
-# TODO re-Implements these
 import omni.isaac.orbit_tasks.locomotion.model_based.mdp as mdp
 
-# Local MDP
-from .mdp.actions import model_base_controller
-# import .mdp.observations as local_mdp
-from .mdp.observations import leg_phase, leg_contact
-from .mdp.rewards import (penalize_large_leg_frequency_L1, penalize_large_leg_duty_cycle_L1, penalize_large_steps_L1, penalize_large_Forces_L1,
-                          penalize_frequency_variation_L2, penalize_duty_cycle_variation_L2, penalize_steps_variation_L2, penalize_Forces_variation_L2)
+# from omni.isaac.orbit.terrains.config.rough import ROUGH_TERRAINS_CFG  # isort: skip
 
 
 ##
@@ -63,8 +57,8 @@ class MySceneCfg(InteractiveSceneCfg):
     terrain = TerrainImporterCfg(
         prim_path="/World/ground",
         terrain_type="plane", # "generator"
-        terrain_generator=None, # ROUGH_TERRAINS_CFG
-        max_init_terrain_level=None, #5
+        terrain_generator=None,#ROUGH_TERRAINS_CFG,
+        max_init_terrain_level=None,#5,
         collision_group=-1,
         physics_material=sim_utils.RigidBodyMaterialCfg(
             friction_combine_mode="multiply",
@@ -142,7 +136,7 @@ class ActionsCfg:
         joint_names=[".*"], 
         prevision_horizon=1, 
         number_predict_step=1, 
-        controller=model_base_controller.samplingController(),
+        controller=mdp.samplingController,
         )
     
     # joint_pos = mdp.JointPositionActionCfg(asset_name="robot", joint_names=[".*"], scale=0.5, use_default_offset=True)
@@ -194,10 +188,10 @@ class ObservationsCfg:
         #     noise=Unoise(n_min=-0.1, n_max=0.1),
         #     clip=(-1.0, 1.0),
         # )
-
+        
         # ---- Model-Base internal variable ----
-        leg_phase = ObsTerm(func=leg_phase, params={"action_name": "model_base_variable"})
-        leg_in_contact = ObsTerm(func=leg_contact, params={"action_name": "model_base_variable"})
+        leg_phase = ObsTerm(func=mdp.leg_phase, params={"action_name": "model_base_variable"})
+        leg_in_contact = ObsTerm(func=mdp.leg_contact, params={"action_name": "model_base_variable"})
 
         def __post_init__(self):
             # self.enable_corruption = True
@@ -299,7 +293,6 @@ class RewardsCfg:
     - flat_orientation_l2   - penalize non flat pose    - weight=0.0
     - dof_pos_limits        - pen. joint pos > soft lim - weight=0.0
     """
-
     # -- task
     track_lin_vel_xy_exp   = RewTerm(func=mdp.track_lin_vel_xy_exp, weight=1.5, params={"command_name": "base_velocity", "std": math.sqrt(0.25)})
     track_ang_vel_z_exp    = RewTerm(func=mdp.track_ang_vel_z_exp, weight=0.75, params={"command_name": "base_velocity", "std": math.sqrt(0.25)})
@@ -319,27 +312,17 @@ class RewardsCfg:
     # dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=0.0)
 
     # -- Model based penalty : Positive weight -> penalty is already negative
-    penalty_leg_frequency        = RewTerm(func=penalize_large_leg_frequency_L1,  weight=1.0,  params={"action_name": "model_base_variable", "bound": (1.0,2.0)})
-    penalty_leg_duty_cycle       = RewTerm(func=penalize_large_leg_duty_cycle_L1, weight=2.0,  params={"action_name": "model_base_variable", "bound": (0.4,0.7)})
-    penalty_large_force          = RewTerm(func=penalize_large_Forces_L1,         weight=0.1,  params={"action_name": "model_base_variable", "bound": (0.0,130.0)})
-    penalty_large_step           = RewTerm(func=penalize_large_steps_L1,          weight=1.0,  params={"action_name": "model_base_variable", "bound_x": (0.10,-0.04), "bound_y": (0.04,-0.04), "bound_z": (-1.0,1.0)})
-    penalty_frequency_variation  = RewTerm(func=penalize_frequency_variation_L2,  weight=0.5,  params={"action_name": "model_base_variable" })
-    penatly_duty_cycle_variation = RewTerm(func=penalize_duty_cycle_variation_L2, weight=0.5,  params={"action_name": "model_base_variable" })
-    penalty_step_variation       = RewTerm(func=penalize_steps_variation_L2,      weight=0.2,  params={"action_name": "model_base_variable" })
-    penatly_force_variation      = RewTerm(func=penalize_Forces_variation_L2,     weight=1e-4, params={"action_name": "model_base_variable" })
-
+    penalty_leg_frequency        = RewTerm(func=mdp.penalize_large_leg_frequency_L1,  weight=1.0,  params={"action_name": "model_base_variable", "bound": (1.0,2.0)})
+    penalty_leg_duty_cycle       = RewTerm(func=mdp.penalize_large_leg_duty_cycle_L1, weight=2.0,  params={"action_name": "model_base_variable", "bound": (0.4,0.7)})
+    penalty_large_force          = RewTerm(func=mdp.penalize_large_Forces_L1,         weight=0.1,  params={"action_name": "model_base_variable", "bound": (0.0,130.0)})
+    penalty_large_step           = RewTerm(func=mdp.penalize_large_steps_L1,          weight=1.0,  params={"action_name": "model_base_variable", "bound_x": (0.10,-0.04), "bound_y": (0.04,-0.04), "bound_z": (-1.0,1.0)})
+    penalty_frequency_variation  = RewTerm(func=mdp.penalize_frequency_variation_L2,  weight=0.5,  params={"action_name": "model_base_variable" })
+    penatly_duty_cycle_variation = RewTerm(func=mdp.penalize_duty_cycle_variation_L2, weight=0.5,  params={"action_name": "model_base_variable" })
+    penalty_step_variation       = RewTerm(func=mdp.penalize_steps_variation_L2,      weight=0.2,  params={"action_name": "model_base_variable" })
+    penatly_force_variation      = RewTerm(func=mdp.penalize_Forces_variation_L2,     weight=1e-4, params={"action_name": "model_base_variable" })
 
     # -- Additionnal Reward : Need a positive weight
     reward_is_alive        = RewTerm(func=mdp.is_alive, weight=1)
-    # feet_air_time = RewTerm(
-    #     func=mdp.feet_air_time,
-    #     weight=0.125,
-    #     params={
-    #         "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*foot"),
-    #         "command_name": "base_velocity",
-    #         "threshold": 0.5,
-    #     },
-    # )
 
 
 @configclass

@@ -46,7 +46,7 @@ class ModelBaseActionCfg(ActionTermCfg):
     optimize_step_height: bool = False
 
     # controller: model_base_controller.modelBaseController = MISSING
-    controller: model_base_controller.samplingController = MISSING
+    controller: type[model_base_controller.samplingController] = MISSING
     """Model base controller that compute u: output torques from z: latent variable""" 
 
     @configclass

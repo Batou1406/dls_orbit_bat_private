@@ -33,11 +33,7 @@ class modelBaseController(ABC):
 
     """
 
-    def __init__(self):
-        super().__init__()
-
-
-    def late_init(self, device, num_envs, num_legs, time_horizon, dt_out, decimation, dt_in):
+    def __init__(self, device, num_envs, num_legs, time_horizon, dt_out, decimation, dt_in):
         """ Initialise Model Base variable after the model base action class has been initialised
 
         Args : 
@@ -48,6 +44,7 @@ class modelBaseController(ABC):
             - decimation   (int): Inner Loop steps per outer loop steps
             - dt_in        (int): Inner loop delta t
         """
+        super().__init__()
         self._num_envs = num_envs
         self._device = device
         self._num_legs = num_legs
@@ -99,25 +96,6 @@ class modelBaseController(ABC):
             - T   (torch.Tensor): control output (ie. Joint Torques)    of shape(batch_size, num_joints)
         """
         raise NotImplementedError
-    
-
-    def gait_generator(self, f: torch.Tensor, d: torch.Tensor, phase: torch.tensor, time_horizon: int) -> tuple[torch.Tensor, torch.Tensor]:
-        """ Implement a gait generator that return a contact sequence given a leg frequency and a leg duty cycle
-        Increment phase by dt*f 
-        restart if needed
-        return contact : 1 if phase < duty cyle, 0 otherwise 
-
-        Args:
-            - f   (torch.Tensor): Leg frequency                         of shape(batch_size, num_legs, parallel_rollout)
-            - d   (torch.Tensor): Stepping duty cycle                   of shape(batch_size, num_legs, parallel_rollout)
-            - phase (tch.Tensor): phase of leg                          of shape(batch_size, num_legs, parallel_rollout)
-            - time_horizon (int): Time horizon for the contact sequence
-
-        Returns:
-            - c     (torch.bool): Foot contact sequence                 of shape(batch_size, num_legs, parallel_rollout, time_horizon)
-            - phase (tch.Tensor): The phase updated by one time steps   of shape(batch_size, num_legs, parallel_rollout)
-        """
-        raise NotImplementedError
 
     
 class samplingController(modelBaseController):
@@ -163,11 +141,7 @@ class samplingController(modelBaseController):
     swing_time : torch.Tensor
     p_lw_sim_prev : torch.Tensor
 
-    def __init__(self):
-        super().__init__()
-
-
-    def late_init(self, device, num_envs, num_legs, time_horizon, dt_out, decimation, dt_in, p_default_lw: torch.Tensor, step_height, foot_offset, swing_ctrl_pos_gain_fb, swing_ctrl_vel_gain_fb):
+    def __init__(self, device, num_envs, num_legs, time_horizon, dt_out, decimation, dt_in, p_default_lw: torch.Tensor, step_height, foot_offset, swing_ctrl_pos_gain_fb, swing_ctrl_vel_gain_fb):
         """ Initialise Model Base variable after the model base action class has been initialised
         Note :
             The variable are in the 'local' world frame _wl. This notation is introduced to avoid confusion with the 'global' world frame, where all the batches coexists.
@@ -181,7 +155,7 @@ class samplingController(modelBaseController):
             - dt_in        (int): Inner loop delta t
             - p_default (Tensor): Default feet pos of robot when reset  of Shape (batch_size, num_legs, 3)
         """
-        super().late_init(device, num_envs, num_legs, time_horizon, dt_out, decimation, dt_in)
+        super().__init__(device, num_envs, num_legs, time_horizon, dt_out, decimation, dt_in)
         self.phase = torch.zeros(num_envs, num_legs, device=device)
         self.phase[:,(0,3)] = 0.5 # Init phase [0.5, 0, 0.5, 0]
         self.p0_lw = p_default_lw.clone().detach()
@@ -190,7 +164,7 @@ class samplingController(modelBaseController):
         self.step_height = step_height
         self.FOOT_OFFSET = foot_offset
         self.swing_ctrl_pos_gain_fb = swing_ctrl_pos_gain_fb
-        self.swing_ctrl_vel_gain_fb = swing_ctrl_vel_gain_fb        
+        self.swing_ctrl_vel_gain_fb = swing_ctrl_vel_gain_fb       
 
 
     def reset(self, env_ids: Sequence[int] | None,  p_default_lw: torch.Tensor) -> None:
