@@ -670,10 +670,10 @@ class ModelBaseAction(ActionTerm):
         # f:[-1,1]->[std_n,std_p]       : mean=(std_n+std_p)/2, std=(std_p-std_n)/2     : clipped to (min, max)
         # shape(batch_size, num_legs)
         if f is not None:
-            std_p_f = 1.5
-            std_n_f = 1.4
-            max_f = 1.5#1.8#1.5#3
-            min_f = 1.5#1.2#1.5#0
+            std_p_f = 1.55
+            std_n_f = 1.45
+            max_f = 3
+            min_f = 0
             f = ((f * ((std_p_f-std_n_f)/2)) + ((std_p_f+std_n_f)/2)).clamp(min_f,max_f)
 
 
@@ -681,10 +681,10 @@ class ModelBaseAction(ActionTerm):
         # d:[-1,1]->[std_n,std_p]       : mean=(std_n+std_p)/2, std=(std_p-std_n)/2     : clipped to (min, max)
         # shape(batch_size, num_legs)
         if d is not None:
-            std_d_p = 0.58
-            std_d_n = 0.53
-            max_d = 0.6#0.7#0.6#1.0
-            min_d = 0.6#0.4#0.6#0.0
+            std_d_p = 0.63
+            std_d_n = 0.57
+            max_d = 1.0
+            min_d = 0.0
             d = ((d * ((std_d_p-std_d_n)/2)) + ((std_d_p+std_d_n)/2)).clamp(min_d,max_d)
 
 

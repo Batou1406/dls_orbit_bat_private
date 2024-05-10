@@ -319,12 +319,12 @@ class RewardsCfg:
     # dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=0.0)
 
     # -- Model based penalty : Positive weight -> penalty is already negative
-    # penalty_leg_frequency        = RewTerm(func=penalize_large_leg_frequency_L1,  weight=1.0,  params={"action_name": "model_base_variable", "bound": (1.4,1.6)})
-    # penalty_leg_duty_cycle       = RewTerm(func=penalize_large_leg_duty_cycle_L1, weight=1.0,  params={"action_name": "model_base_variable", "bound": (0.5,0.6)})
+    penalty_leg_frequency        = RewTerm(func=penalize_large_leg_frequency_L1,  weight=1.0,  params={"action_name": "model_base_variable", "bound": (1.0,2.0)})
+    penalty_leg_duty_cycle       = RewTerm(func=penalize_large_leg_duty_cycle_L1, weight=2.0,  params={"action_name": "model_base_variable", "bound": (0.4,0.7)})
     penalty_large_force          = RewTerm(func=penalize_large_Forces_L1,         weight=0.1,  params={"action_name": "model_base_variable", "bound": (0.0,130.0)})
     penalty_large_step           = RewTerm(func=penalize_large_steps_L1,          weight=1.0,  params={"action_name": "model_base_variable", "bound_x": (0.10,-0.04), "bound_y": (0.04,-0.04), "bound_z": (-1.0,1.0)})
-    # penalty_frequency_variation  = RewTerm(func=penalize_frequency_variation_L2,  weight=1.0,  params={"action_name": "model_base_variable" })
-    # penatly_duty_cycle_variation = RewTerm(func=penalize_duty_cycle_variation_L2, weight=1.0,  params={"action_name": "model_base_variable" })
+    penalty_frequency_variation  = RewTerm(func=penalize_frequency_variation_L2,  weight=0.5,  params={"action_name": "model_base_variable" })
+    penatly_duty_cycle_variation = RewTerm(func=penalize_duty_cycle_variation_L2, weight=0.5,  params={"action_name": "model_base_variable" })
     penalty_step_variation       = RewTerm(func=penalize_steps_variation_L2,      weight=0.2,  params={"action_name": "model_base_variable" })
     penatly_force_variation      = RewTerm(func=penalize_Forces_variation_L2,     weight=1e-4, params={"action_name": "model_base_variable" })
 
