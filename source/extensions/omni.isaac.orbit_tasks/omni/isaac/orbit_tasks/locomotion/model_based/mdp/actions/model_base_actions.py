@@ -47,7 +47,7 @@ plt_i = 0
 # def torch_to_jax(x):
 #     return jax.dlpack.from_dlpack(torch.utils.dlpack.to_dlpack(x))
 
-verbose_mb = True
+verbose_mb = False
 verbose_loop = 40
 vizualise_debug = {'foot': False, 'jacobian': False, 'foot_traj': True, 'lift-off': True, 'touch-down': True, 'GRF': True, 'touch-down polygon': False}
 torch.set_printoptions(precision=4, linewidth=200, sci_mode=False)
@@ -222,10 +222,8 @@ class ModelBaseAction(ActionTerm):
         self._joints_idx = [fl_joints, fr_joints, rl_joints, rr_joints]
 
         # Latent variable
-        if self.cfg.optimize_step_height:
-            p_dim=3
-        else : 
-            p_dim=2
+        if self.cfg.optimize_step_height: p_dim=3
+        else : p_dim=2
         
         # raw RL output
         self.f_raw  = 1.0*torch.ones( self.num_envs, self._num_legs,                                   device=self.device) 
@@ -280,9 +278,9 @@ class ModelBaseAction(ActionTerm):
         # variable for the height_scanner
         if self.cfg.height_scan_available :
             self.height_scan_resolution = self._env.scene["height_scanner"].cfg.pattern_cfg.resolution
-            self.height_scan_offset = self._env.scene["height_scanner"].cfg.pattern_cfg.size
+            self.height_scan_size       = self._env.scene["height_scanner"].cfg.pattern_cfg.size
             # self.hip_offset = self._asset.data.body_pos_w[0,  self._hip_idx, :2].unsqueeze(0) # shape(1, num_legs, 2=xy) # Sadly this isn't initialized at init time
-            self.hip_offset = torch.tensor([[0.24,0.05],[0.24,-0.05],[-0.24,0.05],[-0.24,-0.05]], device=self.device).reshape(1,4,2)                                                           # So it's hardcoded for aliengo for now... TODO don't hardcode
+            self.hip_offset = torch.tensor([[0.24,0.05],[0.24,-0.05],[-0.24,0.05],[-0.24,-0.05]], device=self.device).reshape(1,4,2) # So it's hardcoded for aliengo for now... TODO don't hardcode
 
         # Instance of control class. Gets Z and output u
         self.controller = cfg.controller(
@@ -379,10 +377,10 @@ class ModelBaseAction(ActionTerm):
             # Retrieve the height at the feet touch-down position from the height scan and add it to of shape (batch, legs, 3, 1)
             terrain_height_grid = self._env.scene["height_scanner"].data.ray_hits_w # shape (batch, 183, 3)
 
-            # Retrieve the touch down position height given their index in the height grid
-            terrain_height_feet = terrain_height_grid[torch.arange(self.num_envs).unsqueeze(1), height_scan_index, 2] #shape (batch_size, num_legs)
+            # Retrieve the touch down position height given their index in the height grid : The height_scan has the env_origins offset, that must be removed to be in lw
+            terrain_height_feet = terrain_height_grid[torch.arange(self.num_envs).unsqueeze(1), height_scan_index, 2] - self._env.scene.env_origins[:,2].unsqueeze(-1) #shape (batch_size, num_legs)
 
-            self.p_lw[:,:,2] += terrain_height_feet.unsqueeze(-1)
+            self.p_lw[:,:,2] += terrain_height_feet.unsqueeze(-1) #shape (batch_size, num_legs, num_predict_step)
 
         # Transform GRF into local world frame
         self.F_lw = self.rotate_GRF_from_rl_frame_to_lw(F_norm=self.F_norm)
@@ -391,7 +389,7 @@ class ModelBaseAction(ActionTerm):
         self.p_star_lw, self.F_star_lw, self.c_star, self.pt_star_lw, self.full_pt_lw = self.controller.optimize_latent_variable(f=self.f, d=self.d, p_lw=self.p_lw, F_lw=self.F_lw)
 
         # Reset the inner loop counter
-        self.inner_loop = 0
+        self.inner_loop = 0      
 
 
     def apply_actions(self):
@@ -419,7 +417,7 @@ class ModelBaseAction(ActionTerm):
                                                           jacobian_lw=jacobian_lw, jacobian_dot_lw=jacobian_dot_lw, mass_matrix=mass_matrix, h=h)).permute(0,2,1).reshape(self.num_envs,self._num_joints)
 
         # Apply the computed torques
-        self._asset.set_joint_effort_target(self.u)#, joint_ids=self._joint_ids) # Do use joint_ids to speed up the process
+        self._asset.set_joint_effort_target(self.u)#, joint_ids=self._joint_ids) # Do use joint_ids to speed up the process     
 
         # Debug
         if verbose_mb:
@@ -764,14 +762,10 @@ class ModelBaseAction(ActionTerm):
 
 #-------------------------------------------------- Helpers ------------------------------------------------------------
     def height_scan_index_from_pos_b(self, pos_b: torch.Tensor) -> torch.Tensor:
-        """ Given a position in the robot body frame (centered at the robot base, yaw rotated, pitch-roll ignored),
-        it returns the index to access the height from the height_scan sensor.
+        """ Given a position in the (almost) robot body frame (centered at the robot base, aligned with yaw, but pitch-roll are ignored),
+        it returns the index to access the (closest) height from the height_scan sensor.
         The height scanner makes a 2D grid, that start at the bottom left corner (ie. -length/2, -width/2). This grid is then
-        flattened, which makes the index retrieval a bit tricky.
-        index 0 = (-length/2, -width/2)
-        index 1 = (-length/2 + resolution, -width/2)
-        etc.
-        index n = (length/2, width/2)
+        flattened as a 1D index : [(-l/2;-w/2), (-l/2+res;-w/2), (-l2/2+2*res;-w/2), ... ,(l/2,-w/2),(-l/2;-w/2+res),...,(l/2;w/2)]
 
         Args : 
             - pos_b       (torch.Tensor): of shape (batch_size, number_of_pos, 2) (2=xy)
@@ -779,12 +773,12 @@ class ModelBaseAction(ActionTerm):
         Return :
             - height_scan_index (Tensor): of shape(batch_size, number_of_pos)
         """
-        # Retrieve the index given the x and y direction : shape(batch_size, number_of_pos)
-        index_x = torch.round((pos_b[:,:,0] - (self.height_scan_offset[0]/2) ) / self.height_scan_resolution)
-        index_y = torch.round((pos_b[:,:,1] - (self.height_scan_offset[1]/2) ) / self.height_scan_resolution) 
+        # Retrieve the index given the x and y direction : shape(batch_size, number_of_pos) : p - (-l/2)
+        index_x = (torch.round((pos_b[:,:,0] + (self.height_scan_size[0]/2) ) / self.height_scan_resolution))#.clamp(0, self.height_scan_size[0]//self.height_scan_resolution)
+        index_y = (torch.round((pos_b[:,:,1] + (self.height_scan_size[1]/2) ) / self.height_scan_resolution))#.clamp(0, self.height_scan_size[1]//self.height_scan_resolution) 
 
         # Apply the scalling to the y direction induced by how the grid is flatten : shape(batch_size, number_of_pos)
-        height_scan_index = index_x*1 + index_y*(int(self.height_scan_offset[0]/self.height_scan_resolution) + 1) # use int() wich behave like floor, not like round
+        height_scan_index = index_x*1 + index_y*(int(self.height_scan_size[0]/self.height_scan_resolution) + 1) # use int() wich behave like floor, not like round
 
         return height_scan_index.to(torch.int) 
 
@@ -799,12 +793,14 @@ class ModelBaseAction(ActionTerm):
             print('\nContact sequence : ', c0_star[0,...].flatten())
             print('  Leg  frequency : ', self.f[0,...].flatten())
             print('   duty   cycle  : ', self.d[0,...].flatten())
-            # print('Touch-down pos   : ', self.p_lw[0,0,:,0])
+            print('Touch-down pos   : ', self.p_lw[0,0,:,0])
             # print(' Foot  position  : ', p_lw[0,...])
             print(' Robot position  : ', self._asset.data.root_pos_w[0,...])
             # print('Foot traj shape  : ', self.pt_star_lw.shape)
             # print('Foot traj : ', self.pt_star_lw[0,0,:3,:])
-            print('Foot Force :', self.F_star_lw[0,:,:])
+            # print('Foot Force :', self.F_star_lw[0,:,:])
+
+
             if (self.F_lw != self.F_star_lw).any():
                 assert ValueError('F value don\'t match...')
 

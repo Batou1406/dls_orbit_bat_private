@@ -182,12 +182,12 @@ class ObservationsCfg:
         velocity_commands = ObsTerm(func=mdp.generated_commands, params={"command_name": "base_velocity"})
         
         # ---- Exteroceptive sensors
-        # height_scan = ObsTerm(
-        #     func=mdp.height_scan,
-        #     params={"sensor_cfg": SceneEntityCfg("height_scanner")},
-        #     noise=Unoise(n_min=-0.1, n_max=0.1),
-        #     clip=(-1.0, 1.0),
-        # )
+        height_scan = ObsTerm(
+            func=mdp.height_scan,
+            params={"sensor_cfg": SceneEntityCfg("height_scanner")},
+            noise=Unoise(n_min=-0.1, n_max=0.1),
+            clip=(-1.0, 1.0),
+        )
         
         # ---- Model-Base internal variable ----
         leg_phase = ObsTerm(func=mdp.leg_phase, params={"action_name": "model_base_variable"})
@@ -337,8 +337,8 @@ class TerminationsCfg:
         func=mdp.illegal_contact,
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="base"), "threshold": 1.0},
     )
-    bad_orientation = DoneTerm(func=mdp.bad_orientation, params={"limit_angle":35*(3.14/180)})
-    bad_height = DoneTerm(func=mdp.base_height, params={'minimum_height': 0.20})
+    bad_orientation = DoneTerm(func=mdp.bad_orientation, params={"limit_angle":45*(3.14/180)})
+    # bad_height = DoneTerm(func=mdp.base_height, params={'minimum_height': 0.20})
 
 
 @configclass
