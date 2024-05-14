@@ -47,7 +47,7 @@ plt_i = 0
 # def torch_to_jax(x):
 #     return jax.dlpack.from_dlpack(torch.utils.dlpack.to_dlpack(x))
 
-verbose_mb = False
+verbose_mb = True
 verbose_loop = 40
 vizualise_debug = {'foot': False, 'jacobian': False, 'foot_traj': True, 'lift-off': True, 'touch-down': True, 'GRF': True, 'touch-down polygon': False}
 torch.set_printoptions(precision=4, linewidth=200, sci_mode=False)
@@ -143,6 +143,9 @@ class ModelBaseAction(ActionTerm):
         get_reset_foot_position() -> torch.Tensors
         transform_p_from_rl_frame_to_lw(p_norm) -> p_lw
         rotate_GRF_from_rl_frame_to_lw(F_norm) -> F_lw
+        normalize_actions()
+        height_scan_index_from_pos_b()
+        debug_apply_action()
     """
 
     cfg: actions_cfg.ModelBaseActionCfg
@@ -284,7 +287,7 @@ class ModelBaseAction(ActionTerm):
 
         # Instance of control class. Gets Z and output u
         self.controller = cfg.controller(
-            device=self.device, num_envs=self.num_envs, num_legs=self._num_legs, time_horizon=self._prevision_horizon,
+            verbose_md=verbose_mb, device=self.device, num_envs=self.num_envs, num_legs=self._num_legs, time_horizon=self._prevision_horizon,
             dt_out=self._decimation*self._env.physics_dt, decimation=self._decimation, dt_in=self._env.physics_dt,
             p_default_lw=self.get_reset_foot_position(), step_height=cfg.footTrajectoryCfg.step_height,
             foot_offset=cfg.footTrajectoryCfg.foot_offset, swing_ctrl_pos_gain_fb=self.cfg.swingControllerCfg.swing_ctrl_pos_gain_fb , 

@@ -2,20 +2,21 @@ from abc import ABC
 from collections.abc import Sequence
 import torch
 
-import numpy as np
+# import numpy as np
 # import matplotlib.pyplot as plt
-np.set_printoptions(precision=2, linewidth=200)
+# np.set_printoptions(precision=2, linewidth=200)
 # force=[[],[],[],[],[],[],[],[],[],[],[],[]]
-torque=[[],[],[],[],[],[],[],[],[],[],[],[]]
-pos_tracking_error = [[],[],[],[]]
-vel_tracking_error = [[],[],[],[]]
-acc_tracking_error = [[],[],[],[]]
+# torque=[[],[],[],[],[],[],[],[],[],[],[],[]]
+# pos_tracking_error = [[],[],[],[]]
+# vel_tracking_error = [[],[],[],[]]
+# acc_tracking_error = [[],[],[],[]]
 
 class modelBaseController(ABC):
     """
     Abstract controller class for model base control implementation
     
     Properties : 
+        - verbose_md    : Verbose variable. Save some computation that aren't necessary if not in debug mode.
         - _device
         - _num_envs
         - _num_legs
@@ -33,10 +34,11 @@ class modelBaseController(ABC):
 
     """
 
-    def __init__(self, device, num_envs, num_legs, time_horizon, dt_out, decimation, dt_in):
+    def __init__(self, verbose_md, device, num_envs, num_legs, time_horizon, dt_out, decimation, dt_in):
         """ Initialise Model Base variable after the model base action class has been initialised
 
         Args : 
+            - verbose_md  (bool): Debug mode
             - device            : Cpu or GPu
             - num_envs     (int): Number of parallel environments
             - time_horiton (int): Prediction time horizon for the Model Base controller (runs at outer loop frequecy)
@@ -45,6 +47,7 @@ class modelBaseController(ABC):
             - dt_in        (int): Inner loop delta t
         """
         super().__init__()
+        self.verbose_md = verbose_md
         self._num_envs = num_envs
         self._device = device
         self._num_legs = num_legs
@@ -110,6 +113,7 @@ class samplingController(modelBaseController):
         Optimize the latent variable z. Generates samples, simulate the samples, evaluate them and return the best one.
 
     Properties : 
+        - verbose_md    : Verbose variable. Save some computation that aren't necessary if not in debug mode.           Inherited from modelBaseController
         - _device                                                                                                       Inherited from modelBaseController
         - _num_envs                                                                                                     Inherited from modelBaseController
         - _num_legs                                                                                                     Inherited from modelBaseController
@@ -135,18 +139,18 @@ class samplingController(modelBaseController):
         - stance_leg_controller(F0*, c0*) -> T_stance
     """
 
-    # Late init
     phase : torch.Tensor
     p0_lw : torch.Tensor
     swing_time : torch.Tensor
     p_lw_sim_prev : torch.Tensor
 
-    def __init__(self, device, num_envs, num_legs, time_horizon, dt_out, decimation, dt_in, p_default_lw: torch.Tensor, step_height, foot_offset, swing_ctrl_pos_gain_fb, swing_ctrl_vel_gain_fb):
+    def __init__(self, verbose_md, device, num_envs, num_legs, time_horizon, dt_out, decimation, dt_in, p_default_lw: torch.Tensor, step_height, foot_offset, swing_ctrl_pos_gain_fb, swing_ctrl_vel_gain_fb):
         """ Initialise Model Base variable after the model base action class has been initialised
         Note :
             The variable are in the 'local' world frame _wl. This notation is introduced to avoid confusion with the 'global' world frame, where all the batches coexists.
 
         Args : 
+            - verbose_md  (bool): Debug mode
             - device            : Cpu or GPu
             - num_envs     (int): Number of parallel environments
             - time_horiton (int): Prediction time horizon for the Model Base controller (runs at outer loop frequecy)
@@ -155,7 +159,7 @@ class samplingController(modelBaseController):
             - dt_in        (int): Inner loop delta t
             - p_default (Tensor): Default feet pos of robot when reset  of Shape (batch_size, num_legs, 3)
         """
-        super().__init__(device, num_envs, num_legs, time_horizon, dt_out, decimation, dt_in)
+        super().__init__(verbose_md, device, num_envs, num_legs, time_horizon, dt_out, decimation, dt_in)
         self.phase = torch.zeros(num_envs, num_legs, device=device)
         self.phase[:,(0,3)] = 0.5 # Init phase [0.5, 0, 0.5, 0]
         self.p0_lw = p_default_lw.clone().detach()
@@ -348,29 +352,30 @@ class samplingController(modelBaseController):
         # shape (batch_size, num_legs, 9, decimation) (9 = xyz_pos, xzy_vel, xyz_acc)
         pt_lw = torch.cat((desired_foot_pos_traj_lw, desired_foot_vel_traj_lw, desired_foot_acc_traj_lw), dim=2)
 
-        # return pt_lw
-    
-        # Compute the full trajectory for plotting and debugging purposes
-        # Shape (1,1,1,22)
-        full_phase_traj = torch.cat((torch.arange(start=0, end=1.01, step=0.1, device=self._device), torch.arange(start=0, end=1.01, step=0.1, device=self._device))).unsqueeze(0).unsqueeze(1).unsqueeze(2) # [0, 0.1, 0.2, ..., 0.9, 1.0, 0.0, 0.1, ..., 1.0]
-        is_S0 = (torch.arange(start=0, end=22, step=1, device=self._device) < 11).unsqueeze(0).unsqueeze(1).unsqueeze(2)
+        
+        # --- Compute the full trajectory for plotting and debugging purposes ---
+        if self.verbose_md:
+            # Shape (1,1,1,22)
+            full_phase_traj = torch.cat((torch.arange(start=0, end=1.01, step=0.1, device=self._device), torch.arange(start=0, end=1.01, step=0.1, device=self._device))).unsqueeze(0).unsqueeze(1).unsqueeze(2) # [0, 0.1, 0.2, ..., 0.9, 1.0, 0.0, 0.1, ..., 1.0]
+            is_S0 = (torch.arange(start=0, end=22, step=1, device=self._device) < 11).unsqueeze(0).unsqueeze(1).unsqueeze(2)
 
-        # Recompute cp_x with the new 'decimation' that comes from the new is_S0
-        # cp_x shape (batch_size, num_legs, 3, 22)
-        # cp_x already has decimation dimension thanks to is_S0, px.unsqueeze(-1) : shape(batch, legs, 3) -> shape(batch, legs, 3, 1)
-        #     --------------- S0 ---------------                                              ------------- S1 -------------
-        cp1 = (self.p0_lw.unsqueeze(-1) * is_S0)                                            + (p1_lw.unsqueeze(-1) * ~is_S0)
-        cp2 = (self.p0_lw.unsqueeze(-1) * is_S0)                                            + (torch.cat((p2_lw[:,:,:2], p1_lw[:,:,2:]), dim=2).unsqueeze(-1) * ~is_S0)
-        cp3 = (torch.cat((self.p0_lw[:,:,:2], p1_lw[:,:,2:]), dim=2).unsqueeze(-1) * is_S0) + (p2_lw.unsqueeze(-1) * ~is_S0)
-        cp4 = (p1_lw.unsqueeze(-1) * is_S0)                                                 + (p2_lw.unsqueeze(-1) * ~is_S0)
+            # Recompute cp_x with the new 'decimation' that comes from the new is_S0
+            # cp_x shape (batch_size, num_legs, 3, 22)
+            # cp_x already has decimation dimension thanks to is_S0, px.unsqueeze(-1) : shape(batch, legs, 3) -> shape(batch, legs, 3, 1)
+            #     --------------- S0 ---------------                                              ------------- S1 -------------
+            cp1 = (self.p0_lw.unsqueeze(-1) * is_S0)                                            + (p1_lw.unsqueeze(-1) * ~is_S0)
+            cp2 = (self.p0_lw.unsqueeze(-1) * is_S0)                                            + (torch.cat((p2_lw[:,:,:2], p1_lw[:,:,2:]), dim=2).unsqueeze(-1) * ~is_S0)
+            cp3 = (torch.cat((self.p0_lw[:,:,:2], p1_lw[:,:,2:]), dim=2).unsqueeze(-1) * is_S0) + (p2_lw.unsqueeze(-1) * ~is_S0)
+            cp4 = (p1_lw.unsqueeze(-1) * is_S0)                                                 + (p2_lw.unsqueeze(-1) * ~is_S0)
 
-        # Compute the full trajectory
-        # shape (batch_size, num_legs, 3, 22)
-        desired_foot_pos_traj_lw = cp1*(1 - full_phase_traj)**3 + 3*cp2*(full_phase_traj)*(1 - full_phase_traj)**2 + 3*cp3*((full_phase_traj)**2)*(1 - full_phase_traj) + cp4*(full_phase_traj)**3
-        desired_foot_vel_traj_lw = 3*(cp2 - cp1)*(1 - full_phase_traj)**2 + 6*(cp3 - cp2)*(1 - full_phase_traj)*(full_phase_traj) + 3*(cp4 - cp3)*(full_phase_traj)**2
-        desired_foot_acc_traj_lw = 6*(1 - full_phase_traj) * (cp3 - 2*cp2 + cp1) + 6 * (full_phase_traj) * (cp4 - 2*cp3 + cp2)
+            # Compute the full trajectory
+            # shape (batch_size, num_legs, 3, 22)
+            desired_foot_pos_traj_lw = cp1*(1 - full_phase_traj)**3 + 3*cp2*(full_phase_traj)*(1 - full_phase_traj)**2 + 3*cp3*((full_phase_traj)**2)*(1 - full_phase_traj) + cp4*(full_phase_traj)**3
+            desired_foot_vel_traj_lw = 3*(cp2 - cp1)*(1 - full_phase_traj)**2 + 6*(cp3 - cp2)*(1 - full_phase_traj)*(full_phase_traj) + 3*(cp4 - cp3)*(full_phase_traj)**2
+            desired_foot_acc_traj_lw = 6*(1 - full_phase_traj) * (cp3 - 2*cp2 + cp1) + 6 * (full_phase_traj) * (cp4 - 2*cp3 + cp2)
 
-        full_pt_lw = torch.cat((desired_foot_pos_traj_lw, desired_foot_vel_traj_lw, desired_foot_acc_traj_lw), dim=2)
+            full_pt_lw = torch.cat((desired_foot_pos_traj_lw, desired_foot_vel_traj_lw, desired_foot_acc_traj_lw), dim=2)
+        else : full_pt_lw = torch.empty(1)
 
         return pt_lw, full_pt_lw
 
@@ -548,12 +553,6 @@ class samplingController(modelBaseController):
 
         # Final step        : # Shape is (batch_size, num_legs, num_joints_per_leg, num_joints_per_leg)
         T_swing = torch.add(M_J_inv_p_dot_dot_min_J_dot_x_q_dot, h)
-
-        # Without the h
-        # T_swing = M_J_inv_p_dot_dot_min_J_dot_x_q_dot
-
-        # Like Giulio did
-        # T_swing =  torch.matmul(jacobian_lw.transpose(2,3), p_dot_dot_min_J_dot_x_q_dot.unsqueeze(-1)).squeeze(-1) + h
 
         return T_swing
     
