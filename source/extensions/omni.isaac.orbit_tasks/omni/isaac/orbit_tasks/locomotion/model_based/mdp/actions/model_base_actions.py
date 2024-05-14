@@ -696,8 +696,8 @@ class ModelBaseAction(ActionTerm):
         # f:[-1,1]->[std_n,std_p]       : mean=(std_n+std_p)/2, std=(std_p-std_n)/2     : clipped to (min, max)
         # shape(batch_size, num_legs)
         if f is not None:
-            std_p_f = 1.6
-            std_n_f = 1.4
+            std_p_f = 1.7
+            std_n_f = 1.3
             max_f = 3
             min_f = 0
             f = ((f * ((std_p_f-std_n_f)/2)) + ((std_p_f+std_n_f)/2)).clamp(min_f,max_f)
