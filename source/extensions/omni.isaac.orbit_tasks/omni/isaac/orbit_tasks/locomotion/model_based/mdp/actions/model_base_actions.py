@@ -20,7 +20,7 @@ from omni.isaac.orbit.managers.action_manager import ActionTerm
 if TYPE_CHECKING:
     from omni.isaac.orbit.envs import BaseEnv
 
-    from . import actions_cfg
+from . import actions_cfg
 
 from . import model_base_controller #import modelBaseController, samplingController
 
@@ -49,7 +49,7 @@ plt_i = 0
 
 verbose_mb = True
 verbose_loop = 40
-vizualise_debug = {'foot': False, 'jacobian': False, 'foot_traj': True, 'lift-off': True, 'touch-down': True, 'GRF': True, 'touch-down polygon': False}
+vizualise_debug = {'foot': False, 'jacobian': False, 'foot_traj': True, 'lift-off': True, 'touch-down': True, 'GRF': False, 'touch-down polygon': False}
 torch.set_printoptions(precision=4, linewidth=200, sci_mode=False)
 if verbose_mb: import omni.isaac.debug_draw._debug_draw as omni_debug_draw
 
@@ -129,9 +129,7 @@ class ModelBaseAction(ActionTerm):
         inner_loop     (int): Counter of inner loop wrt. outer loop
         hip0_pos_lw (Tensor): Hip position when leg lift-off                of shape (batch_size, num_legs, 3)
         hip0_yaw_quat_lw (T): Robot yaw when leg lift-off                   of shape (batch_size, num_legs, 4)
-        height_scan_resolution : resolution in [m] of the height sensor
-        height_scan_offset  : (Length(x direction), width(y direction)) of the height sensor grid
-        hip_offset          : hip position relative to robot base           of shape (1, num_legs, 2=xy)
+        heightScan  (HeightScanCfg): Config class with : resolution, size, hip_offset, scale_y, max_x, max_y
 
     Method :
         reset(env_ids: Sequence[int] | None = None) -> None:                                                            Inherited from ManagerTermBaseCfg (not implemented)
@@ -280,10 +278,15 @@ class ModelBaseAction(ActionTerm):
 
         # variable for the height_scanner
         if self.cfg.height_scan_available :
-            self.height_scan_resolution = self._env.scene["height_scanner"].cfg.pattern_cfg.resolution
-            self.height_scan_size       = self._env.scene["height_scanner"].cfg.pattern_cfg.size
-            # self.hip_offset = self._asset.data.body_pos_w[0,  self._hip_idx, :2].unsqueeze(0) # shape(1, num_legs, 2=xy) # Sadly this isn't initialized at init time
-            self.hip_offset = torch.tensor([[0.24,0.05],[0.24,-0.05],[-0.24,0.05],[-0.24,-0.05]], device=self.device).reshape(1,4,2) # So it's hardcoded for aliengo for now... TODO don't hardcode
+            self.heightScan = actions_cfg.ModelBaseActionCfg.HeightScanCfg(
+                resolution = self._env.scene["height_scanner"].cfg.pattern_cfg.resolution,
+                size = self._env.scene["height_scanner"].cfg.pattern_cfg.size,
+                # hip_offset = self._asset.data.body_pos_w[0,  self._hip_idx, :2].unsqueeze(0) # shape(1, num_legs, 2=xy) # Sadly this isn't initialized at init time
+                hip_offset = torch.tensor([[0.24,0.05],[0.24,-0.05],[-0.24,0.05],[-0.24,-0.05]], device=self.device).reshape(1,4,2), # So it's hardcoded for aliengo for now... TODO don't hardcode
+            )
+            self.heightScan.scale_y = int(self.heightScan.size[0]/self.heightScan.resolution) + 1
+            self.heightScan.max_x = int(self.heightScan.size[0]//self.heightScan.resolution)
+            self.heightScan.max_y = int(self.heightScan.size[1]//self.heightScan.resolution)
 
         # Instance of control class. Gets Z and output u
         self.controller = cfg.controller(
@@ -375,7 +378,7 @@ class ModelBaseAction(ActionTerm):
         # If the height_sacn is available, add the terrain height to the feet touch down position
         if self.cfg.height_scan_available:
             # Retrieve the height_scan_index given the feet position in base centered frame of shape (batch, legs, 2) + (1, legs, 2)
-            height_scan_index = self.height_scan_index_from_pos_b(pos_b=self.p_norm[:,:,:2,0] + self.hip_offset) #return shape(batch, legs)
+            height_scan_index = self.height_scan_index_from_pos_b(pos_b=self.p_norm[:,:,:2,0] + self.heightScan.hip_offset) #return shape(batch, legs)
 
             # Retrieve the height at the feet touch-down position from the height scan and add it to of shape (batch, legs, 3, 1)
             terrain_height_grid = self._env.scene["height_scanner"].data.ray_hits_w # shape (batch, 183, 3)
@@ -777,11 +780,11 @@ class ModelBaseAction(ActionTerm):
             - height_scan_index (Tensor): of shape(batch_size, number_of_pos)
         """
         # Retrieve the index given the x and y direction : shape(batch_size, number_of_pos) : p - (-l/2)
-        index_x = (torch.round((pos_b[:,:,0] + (self.height_scan_size[0]/2) ) / self.height_scan_resolution))#.clamp(0, self.height_scan_size[0]//self.height_scan_resolution)
-        index_y = (torch.round((pos_b[:,:,1] + (self.height_scan_size[1]/2) ) / self.height_scan_resolution))#.clamp(0, self.height_scan_size[1]//self.height_scan_resolution) 
+        index_x = (torch.round((pos_b[:,:,0] + (self.heightScan.size[0]/2) ) / self.heightScan.resolution)).clamp(0, self.heightScan.max_x)
+        index_y = (torch.round((pos_b[:,:,1] + (self.heightScan.size[1]/2) ) / self.heightScan.resolution)).clamp(0, self.heightScan.max_y) 
 
         # Apply the scalling to the y direction induced by how the grid is flatten : shape(batch_size, number_of_pos)
-        height_scan_index = index_x*1 + index_y*(int(self.height_scan_size[0]/self.height_scan_resolution) + 1) # use int() wich behave like floor, not like round
+        height_scan_index = index_x*1 + index_y*(self.heightScan.scale_y)
 
         return height_scan_index.to(torch.int) 
 

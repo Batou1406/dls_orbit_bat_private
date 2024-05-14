@@ -10,6 +10,8 @@ from dataclasses import MISSING
 from omni.isaac.orbit.managers.action_manager import ActionTerm, ActionTermCfg
 from omni.isaac.orbit.utils import configclass
 
+import torch
+
 from . import model_base_actions
 
 from . import model_base_controller
@@ -76,6 +78,28 @@ class ModelBaseActionCfg(ActionTermCfg):
 
     swingControllerCfg: SwingControllerCfg = SwingControllerCfg()
     """ Hyperparameter of the swing foot controller"""
+
+    @configclass
+    class HeightScanCfg:
+        """ Config class for height scan parameter and intermediary variable that speed up computation
+        """
+        resolution: float = MISSING
+        """ Spatial resolution of the height scan in [m]"""
+
+        size: tuple[float, float] = MISSING
+        """ Grid size of the height scan (length in x dir. [m], width in y dir. [m]) """
+
+        hip_offset: torch.Tensor = MISSING
+        """ XY offset of the robot's hip wrt to the robot's base of shape (1, num_legs, 2=xy)"""
+
+        scale_y: int = MISSING
+        """ Index scaling in the flattened grid list for a shift in the y dir. in the xy grid. """
+
+        max_x: int = MISSING
+        """ Number of tile in the x dir. of the grid"""
+
+        max_y: int = MISSING
+        """ Number of tile in the y dir. of the grid """
 
 
 
