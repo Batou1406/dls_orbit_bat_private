@@ -13,7 +13,7 @@ class modelBaseControllerTest():
 
     def __init__(self, controller: modelBaseController):
         
-
+        verbose_md = False #if True : compute full swing trajectory
         device='cpu'
         num_env=2
         num_leg=4
@@ -26,7 +26,7 @@ class modelBaseControllerTest():
         foot_offset = 0.03
         swing_ctrl_pos_gain_fb=5
         swing_ctrl_vel_gain_fb=1
-        self.controller = controller(device, num_env, num_leg, time_horizon, dt_out, decimation, dt_in, p_default, step_height, foot_offset, swing_ctrl_pos_gain_fb, swing_ctrl_vel_gain_fb)
+        self.controller = controller(verbose_md, device, num_env, num_leg, time_horizon, dt_out, decimation, dt_in, p_default, step_height, foot_offset, swing_ctrl_pos_gain_fb, swing_ctrl_vel_gain_fb)
 
     def test_optimize_latent_variable(self):
         raise NotImplementedError
