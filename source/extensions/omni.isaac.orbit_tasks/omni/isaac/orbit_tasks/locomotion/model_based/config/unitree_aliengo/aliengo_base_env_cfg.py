@@ -32,21 +32,35 @@ class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
 
 
         """ ----- Terrain curriculum ----- """
-        # self.curriculum.terrain_levels = None                                                                         # By default activated
+        Terrain_curriculum = True
 
-        # --- scale down the terrains because the robot is small
-        self.scene.terrain.terrain_generator.sub_terrains["boxes"].grid_height_range = (0.025, 0.1)
-        self.scene.terrain.terrain_generator.sub_terrains["random_rough"].noise_range = (0.01, 0.06)
-        self.scene.terrain.terrain_generator.sub_terrains["random_rough"].noise_step = 0.01
+        if Terrain_curriculum : 
+            # --- scale down the terrains because the robot is small
+            self.scene.terrain.terrain_generator.sub_terrains["boxes"].grid_height_range = (0.025, 0.1)
+            self.scene.terrain.terrain_generator.sub_terrains["random_rough"].noise_range = (0.01, 0.06)
+            self.scene.terrain.terrain_generator.sub_terrains["random_rough"].noise_step = 0.01
+        else :
+            self.curriculum.terrain_levels = None                                                                       # By default activated
+            self.scene.terrain.terrain_type = 'plane'
 
 
         """ ----- Event randomization ----- """
+        Event = {'Base Mass'        : False, 
+                 'External Torque'  : False,
+                 'External Force'   : False,
+                 'Random joint pos' : False,
+                 'Push Robot'       : False}
+
         # --- startup
-        # self.events.add_base_mass.params["mass_range"] = (-3.0, 3.0) #(0.0, 0.0)                                        # Default was ±5
-        
+        if Event['Base Mass'] : 
+            self.events.add_base_mass.params["mass_range"] = (-3.0, 3.0) #(0.0, 0.0)                                     # Default was 0
+
         # --- Reset
-        # self.events.base_external_force_torque.params["force_range"]  = (-10.0, 10.0) # (0.0, 0.0)                      # Default was 0
-        # self.events.base_external_force_torque.params["torque_range"] = (-1.0, 1.0) # (0.0, 0.0)                        # Default was 0
+        if Event['External Force'] :
+            self.events.base_external_force_torque.params["force_range"]  = (-10.0, 10.0) # (0.0, 0.0)                  # Default was 0
+        if Event['External Torque'] :
+            self.events.base_external_force_torque.params["torque_range"] = (-1.0, 1.0) # (0.0, 0.0)                    # Default was 0
+
         self.events.reset_base.params = {
             # "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},
             "pose_range": {"x": (0.0, 0.0), "y": (0.0, 0.0), "yaw": (0.0, 0.0)},
@@ -59,11 +73,13 @@ class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
                 "yaw": (0.0, 0.0),
             },
         }
-        self.events.reset_robot_joints.params["position_range"] = (1.0, 1.0)
-        # self.events.reset_robot_joints.params["position_range"] = (0.8, 1.2)                                            # default was (0.5, 1.5)
+
+        if Event["Random joint pos"] :
+            self.events.reset_robot_joints.params["position_range"] = (0.8, 1.2)                                        # default was (1.0, 1.0)
         
         # --- Interval
-        # self.events.push_robot = None                                                                                 # Default was activated
+        if not Event['Push Robot'] :
+            self.events.push_robot = None                                                                               # Default was activated
 
 
         """ ----- rewards ----- """
