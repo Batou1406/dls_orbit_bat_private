@@ -1,6 +1,7 @@
 from abc import ABC
 from collections.abc import Sequence
 import torch
+from torch.distributions.constraints import real
 
 # import numpy as np
 # import matplotlib.pyplot as plt
@@ -292,7 +293,7 @@ class samplingController(modelBaseController):
         # ie. retrieve the actual leg phase -> and compute the trajectory (phase evolution) for the next outer loop period (ie. for decimation inner loop iteration) 
 
         # swing phase in [0,1] (leg is in swing when phase = [d, 1] -> scale to have swing_phase in [0,1]), shape(batch_size, num_legs)
-        swing_phase = (self.phase - d) / (1 - d)  
+        swing_phase = (self.phase - d) / (1 - d + 1e-10)  
 
         swing_frequency = f / (1 - d + 1e-10)           # [Hz] : swing frequency,   shape(batch_size, num_legs)
         delta_phase = swing_frequency * self._dt_in      # delta_phase = swing_freq [Hz] * dt [s],  shape(batch_size, num_legs)
@@ -351,6 +352,11 @@ class samplingController(modelBaseController):
 
         # shape (batch_size, num_legs, 9, decimation) (9 = xyz_pos, xzy_vel, xyz_acc)
         pt_lw = torch.cat((desired_foot_pos_traj_lw, desired_foot_vel_traj_lw, desired_foot_acc_traj_lw), dim=2)
+
+        # There are some NaN in the trajectory -> Replace them with zeros
+        if not real.check(pt_lw).all() :
+            print('Problem with NaN')
+            pt_lw[real.check(pt_lw)] = 0
 
         
         # --- Compute the full trajectory for plotting and debugging purposes ---
