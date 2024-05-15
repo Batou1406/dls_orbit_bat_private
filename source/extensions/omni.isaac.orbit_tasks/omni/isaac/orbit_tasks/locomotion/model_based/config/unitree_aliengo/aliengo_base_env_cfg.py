@@ -32,8 +32,8 @@ class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
 
 
         """ ----- Observation ----- """
-        # Should add here the parameter to enable or not noise on the observation
-        
+        # To add or not noise on the observations
+        self.observations.policy.enable_corruption = True
 
         """ ----- Terrain curriculum ----- """
         Terrain_curriculum = True
