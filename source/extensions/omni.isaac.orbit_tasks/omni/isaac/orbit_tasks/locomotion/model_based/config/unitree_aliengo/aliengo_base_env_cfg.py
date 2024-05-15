@@ -31,6 +31,10 @@ class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
         self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/base"                                               # Unnecessary : already default 
 
 
+        """ ----- Observation ----- """
+        # Should add here the parameter to enable or not noise on the observation
+        
+
         """ ----- Terrain curriculum ----- """
         Terrain_curriculum = True
 
