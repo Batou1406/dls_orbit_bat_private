@@ -13,6 +13,8 @@ from omni.isaac.orbit_tasks.locomotion.model_based.model_based_env_cfg import Lo
 from omni.isaac.orbit_assets.unitree import UNITREE_ALIENGO_CFG, UNITREE_GO2_CFG, UNITREE_ALIENGO_TORQUE_CONTROL_CFG  # isort: skip
 from omni.isaac.orbit_assets.anymal import ANYMAL_C_CFG  # isort: skip
 
+from omni.isaac.orbit.terrains.config.climb import STAIRS_TERRAINS_CFG
+
 
 @configclass
 class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
@@ -30,6 +32,9 @@ class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
         # --- Select the prime path of the height sensor
         self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/base"                                               # Unnecessary : already default 
 
+        # --- Select the Climb terrain
+        self.scene.terrain.terrain_generator = STAIRS_TERRAINS_CFG
+
 
         """ ----- Observation ----- """
         # To add or not noise on the observations
@@ -39,13 +44,9 @@ class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
         Terrain_curriculum = True
 
         if Terrain_curriculum : 
-            # --- scale down the terrains because the robot is small
-            self.scene.terrain.terrain_generator.sub_terrains["boxes"].grid_height_range = (0.025, 0.1)
-            self.scene.terrain.terrain_generator.sub_terrains["random_rough"].noise_range = (0.01, 0.06)
-            self.scene.terrain.terrain_generator.sub_terrains["random_rough"].noise_step = 0.01
+            pass
         else :
             self.curriculum.terrain_levels = None                                                                       # By default activated
-            self.scene.terrain.terrain_type = 'plane'
 
 
         """ ----- Event randomization ----- """

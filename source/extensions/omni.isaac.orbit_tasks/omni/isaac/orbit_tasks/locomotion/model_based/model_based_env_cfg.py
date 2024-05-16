@@ -195,7 +195,7 @@ class ObservationsCfg:
 
         def __post_init__(self):
             # Enable the noise if specified in the ObsTerm
-            self.enable_corruption = False
+            self.enable_corruption = True
 
             # Concatenate the obersvations along the last dimension, otherwise kept separeted as a disct
             self.concatenate_terms = True
