@@ -46,7 +46,7 @@ class UnitreeAliengoClimbEnvCfg(LocomotionModelBasedEnvCfg):
 
         """ ----- Observation ----- """
         # To add or not noise on the observations
-        self.observations.policy.enable_corruption = True
+        self.observations.policy.enable_corruption = False
 
 
         """ ----- Terrain curriculum ----- """
