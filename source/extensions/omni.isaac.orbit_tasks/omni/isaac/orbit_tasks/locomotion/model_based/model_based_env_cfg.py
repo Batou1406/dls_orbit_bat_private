@@ -308,13 +308,13 @@ class RewardsCfg:
     penalty_dof_torques_l2 = RewTerm(func=mdp.joint_torques_l2, weight=-0.0001)
     penalty_dof_acc_l2     = RewTerm(func=mdp.joint_acc_l2, weight=-2.5e-8)
     penalty_action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.001)
-    undesired_contacts = RewTerm(
+    undesired_contacts     = RewTerm(
         func=mdp.undesired_contacts,
         weight=-1.0,
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*THIGH"), "threshold": 1.0},)
-    flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-1.0)
-    dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=0.0)
-    penalty_friction = RewTerm(
+    flat_orientation_l2    = RewTerm(func=mdp.flat_orientation_l2, weight=-1.0)
+    dof_pos_limits         = RewTerm(func=mdp.joint_pos_limits, weight=0.0)
+    penalty_friction       = RewTerm(
         func=mdp.friction_constraint,
         weight=-0.1,
         params={

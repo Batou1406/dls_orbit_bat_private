@@ -33,9 +33,9 @@ class UnitreeAliengoRoughEnvCfg(LocomotionModelBasedEnvCfg):
 
 
         """ ----- Commands ----- """
-        self.commands.base_velocity.ranges.lin_vel_x = (-0.5, 0.5)
-        self.commands.base_velocity.ranges.lin_vel_y = (-0.5, 0.5)
-        self.commands.base_velocity.ranges.ang_vel_z = (-0.5, 0.5)
+        self.commands.base_velocity.ranges.lin_vel_x = (-0.6, 0.6)
+        self.commands.base_velocity.ranges.lin_vel_y = (-0.6, 0.6)
+        self.commands.base_velocity.ranges.ang_vel_z = (-0.6, 0.6)
         self.commands.base_velocity.ranges.heading   = (-math.pi, math.pi)
 
 
@@ -110,7 +110,7 @@ class UnitreeAliengoRoughEnvCfg(LocomotionModelBasedEnvCfg):
         self.rewards.undesired_contacts                  = None
         self.rewards.flat_orientation_l2.weight          = -1.0
         self.rewards.dof_pos_limits                      = None
-        self.rewards.penalty_friction                    = -0.1
+        self.rewards.penalty_friction.weight             = -0.1
 
         # -- Model based penalty : Positive weight -> penalty is already negative
         self.rewards.penalty_leg_frequency               = None

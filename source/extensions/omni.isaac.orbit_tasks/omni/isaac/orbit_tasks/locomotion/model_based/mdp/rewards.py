@@ -192,4 +192,6 @@ def friction_constraint(env: RLTaskEnv, sensor_cfg: SceneEntityCfg, mu: float = 
     residuals = torch.norm(net_contact_forces[:, sensor_cfg.body_ids, :2], dim=-1) - (mu * net_contact_forces[:, sensor_cfg.body_ids, 2])
  
     # sum along each robot to get the total violation cost : shape(batch_size)
-    costs = torch.sum(residuals.clamp(min=0), dim=1)
+    penalty = torch.sum(residuals.clamp(min=0), dim=1)
+
+    return penalty
