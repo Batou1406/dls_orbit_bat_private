@@ -14,11 +14,9 @@ from omni.isaac.orbit_tasks.locomotion.model_based.model_based_env_cfg import Lo
 from omni.isaac.orbit_assets.unitree import UNITREE_ALIENGO_CFG, UNITREE_GO2_CFG, UNITREE_ALIENGO_TORQUE_CONTROL_CFG  # isort: skip
 from omni.isaac.orbit_assets.anymal import ANYMAL_C_CFG  # isort: skip
 
-from omni.isaac.orbit.terrains.config.climb import STAIRS_TERRAINS_CFG
-
 
 @configclass
-class UnitreeAliengoClimbEnvCfg(LocomotionModelBasedEnvCfg):
+class UnitreeAliengoRoughEnvCfg(LocomotionModelBasedEnvCfg):
     def __post_init__(self):
         # post init of parent
         super().__post_init__()
@@ -33,15 +31,12 @@ class UnitreeAliengoClimbEnvCfg(LocomotionModelBasedEnvCfg):
         # --- Select the prime path of the height sensor
         self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/base"                                               # Unnecessary : already default 
 
-        # --- Select the Climb terrain
-        self.scene.terrain.terrain_generator = STAIRS_TERRAINS_CFG
-
 
         """ ----- Commands ----- """
-        self.commands.base_velocity.ranges.lin_vel_x = (0.2, 0.5)
-        self.commands.base_velocity.ranges.lin_vel_y = (0.2, 0.5)
-        self.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)
-        self.commands.base_velocity.ranges.heading   = (0.0, 0.0)
+        self.commands.base_velocity.ranges.lin_vel_x = (-0.5, 0.5)
+        self.commands.base_velocity.ranges.lin_vel_y = (-0.5, 0.5)
+        self.commands.base_velocity.ranges.ang_vel_z = (-0.5, 0.5)
+        self.commands.base_velocity.ranges.heading   = (-math.pi, math.pi)
 
 
         """ ----- Observation ----- """
@@ -53,17 +48,21 @@ class UnitreeAliengoClimbEnvCfg(LocomotionModelBasedEnvCfg):
         Terrain_curriculum = True
 
         if Terrain_curriculum : 
-            pass
+            # --- scale down the terrains because the robot is small
+            self.scene.terrain.terrain_generator.sub_terrains["boxes"].grid_height_range = (0.025, 0.1)
+            self.scene.terrain.terrain_generator.sub_terrains["random_rough"].noise_range = (0.01, 0.06)
+            self.scene.terrain.terrain_generator.sub_terrains["random_rough"].noise_step = 0.01
         else :
             self.curriculum.terrain_levels = None                                                                       # By default activated
+            self.scene.terrain.terrain_type = 'plane'
 
 
         """ ----- Event randomization ----- """
-        Event = {'Base Mass'        : False, 
-                 'External Torque'  : False,
-                 'External Force'   : False,
-                 'Random joint pos' : False,
-                 'Push Robot'       : False}
+        Event = {'Base Mass'        : True, 
+                 'External Torque'  : True,
+                 'External Force'   : True,
+                 'Random joint pos' : True,
+                 'Push Robot'       : True}
 
         # --- startup
         if Event['Base Mass'] : 
@@ -105,11 +104,11 @@ class UnitreeAliengoClimbEnvCfg(LocomotionModelBasedEnvCfg):
         # -- Additionnal penalties : Need a negative weight
         self.rewards.penalty_lin_vel_z_l2.weight         = -2.0
         self.rewards.penalty_ang_vel_xy_l2.weight        = -0.05
-        self.rewards.penalty_dof_torques_l2              = None
+        self.rewards.penalty_dof_torques_l2              = -0.00001
         self.rewards.penalty_dof_acc_l2                  = None
         self.rewards.penalty_action_rate_l2              = None
         self.rewards.undesired_contacts                  = None
-        self.rewards.flat_orientation_l2                 = None
+        self.rewards.flat_orientation_l2.weight          = -1.0
         self.rewards.dof_pos_limits                      = None
 
         # -- Model based penalty : Positive weight -> penalty is already negative
@@ -127,5 +126,4 @@ class UnitreeAliengoClimbEnvCfg(LocomotionModelBasedEnvCfg):
 
 
         """ ----- terminations ----- """
-
  

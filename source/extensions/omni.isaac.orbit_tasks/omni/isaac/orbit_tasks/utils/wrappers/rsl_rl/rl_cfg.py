@@ -128,7 +128,7 @@ class RslRlOnPolicyRunnerCfg:
     neptune_project: str = "orbit"
     """The neptune project name. Default is "orbit"."""
 
-    wandb_project: str = "model based"
+    wandb_project: str = "orbit"
     """The wandb project name. Default is "orbit"."""
 
     ##

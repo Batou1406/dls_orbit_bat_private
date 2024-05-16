@@ -121,7 +121,8 @@ class CommandsCfg:
         debug_vis=True,
         ranges=mdp.UniformVelocityCommandCfg.Ranges(
             # lin_vel_x=(-1.0, 1.0), lin_vel_y=(-1.0, 1.0), ang_vel_z=(-1.0, 1.0), heading=(-math.pi, math.pi)
-            lin_vel_x=(-0.5, 0.5), lin_vel_y=(-0.5, 0.5), ang_vel_z=(-0.5, 0.5), heading=(-math.pi, math.pi)
+            # lin_vel_x=(-0.5, 0.5), lin_vel_y=(-0.5, 0.5), ang_vel_z=(-0.5, 0.5), heading=(-math.pi, math.pi)
+            lin_vel_x=(0.2, 0.5), lin_vel_y=(-0.1, 0.1), ang_vel_z=(0.05, 0.05), heading=(0.05, 0.05)
         ),
     )
 
@@ -299,33 +300,33 @@ class RewardsCfg:
     # -- task
     track_lin_vel_xy_exp   = RewTerm(func=mdp.track_lin_vel_xy_exp, weight=1.5, params={"command_name": "base_velocity", "std": math.sqrt(0.25)})
     track_ang_vel_z_exp    = RewTerm(func=mdp.track_ang_vel_z_exp, weight=0.75, params={"command_name": "base_velocity", "std": math.sqrt(0.25)})
-    # track_robot_height     = RewTerm(func=mdp.base_height_l2, weight=-10, params={"target_height": 0.4}) #TODO Change that with a custom function : This doesn't work with terrains other than 'plane'
+    track_robot_height     = RewTerm(func=mdp.base_height_l2, weight=-10, params={"target_height": 0.4}) #TODO Change that with a custom function : This doesn't work with terrains other than 'plane'
 
     # -- Additionnal penalties : Need a negative weight
     penalty_lin_vel_z_l2   = RewTerm(func=mdp.lin_vel_z_l2, weight=-2.0)
     penalty_ang_vel_xy_l2  = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
-    # penalty_dof_torques_l2 = RewTerm(func=mdp.joint_torques_l2, weight=-0.0001)
-    # penalty_dof_acc_l2     = RewTerm(func=mdp.joint_acc_l2, weight=-2.5e-8)
-    # penalty_action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.001)
-    # undesired_contacts = RewTerm(
-    #     func=mdp.undesired_contacts,
-    #     weight=-1.0,
-    #     params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*THIGH"), "threshold": 1.0},
+    penalty_dof_torques_l2 = RewTerm(func=mdp.joint_torques_l2, weight=-0.0001)
+    penalty_dof_acc_l2     = RewTerm(func=mdp.joint_acc_l2, weight=-2.5e-8)
+    penalty_action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.001)
+    undesired_contacts = RewTerm(
+        func=mdp.undesired_contacts,
+        weight=-1.0,
+        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*THIGH"), "threshold": 1.0},)
     flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-1.0)
-    # dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=0.0)
+    dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=0.0)
 
     # -- Model based penalty : Positive weight -> penalty is already negative
-    # penalty_leg_frequency        = RewTerm(func=mdp.penalize_large_leg_frequency_L1,  weight=1.0,  params={"action_name": "model_base_variable", "bound": (1.0,2.0)})
-    # penalty_leg_duty_cycle       = RewTerm(func=mdp.penalize_large_leg_duty_cycle_L1, weight=2.0,  params={"action_name": "model_base_variable", "bound": (0.3,0.7)})
+    penalty_leg_frequency        = RewTerm(func=mdp.penalize_large_leg_frequency_L1,  weight=1.0,  params={"action_name": "model_base_variable", "bound": (1.0,2.0)})
+    penalty_leg_duty_cycle       = RewTerm(func=mdp.penalize_large_leg_duty_cycle_L1, weight=2.0,  params={"action_name": "model_base_variable", "bound": (0.3,0.7)})
     penalty_large_force          = RewTerm(func=mdp.penalize_large_Forces_L1,         weight=0.1,  params={"action_name": "model_base_variable", "bound": (0.0,160.0)})
-    # penalty_large_step           = RewTerm(func=mdp.penalize_large_steps_L1,          weight=1.0,  params={"action_name": "model_base_variable", "bound_x": (0.10,-0.04), "bound_y": (0.04,-0.04), "bound_z": (-1.0,1.0)})
+    penalty_large_step           = RewTerm(func=mdp.penalize_large_steps_L1,          weight=1.0,  params={"action_name": "model_base_variable", "bound_x": (0.10,-0.04), "bound_y": (0.04,-0.04), "bound_z": (-1.0,1.0)})
     penalty_frequency_variation  = RewTerm(func=mdp.penalize_frequency_variation_L2,  weight=1.0,  params={"action_name": "model_base_variable" })
     penatly_duty_cycle_variation = RewTerm(func=mdp.penalize_duty_cycle_variation_L2, weight=2.5,  params={"action_name": "model_base_variable" })
     penalty_step_variation       = RewTerm(func=mdp.penalize_steps_variation_L2,      weight=2.5,  params={"action_name": "model_base_variable" })
     penatly_force_variation      = RewTerm(func=mdp.penalize_Forces_variation_L2,     weight=1e-4, params={"action_name": "model_base_variable" })
 
     # -- Additionnal Reward : Need a positive weight
-    # reward_is_alive        = RewTerm(func=mdp.is_alive, weight=0.25)
+    reward_is_alive        = RewTerm(func=mdp.is_alive, weight=0.25)
 
 
 @configclass
