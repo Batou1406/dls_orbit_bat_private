@@ -17,7 +17,7 @@ from omni.isaac.orbit.terrains.config.climb import STAIRS_TERRAINS_CFG
 
 
 @configclass
-class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
+class UnitreeAliengoClimbEnvCfg(LocomotionModelBasedEnvCfg):
     def __post_init__(self):
         # post init of parent
         super().__post_init__()

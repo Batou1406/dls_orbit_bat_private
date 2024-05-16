@@ -1,6 +1,6 @@
 import gymnasium as gym
 
-from . import agents, aliengo_base_env_cfg, aliengo_speed_env_cfg
+from . import agents, aliengo_base_env_cfg, aliengo_speed_env_cfg, aliengo_climb_env_cfg
 
 
 ##
@@ -22,6 +22,16 @@ gym.register(
     disable_env_checker=True, #True
     kwargs={
         "env_cfg_entry_point": aliengo_speed_env_cfg.UnitreeAliengoSpeedEnvCfg,
+        "rsl_rl_cfg_entry_point": agents.rsl_rl_cfg.UnitreeAliengoBasePPORunnerCfg,
+    },
+)
+
+gym.register(
+    id="Isaac-Model-Based-Climb-Aliengo-v0",
+    entry_point="omni.isaac.orbit.envs:RLTaskEnv",
+    disable_env_checker=True, #True
+    kwargs={
+        "env_cfg_entry_point": aliengo_climb_env_cfg.UnitreeAliengoClimbEnvCfg,
         "rsl_rl_cfg_entry_point": agents.rsl_rl_cfg.UnitreeAliengoBasePPORunnerCfg,
     },
 )
