@@ -356,7 +356,7 @@ class samplingController(modelBaseController):
         # There are some NaN in the trajectory -> Replace them with zeros
         if not real.check(pt_lw).all() :
             print('Problem with NaN')
-            pt_lw[real.check(pt_lw)] = 0
+            pt_lw[~real.check(pt_lw)] = 0
 
         
         # --- Compute the full trajectory for plotting and debugging purposes ---
