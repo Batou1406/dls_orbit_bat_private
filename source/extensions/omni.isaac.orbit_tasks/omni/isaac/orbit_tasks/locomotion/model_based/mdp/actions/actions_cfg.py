@@ -57,7 +57,7 @@ class ModelBaseActionCfg(ActionTermCfg):
     class FootTrajectoryCfg:
         """ Config class for foot trajectory generator hyperparameters
         """
-        step_height: float = 0.07
+        step_height: float = 0.05
         """ Default step height : used by the swing trajectory generator to determine the apex height in the middle of the trajectory  """
 
         foot_offset: float = 0.03

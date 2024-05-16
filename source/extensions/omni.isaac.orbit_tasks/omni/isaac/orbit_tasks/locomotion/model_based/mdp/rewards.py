@@ -175,3 +175,21 @@ def penalize_Forces_variation_L2(env: RLTaskEnv, action_name: str) -> torch.Tens
     penalty = -torch.sum(torch.square(F-F_prev), dim=1)
 
     return penalty
+
+
+def friction_constraint(env: RLTaskEnv, sensor_cfg: SceneEntityCfg, mu: float = 0.8) -> torch.Tensor:
+    """Penalize contact forces out of the friction cone
+ 
+    Args:
+        sensor_cfg: The contact sensor configuration
+        mu: the friction coefficient
+    """
+    # extract the used quantities (to enable type-hinting)
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    net_contact_forces = contact_sensor.data.net_forces_w
+ 
+    # ||F_xy|| - (mu*F_z) : if greater than 0 -> friction cone violation : shape(batch_size, num_legs)
+    residuals = torch.norm(net_contact_forces[:, sensor_cfg.body_ids, :2], dim=-1) - (mu * net_contact_forces[:, sensor_cfg.body_ids, 2])
+ 
+    # sum along each robot to get the total violation cost : shape(batch_size)
+    costs = torch.sum(residuals.clamp(min=0), dim=1)
