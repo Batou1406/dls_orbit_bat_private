@@ -360,6 +360,7 @@ class samplingController(modelBaseController):
 
             # Check if there is faulty value for a leg in swing, we're only interested in the first two index of NaN index. 
             if not (in_contact[NaN_index[:,0], NaN_index[:,1],:].all()) :
+                breakpoint()
                 raise ValueError('A NaN was found on a trajectory for a swing leg, thus there is a problem with the math')
             
             # Else, this is not a problem since the swing torque for a leg in stance should not be applied, thus one can simple filter the faulty values out.
