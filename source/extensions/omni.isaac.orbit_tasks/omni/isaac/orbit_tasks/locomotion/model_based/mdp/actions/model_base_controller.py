@@ -356,6 +356,13 @@ class samplingController(modelBaseController):
         # There are some NaN in the trajectory -> Replace them with zeros
         if not real.check(pt_lw).all() :
             print('Problem with NaN')
+            NaN_index = torch.nonzero(~real.check(pt_lw)) # shape (number of nan, 4) (4 = batch + legs + 9 + decimation)
+
+            # Check if there is faulty value for a leg in swing, we're only interested in the first two index of NaN index. 
+            if not (in_contact[NaN_index[:,0], NaN_index[:,1],:].all()) :
+                raise ValueError('A NaN was found on a trajectory for a swing leg, thus there is a problem with the math')
+            
+            # Else, this is not a problem since the swing torque for a leg in stance should not be applied, thus one can simple filter the faulty values out.
             pt_lw[~real.check(pt_lw)] = 0
 
         
