@@ -17,6 +17,8 @@ import omni.isaac.orbit.utils.string as string_utils
 from omni.isaac.orbit.assets.articulation import Articulation
 from omni.isaac.orbit.managers.action_manager import ActionTerm
 
+import torch.distributions.constraints
+
 if TYPE_CHECKING:
     from omni.isaac.orbit.envs import BaseEnv
 
@@ -390,6 +392,12 @@ class ModelBaseAction(ActionTerm):
 
         # Transform GRF into local world frame
         self.F_lw = self.rotate_GRF_from_rl_frame_to_lw(F_norm=self.F_norm)
+
+        # Check if there is a problem with foot touch down position -> NaN value
+        if not torch.distributions.constraints.real.check(self.p_lw).all() :
+            print('Problem with NaN in foot touch down position')
+            breakpoint()
+            
 
         # Optimize the latent variable with the model base controller
         self.p_star_lw, self.F_star_lw, self.c_star, self.pt_star_lw, self.full_pt_lw = self.controller.optimize_latent_variable(f=self.f, d=self.d, p_lw=self.p_lw, F_lw=self.F_lw)
