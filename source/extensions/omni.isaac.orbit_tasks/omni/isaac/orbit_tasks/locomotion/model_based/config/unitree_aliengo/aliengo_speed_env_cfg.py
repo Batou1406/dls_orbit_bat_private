@@ -19,6 +19,10 @@ from omni.isaac.orbit.terrains.config.speed import SPEED_TERRAINS_CFG
 @configclass
 class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
     def __post_init__(self):
+
+        # --- Select the speed terrain -> Must be done before super().__post_init__() otherwise it won't load the terrain properly
+        self.scene.terrain.terrain_generator = SPEED_TERRAINS_CFG
+
         # post init of parent
         super().__post_init__()
 
@@ -49,7 +53,7 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
 
 
         """ ----- Terrain curriculum ----- """
-        Terrain_curriculum = False
+        Terrain_curriculum = True
 
         if Terrain_curriculum : 
             pass

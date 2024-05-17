@@ -12,9 +12,9 @@ import omni.isaac.orbit.terrains as terrain_gen
 from ..terrain_generator_cfg import TerrainGeneratorCfg
 
 STAIRS_TERRAINS_CFG = TerrainGeneratorCfg(
-    size=(30.0, 30.0),
-    border_width=20.0,
-    num_rows=10,
+    size=(10.0, 10.0),      # Sub-terrain size
+    border_width=20.0,      # Border around the main terrain (not around subterrains)
+    num_rows=10,            # Max difficulty : The difficulty is varied linearly over the number of rows (i.e. along x).
     num_cols=20,
     horizontal_scale=0.1,
     vertical_scale=0.005,
@@ -26,7 +26,7 @@ STAIRS_TERRAINS_CFG = TerrainGeneratorCfg(
             step_height_range=(0.02, 0.28),
             step_width=0.3,
             platform_width=2.0,
-            border_width=1.0,
+            border_width=0.15,
             holes=False,
         ),
         "pyramid_stairs_inv": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
@@ -34,9 +34,9 @@ STAIRS_TERRAINS_CFG = TerrainGeneratorCfg(
             step_height_range=(0.02, 0.28),
             step_width=0.3,
             platform_width=2.0,
-            border_width=1.0,
+            border_width=0.15,
             holes=False,
-        )
+        ),
     },
 )
-"""Rough terrains configuration."""
+"""Stair terrains configuration."""

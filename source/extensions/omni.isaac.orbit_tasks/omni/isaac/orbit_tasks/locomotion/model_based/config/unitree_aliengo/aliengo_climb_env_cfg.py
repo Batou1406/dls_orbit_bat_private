@@ -20,6 +20,10 @@ from omni.isaac.orbit.terrains.config.climb import STAIRS_TERRAINS_CFG
 @configclass
 class UnitreeAliengoClimbEnvCfg(LocomotionModelBasedEnvCfg):
     def __post_init__(self):
+
+        # --- Select the Climb terrain -> Must be done before super().__post_init__() otherwise it won't load the terrain properly
+        self.scene.terrain.terrain_generator = STAIRS_TERRAINS_CFG
+
         # post init of parent
         super().__post_init__()
 
@@ -33,8 +37,8 @@ class UnitreeAliengoClimbEnvCfg(LocomotionModelBasedEnvCfg):
         # --- Select the prime path of the height sensor
         self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/base"                                               # Unnecessary : already default 
 
-        # --- Select the Climb terrain
-        self.scene.terrain.terrain_generator = STAIRS_TERRAINS_CFG
+        # # --- Select the Climb terrain
+        # self.scene.terrain.terrain_generator = STAIRS_TERRAINS_CFG
 
 
         """ ----- Commands ----- """
@@ -52,10 +56,10 @@ class UnitreeAliengoClimbEnvCfg(LocomotionModelBasedEnvCfg):
         """ ----- Terrain curriculum ----- """
         Terrain_curriculum = True
 
-        if Terrain_curriculum : 
-            pass
-        else :
-            self.curriculum.terrain_levels = None                                                                       # By default activated
+        # if Terrain_curriculum : 
+        #     pass
+        # else :
+        #     self.curriculum.terrain_levels = None                                                                       # By default activated
 
 
         """ ----- Event randomization ----- """
