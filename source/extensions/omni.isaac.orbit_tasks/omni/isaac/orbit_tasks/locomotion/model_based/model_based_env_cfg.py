@@ -105,24 +105,23 @@ class MySceneCfg(InteractiveSceneCfg):
 @configclass
 class CommandsCfg:
     """Command specifications for the MDP.
-    - base_velocity tuple[float, float, float, float] : (lin_vel_x, lin_vel_y, angl_vel_z or heading)
+    - base_velocity tuple[float, float, float, float] : (for_vel_b, lat_vel_b, ang_vel_b and initial_heading_err)
         It is given in the robot base frame
     """
 
     # train the robot to follow a velocity command with arbitrary velocity, direction, yaw rate and heading
-    base_velocity = mdp.UniformVelocityCommandCfg(
+    base_velocity = mdp.CurriculumVelocityCommandCfg(
         asset_name="robot",
-        resampling_time_range=(10.0, 10.0),
-        rel_standing_envs=0.02,
-        rel_heading_envs=1.0,
-        heading_command=True,
+        resampling_time_range=(1000.0, 1000.0),
         heading_control_stiffness=0.5,
         debug_vis=True,
-        ranges=mdp.UniformVelocityCommandCfg.Ranges(
-            # lin_vel_x=(-1.0, 1.0), lin_vel_y=(-1.0, 1.0), ang_vel_z=(-1.0, 1.0), heading=(-math.pi, math.pi)
-            # lin_vel_x=(-0.5, 0.5), lin_vel_y=(-0.5, 0.5), ang_vel_z=(-0.5, 0.5), heading=(-math.pi, math.pi)
-            lin_vel_x=(0.2, 0.5), lin_vel_y=(-0.1, 0.1), ang_vel_z=(0.05, 0.05), heading=(0.05, 0.05)
+        ranges=mdp.CurriculumVelocityCommandCfg.Ranges(
+            for_vel_b=(-0.5,0.5), lat_vel_b=(-0.5, 0.5), ang_vel_b=(-0.5,0.5), initial_heading_err=(-math.pi,math.pi),
         ),
+        # These parameters supress the curriculum
+        initial_difficulty=1.0,
+        minmum_difficulty=1.0,
+        difficulty_scaling=0.0,
     )
 
 
@@ -365,6 +364,9 @@ class CurriculumCfg:
     # --- Rewards Curriculum
     # action_rate = CurrTerm(func=mdp.modify_reward_weight, params={"term_name": "action_rate", "weight": -1e-1, "num_steps": 10000})
     # joint_vel = CurrTerm(func=mdp.modify_reward_weight, params={"term_name": "joint_vel", "weight": -1e-1, "num_steps": 10000})
+
+    # --- Commands Curriculum
+    speed_levels = CurrTerm(func=mdp.speed_command_levels, params={'commandTermName': 'base_velocity'})
 
 
 ##

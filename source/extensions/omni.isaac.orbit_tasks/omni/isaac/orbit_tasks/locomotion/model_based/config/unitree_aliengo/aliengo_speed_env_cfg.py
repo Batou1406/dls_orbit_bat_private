@@ -41,10 +41,10 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
 
 
         """ ----- Commands ----- """
-        self.commands.base_velocity.ranges.lin_vel_x = ( 0.5, 1.5)
-        self.commands.base_velocity.ranges.lin_vel_y = (-0.1, 0.1)
-        self.commands.base_velocity.ranges.ang_vel_z = (-0.2, 0.2)
-        self.commands.base_velocity.ranges.heading   = ( 0.0, 0.0)
+        self.commands.base_velocity.ranges.for_vel_b = ( 0.0, 2.0)
+        self.commands.base_velocity.ranges.lat_vel_b = (-0.2, 0.2)
+        self.commands.base_velocity.ranges.ang_vel_b = (-0.5, 0.5)
+        self.commands.base_velocity.ranges.initial_heading_err = (-0.5, 0.5)
 
 
         """ ----- Observation ----- """
@@ -52,14 +52,21 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
         self.observations.policy.enable_corruption = True
 
 
-        """ ----- Terrain curriculum ----- """
+        """ ----- Curriculum ----- """
         Terrain_curriculum = True
+        Speed_curriculum = True
 
         if Terrain_curriculum : 
             pass
         else :
             self.curriculum.terrain_levels = None                                                                       # By default activated
 
+        if Speed_curriculum :
+            self.commands.base_velocity.initial_difficulty = 0.2
+            self.commands.base_velocity.minmum_difficulty = 0.2
+            self.commands.base_velocity.difficulty_scaling = 0.2
+        else :
+            self.curriculum.speed_levels = None
 
 
         """ ----- Event randomization ----- """

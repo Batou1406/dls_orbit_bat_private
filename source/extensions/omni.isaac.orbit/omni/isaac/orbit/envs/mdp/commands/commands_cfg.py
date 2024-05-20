@@ -14,7 +14,7 @@ from omni.isaac.orbit.utils import configclass
 from .null_command import NullCommand
 from .pose_2d_command import TerrainBasedPose2dCommand, UniformPose2dCommand
 from .pose_command import UniformPoseCommand
-from .velocity_command import NormalVelocityCommand, UniformVelocityCommand
+from .velocity_command import NormalVelocityCommand, UniformVelocityCommand, CurriculumVelocityCommand
 
 
 @configclass
@@ -95,6 +95,47 @@ class NormalVelocityCommandCfg(UniformVelocityCommandCfg):
     ranges: Ranges = MISSING
     """Distribution ranges for the velocity commands."""
 
+@configclass
+class CurriculumVelocityCommandCfg(CommandTermCfg):
+    """Configuration for the curriculum velocity command generator."""
+
+    class_type: type = CurriculumVelocityCommand
+
+    asset_name: str = MISSING
+    """Name of the asset in the environment for which the commands are generated."""
+    
+    heading_control_stiffness: float = MISSING
+    """Scale factor to convert the heading error to angular velocity command."""
+
+    initial_difficulty: float = 0.0
+    """The initial difficulty for the sampled speed in [0,1]"""
+
+    minmum_difficulty: float = 0.2
+    """The minimum difficulty for the sampled speed in [0,1], if set to 1.0 -> no curriculum"""
+
+    difficulty_scaling: float = 0.1
+    """Speed of progression when a environment progress (or regress) in the curriculum (in R+) if set to 0.0 -> no curriculum
+    (1/difficulty_scaling) is the number of time every environment must progress in the curriculum to increase the
+    the difficulty from 0 to 1. """
+
+    @configclass
+    class Ranges:
+        """Uniform distribution ranges for the velocity commands.
+        Initial heading allow the robots to turn faster at the begining when the heading error is large.
+
+        Properties :
+            for_vel_b           : Commanded forward velocity of the robot (ie x direction in base frame)                : (min, max) [m/s] 
+            lat_vel_b           : Commanded lateral velocity of the robot (ie y direction in base frame)                : (min, max) [m/s] 
+            ang_vel_b           : Commanded angular velocity (in the z direction) the robot should follow  (omega_z)    : (min, max) [rad/s] 
+            initial_heading_err : The initial heading error (ie. misalignment between heading and target heading)       : (min, max) [rad] in [0, 2pi]
+        """
+        for_vel_b: tuple[float, float] = MISSING           # (min, max) [m/s] 
+        lat_vel_b: tuple[float, float] = MISSING           # (min, max) [m/s] 
+        ang_vel_b: tuple[float, float] = MISSING           # (min, max) [rad/s] 
+        initial_heading_err: tuple[float, float] = MISSING # (min, max) [rad] in [0, 2pi] 
+
+    ranges: Ranges = MISSING
+    """Distribution ranges for the velocity commands."""
 
 @configclass
 class UniformPoseCommandCfg(CommandTermCfg):
