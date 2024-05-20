@@ -426,7 +426,7 @@ class CurriculumVelocityCommand(CommandTerm):
         The difficulty is then updated with the difficulty_scale. If all environment progress, the difficulty would increase of difficulty_scale
         """
         # Compute the new difficulty given the proportion of environment that progress and the progression scale
-        new_difficulty = difficulty_progress*self.cfg.difficulty_scaling
+        new_difficulty = self.difficulty + difficulty_progress*self.cfg.difficulty_scaling
 
         # Bound the difficulty
         self.difficulty = max(new_difficulty, self.cfg.minmum_difficulty)
