@@ -397,6 +397,11 @@ class ModelBaseAction(ActionTerm):
         if not torch.distributions.constraints.real.check(self.p_lw).all() :
             print('Problem with NaN in foot touch down position')
             breakpoint()
+
+        if torch.isinf(self.p_lw).any():
+            print('Problem with Infinite value in foot touch down position')
+            # breakpoint() 
+            self.p_lw[torch.nonzero(torch.isinf(self.p_lw))] = 0
             
 
         # Optimize the latent variable with the model base controller
