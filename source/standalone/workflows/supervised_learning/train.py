@@ -41,9 +41,9 @@ def train(args, model, device, train_loader, optimizer, epoch, criterion):
         loss.backward()
         optimizer.step()
         if (batch_idx % args.log_interval == 0) and args.verbose:
-            print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+            print('Train Epoch: {} [{}/{} ({:.0f}%)] Loss: {:.6f}'.format(
                 epoch, batch_idx * len(data), len(train_loader.dataset),
-                100. * batch_idx / len(train_loader), loss.item()))
+                100. * batch_idx /  len(train_loader), loss.item()), end='\r', flush=True)
             if args.dry_run:
                 break
 
@@ -58,19 +58,18 @@ def test(model, device, test_loader, criterion):
 
 
     test_loss /= len(test_loader.dataset)
-    print('Test set: Average loss: {:.4f}\n'.format(test_loss))
-
+    return test_loss
 
 """ --- Main --- """
 def main():
     # Training settings : load from arg parser
-    parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
-    parser.add_argument('--verbose', type=str, default=False,                   help='Verbose parameter to print training loss')
+    parser = argparse.ArgumentParser(description='Supervised Learning for model base RL controller')
+    parser.add_argument('--verbose', type=str, default=True,                    help='Verbose parameter to print training loss')
     parser.add_argument('--load-experiement', type=str, default='aliengo_model_based_speed')
-    parser.add_argument('--load-dataset', type=str, default='mcQueenFour')
+    parser.add_argument('--load-dataset', type=str, default='mcQueenNine')
     parser.add_argument('--batch-size', type=int, default=64, metavar='N',      help='input batch size for training (default: 64)')
     parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N', help='input batch size for testing (default: 1000)')
-    parser.add_argument('--epochs', type=int, default=14, metavar='N',          help='number of epochs to train (default: 14)')
+    parser.add_argument('--epochs', type=int, default=15, metavar='N',          help='number of epochs to train (default: 14)')
     parser.add_argument('--lr', type=float, default=1.0, metavar='LR',          help='learning rate (default: 1.0)')
     parser.add_argument('--gamma', type=float, default=0.7, metavar='M',        help='Learning rate step gamma (default: 0.7)')
     parser.add_argument('--no-cuda', action='store_true', default=False,        help='disables CUDA training')
@@ -113,6 +112,7 @@ def main():
     # Retrieve input and output size
     input_size = train_dataset.observations.shape[-1]
     output_size = train_dataset.actions.shape[-1]     
+    print('Input Size : ',train_dataset.observations.shape, ' - Output_size : ',train_dataset.actions.shape,'\n')
 
     # Define Model criteria : model, optimizer and loss criterion and scheduler
     model           = Model(input_size, output_size).to(device)
@@ -124,7 +124,8 @@ def main():
     # train and evaluate the model
     for epoch in range(1, args.epochs + 1):
         train(args, model, device, train_loader, optimizer, epoch, train_criterion)
-        test(model, device, test_loader, test_criterion)
+        test_loss = test(model, device, test_loader, test_criterion)
+        print('\nTest Epoch: {} - Test set: Average loss: {:.4f}\n'.format(epoch, test_loss))
         scheduler.step()
 
     # Save the trained model
