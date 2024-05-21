@@ -41,7 +41,7 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
 
 
         """ ----- Commands ----- """
-        self.commands.base_velocity.ranges.for_vel_b = ( 0.0, 2.0)
+        self.commands.base_velocity.ranges.for_vel_b = ( 0.0, 2.5)
         self.commands.base_velocity.ranges.lat_vel_b = (-0.2, 0.2)
         self.commands.base_velocity.ranges.ang_vel_b = (-0.5, 0.5)
         self.commands.base_velocity.ranges.initial_heading_err = (-0.5, 0.5)
@@ -53,7 +53,7 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
 
 
         """ ----- Curriculum ----- """
-        Terrain_curriculum = True
+        Terrain_curriculum = False
         Speed_curriculum = True
 
         if Terrain_curriculum : 
@@ -64,21 +64,21 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
         if Speed_curriculum :
             self.commands.base_velocity.initial_difficulty = 0.2
             self.commands.base_velocity.minmum_difficulty = 0.2
-            self.commands.base_velocity.difficulty_scaling = 0.2
+            self.commands.base_velocity.difficulty_scaling = 0.3
         else :
             self.curriculum.speed_levels = None
 
 
         """ ----- Event randomization ----- """
-        Event = {'Base Mass'        : False, 
+        Event = {'Base Mass'        : True, 
                  'External Torque'  : False,
                  'External Force'   : False,
-                 'Random joint pos' : False,
+                 'Random joint pos' : True,
                  'Push Robot'       : False}
 
         # --- startup
         if Event['Base Mass'] : 
-            self.events.add_base_mass.params["mass_range"] = (-3.0, 3.0) #(0.0, 0.0)                                     # Default was 0
+            self.events.add_base_mass.params["mass_range"] = (-1.5, 1.5) #(0.0, 0.0)                                     # Default was 0
 
         # --- Reset
         if Event['External Force'] :
@@ -119,8 +119,8 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
         self.rewards.penalty_dof_torques_l2.weight       = -0.0001
         self.rewards.penalty_dof_acc_l2.weight           = -1.0e-07
         self.rewards.penalty_action_rate_l2              = None
-        self.rewards.undesired_contacts                  = None
-        self.rewards.flat_orientation_l2                 = None
+        self.rewards.undesired_contacts.weight           = -1.0
+        self.rewards.flat_orientation_l2.weight          = -1.0
         self.rewards.dof_pos_limits                      = None
         self.rewards.penalty_friction.weight             = -0.2
 

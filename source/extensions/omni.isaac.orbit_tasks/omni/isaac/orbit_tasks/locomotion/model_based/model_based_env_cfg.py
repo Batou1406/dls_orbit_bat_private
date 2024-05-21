@@ -84,7 +84,7 @@ class MySceneCfg(InteractiveSceneCfg):
         debug_vis=False,
         mesh_prim_paths=["/World/ground"],
     )
-    contact_forces = ContactSensorCfg(prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=3, track_air_time=True)
+    contact_forces = ContactSensorCfg(prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=3, track_air_time=False)
 
     # lights
     light = AssetBaseCfg(
@@ -309,7 +309,7 @@ class RewardsCfg:
     undesired_contacts     = RewTerm(
         func=mdp.undesired_contacts,
         weight=-1.0,
-        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*THIGH"), "threshold": 1.0},)
+        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*thigh"), "threshold": 1.0},)
     flat_orientation_l2    = RewTerm(func=mdp.flat_orientation_l2, weight=-1.0)
     dof_pos_limits         = RewTerm(func=mdp.joint_pos_limits, weight=0.0)
     penalty_friction       = RewTerm(
