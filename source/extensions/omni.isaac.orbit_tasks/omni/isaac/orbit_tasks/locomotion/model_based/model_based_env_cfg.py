@@ -110,14 +110,28 @@ class CommandsCfg:
     """
 
     # train the robot to follow a velocity command with arbitrary velocity, direction, yaw rate and heading
-    base_velocity = mdp.CurriculumVelocityCommandCfg(
+    # base_velocity = mdp.CurriculumUniformVelocityCommandCfg(
+    #     asset_name="robot",
+    #     resampling_time_range=(1000.0, 1000.0),
+    #     heading_control_stiffness=0.5,
+    #     debug_vis=True,
+    #     ranges=mdp.CurriculumUniformVelocityCommandCfg.Ranges(
+    #         for_vel_b=(-0.5,0.5), lat_vel_b=(-0.5, 0.5), ang_vel_b=(-0.5,0.5), initial_heading_err=(-math.pi,math.pi),
+    #     ),
+    #     # These parameters supress the curriculum
+    #     initial_difficulty=1.0,
+    #     minmum_difficulty=1.0,
+    #     difficulty_scaling=0.0,
+    # )
+    base_velocity = mdp.CurriculumNormalVelocityCommandCfg(
         asset_name="robot",
         resampling_time_range=(1000.0, 1000.0),
         heading_control_stiffness=0.5,
         debug_vis=True,
-        ranges=mdp.CurriculumVelocityCommandCfg.Ranges(
+        ranges=mdp.CurriculumNormalVelocityCommandCfg.Ranges(
             for_vel_b=(-0.5,0.5), lat_vel_b=(-0.5, 0.5), ang_vel_b=(-0.5,0.5), initial_heading_err=(-math.pi,math.pi),
         ),
+        std=0.5,
         # These parameters supress the curriculum
         initial_difficulty=1.0,
         minmum_difficulty=1.0,
@@ -366,7 +380,7 @@ class CurriculumCfg:
     # joint_vel = CurrTerm(func=mdp.modify_reward_weight, params={"term_name": "joint_vel", "weight": -1e-1, "num_steps": 10000})
 
     # --- Commands Curriculum
-    speed_levels = CurrTerm(func=mdp.speed_command_levels, params={'commandTermName': 'base_velocity'})
+    speed_levels = CurrTerm(func=mdp.speed_command_levels_tracking_rewards, params={'commandTermName': 'base_velocity'})
 
 
 ##

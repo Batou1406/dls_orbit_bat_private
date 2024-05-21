@@ -55,7 +55,7 @@ def terrain_levels_vel(
     return torch.mean(terrain.terrain_levels.float())
 
 
-def speed_command_levels2(env: RLTaskEnv, env_ids: Sequence[int], commandTermName: str, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+def speed_command_levels_walked_distance(env: RLTaskEnv, env_ids: Sequence[int], commandTermName: str, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
     """ Curriculum based on the distance the robot walken when commanded to move at a desired velocity.
     This curriculum term is called after an episodic reset, before all the other managers (eg. before the command update)
     
@@ -91,13 +91,13 @@ def speed_command_levels2(env: RLTaskEnv, env_ids: Sequence[int], commandTermNam
     return new_difficulty
 
 
-def speed_command_levels(env: RLTaskEnv, env_ids: Sequence[int], commandTermName: str, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
-    """ Curriculum based on the distance the robot walken when commanded to move at a desired velocity.
+def speed_command_levels_tracking_rewards(env: RLTaskEnv, env_ids: Sequence[int], commandTermName: str, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    """ Curriculum based on the tracking reward achieved by the robot when commanded to move at a desired velocity.
     This curriculum term is called after an episodic reset, before all the other managers (eg. before the command update)
     
     This term is used to progressively increase the difficulty of tracking a speed command as the robot becomes better. 
-    - When the robot walks > 80% of the required distance -> increase the difficulty
-    - when the robot walsk < 50% of the required distance -> decrease the difficulty
+    - When the robot achieve > 85% of maximum tracking reward -> increase the difficulty
+    - when the robot achieve < 70% of maximum tracking reward -> decrease the difficulty
 
     Args :
         env       : The RL environment
@@ -114,6 +114,7 @@ def speed_command_levels(env: RLTaskEnv, env_ids: Sequence[int], commandTermName
     lin_velocity_tracking = (env.reward_manager._episode_sums['track_lin_vel_xy_exp'][env_ids]) / env.max_episode_length_s
     ang_velocity_tracking = (env.reward_manager._episode_sums['track_ang_vel_z_exp'][env_ids]) / env.max_episode_length_s
 
+    # Compute the tracking quality (bounded between 0 and 1)
     tracking_quality = (lin_velocity_tracking + ang_velocity_tracking) / (env.reward_manager.get_term_cfg('track_lin_vel_xy_exp').weight + env.reward_manager.get_term_cfg('track_ang_vel_z_exp').weight)
 
     # Compute the number of environment that progress or regress in the difficulty (ie. maximal velocity command sampling range)

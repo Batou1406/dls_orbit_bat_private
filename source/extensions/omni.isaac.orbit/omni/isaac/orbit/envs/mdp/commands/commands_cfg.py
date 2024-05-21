@@ -14,7 +14,7 @@ from omni.isaac.orbit.utils import configclass
 from .null_command import NullCommand
 from .pose_2d_command import TerrainBasedPose2dCommand, UniformPose2dCommand
 from .pose_command import UniformPoseCommand
-from .velocity_command import NormalVelocityCommand, UniformVelocityCommand, CurriculumVelocityCommand
+from .velocity_command import NormalVelocityCommand, UniformVelocityCommand, CurriculumUniformVelocityCommand, CurriculumNormalVelocityCommand
 
 
 @configclass
@@ -95,11 +95,12 @@ class NormalVelocityCommandCfg(UniformVelocityCommandCfg):
     ranges: Ranges = MISSING
     """Distribution ranges for the velocity commands."""
 
+
 @configclass
-class CurriculumVelocityCommandCfg(CommandTermCfg):
+class CurriculumUniformVelocityCommandCfg(CommandTermCfg):
     """Configuration for the curriculum velocity command generator."""
 
-    class_type: type = CurriculumVelocityCommand
+    class_type: type = CurriculumUniformVelocityCommand
 
     asset_name: str = MISSING
     """Name of the asset in the environment for which the commands are generated."""
@@ -136,6 +137,14 @@ class CurriculumVelocityCommandCfg(CommandTermCfg):
 
     ranges: Ranges = MISSING
     """Distribution ranges for the velocity commands."""
+
+@configclass
+class CurriculumNormalVelocityCommandCfg(CurriculumUniformVelocityCommandCfg):
+    class_type: type = CurriculumNormalVelocityCommand
+
+    std: float = 0.5
+    """Standard Deviation for the Normal Sampling Law"""
+
 
 @configclass
 class UniformPoseCommandCfg(CommandTermCfg):

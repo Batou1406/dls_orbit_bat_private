@@ -20,7 +20,7 @@ from omni.isaac.orbit.markers.config import BLUE_ARROW_X_MARKER_CFG, GREEN_ARROW
 if TYPE_CHECKING:
     from omni.isaac.orbit.envs import BaseEnv, RLTaskEnv
 
-    from .commands_cfg import NormalVelocityCommandCfg, UniformVelocityCommandCfg, CurriculumVelocityCommandCfg
+    from .commands_cfg import NormalVelocityCommandCfg, UniformVelocityCommandCfg, CurriculumUniformVelocityCommandCfg, CurriculumNormalVelocityCommandCfg
 
 
 class UniformVelocityCommand(CommandTerm):
@@ -273,8 +273,8 @@ class NormalVelocityCommand(UniformVelocityCommand):
         self.vel_command_b[zero_vel_yaw_env_ids, 2] = 0.0
 
 
-class CurriculumVelocityCommand(CommandTerm):
-    r"""Command generator that generates a velocity command and follow difficulty.
+class CurriculumUniformVelocityCommand(CommandTerm):
+    r"""Command generator that generates a velocity command and follow difficulty. Velocity sampled from an uniform law
 
     Properties :
         cfg             : The configuration object.                                                                     #Inherited from ManagerTermBase
@@ -310,10 +310,10 @@ class CurriculumVelocityCommand(CommandTerm):
         _resolve_xy_velocity_to_arrow : Helper
     """
 
-    cfg: CurriculumVelocityCommandCfg
+    cfg: CurriculumUniformVelocityCommandCfg
     """The configuration of the command generator."""
 
-    def __init__(self, cfg: CurriculumVelocityCommandCfg, env: RLTaskEnv):
+    def __init__(self, cfg: CurriculumUniformVelocityCommandCfg, env: RLTaskEnv):
         """Initialize the command generator.
 
         Args:
@@ -346,10 +346,6 @@ class CurriculumVelocityCommand(CommandTerm):
         msg = "UniformVelocityCommand:\n"
         msg += f"\tCommand dimension: {tuple(self.command.shape[1:])}\n"
         msg += f"\tResampling time range: {self.cfg.resampling_time_range}\n"
-        msg += f"\tHeading command: {self.cfg.heading_command}\n"
-        if self.cfg.heading_command:
-            msg += f"\tHeading probability: {self.cfg.rel_heading_envs}\n"
-        msg += f"\tStanding probability: {self.cfg.rel_standing_envs}"
         return msg
 
     """
@@ -490,3 +486,41 @@ class CurriculumVelocityCommand(CommandTerm):
         arrow_quat = math_utils.quat_mul(base_quat_w, arrow_quat)
 
         return arrow_scale, arrow_quat
+
+
+class CurriculumNormalVelocityCommand(CurriculumUniformVelocityCommand):
+    r"""Command generator that generates a velocity command and follow difficulty. Velocity sampled from an Normal law
+    This Works well only if the velocity is positve only (the robot is only moving forward)
+    """
+
+    cfg: CurriculumNormalVelocityCommandCfg
+    """The configuration of the command generator."""
+
+    def __init__(self, cfg: CurriculumUniformVelocityCommandCfg, env: RLTaskEnv):
+        super().__init__(cfg, env)
+
+
+    # Overwrite specificly the _resample_command function from CurriculumUniformVelocityCommand
+    def _resample_command(self, env_ids: Sequence[int]):
+        """  Resample a new command after interval or episode termination.
+        Resample uniformly over the provided range in no curriculum.
+        If curriculum is enabled, resample over a restricted range define by the difficulty parameter.
+        The difficulty parameter is updated by the curriculum term
+
+        Args :
+            env_ids: Sequence of int with the env index that requires a new velocity command"""
+        
+        # Create empty tensor of right size to fill with sampled value
+        empty_tensor = torch.empty(len(env_ids), device=self.device)
+
+        # Sample Velocity command (forward, lateral, angular) scaled according to difficulty (in [0,1])
+        self.vel_command_b[env_ids, 0] = empty_tensor.normal_(mean=(self.difficulty*self.cfg.ranges.for_vel_b[1]), std=self.cfg.std).clamp(min=self.cfg.ranges.for_vel_b[0], max=self.cfg.ranges.for_vel_b[1])
+        self.vel_command_b[env_ids, 1] = self.difficulty * empty_tensor.uniform_(*self.cfg.ranges.lat_vel_b) # in [m/s]
+        self.vel_command_b[env_ids, 2] = self.difficulty * empty_tensor.uniform_(*self.cfg.ranges.ang_vel_b) # in [rad/s]        
+        
+        # Define desired angular velocity (=angular velocity - heading error compensation)
+        self.desired_ang_vel_b[env_ids,] = self.vel_command_b[env_ids, 2] # in [rad/s]
+
+        # Define heading target : initial heading of robot + initial heading error
+        # self.heading_target_w = self.robot.data.heading_w[env_ids,] + empty_tensor.uniform_(*self.cfg.ranges.initial_heading_err) #  in [rad] !!! robot's heading_w may not be initialised at that time
+        self.heading_target_w[env_ids,] = empty_tensor.uniform_(*self.cfg.ranges.initial_heading_err) #  in [rad]
