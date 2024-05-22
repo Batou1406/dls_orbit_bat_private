@@ -424,8 +424,8 @@ class CurriculumUniformVelocityCommand(CommandTerm):
         # Compute the new difficulty given the proportion of environment that progress and the progression scale
         new_difficulty = self.difficulty + difficulty_progress*self.cfg.difficulty_scaling
 
-        # Bound the difficulty
-        self.difficulty = max(new_difficulty, self.cfg.minmum_difficulty)
+        # Bound the difficulty in [min_difficulty, 1.0]
+        self.difficulty = min(max(new_difficulty, self.cfg.minmum_difficulty), 1.0)
         
         # Return the difficuly -> usefull for the curriculum term
         return self.difficulty
@@ -514,7 +514,8 @@ class CurriculumNormalVelocityCommand(CurriculumUniformVelocityCommand):
         empty_tensor = torch.empty(len(env_ids), device=self.device)
 
         # Sample Velocity command (forward, lateral, angular) scaled according to difficulty (in [0,1])
-        self.vel_command_b[env_ids, 0] = empty_tensor.normal_(mean=(self.difficulty*self.cfg.ranges.for_vel_b[1]), std=self.cfg.std).clamp(min=self.cfg.ranges.for_vel_b[0], max=self.cfg.ranges.for_vel_b[1])
+        self.vel_command_b[env_ids, 0] = empty_tensor.normal_(mean=(self.difficulty*self.cfg.ranges.for_vel_b[1]), std=self.cfg.std).clamp(
+            min=self.cfg.ranges.for_vel_b[0], max=(self.cfg.std + self.cfg.ranges.for_vel_b[1])) # clamp velocity between [min, max+std]
         self.vel_command_b[env_ids, 1] = self.difficulty * empty_tensor.uniform_(*self.cfg.ranges.lat_vel_b) # in [m/s]
         self.vel_command_b[env_ids, 2] = self.difficulty * empty_tensor.uniform_(*self.cfg.ranges.ang_vel_b) # in [rad/s]        
         

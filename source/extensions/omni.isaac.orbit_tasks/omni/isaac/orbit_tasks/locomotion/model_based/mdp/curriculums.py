@@ -96,8 +96,8 @@ def speed_command_levels_tracking_rewards(env: RLTaskEnv, env_ids: Sequence[int]
     This curriculum term is called after an episodic reset, before all the other managers (eg. before the command update)
     
     This term is used to progressively increase the difficulty of tracking a speed command as the robot becomes better. 
-    - When the robot achieve > 85% of maximum tracking reward -> increase the difficulty
-    - when the robot achieve < 70% of maximum tracking reward -> decrease the difficulty
+    - When the robot achieve > 90% of maximum tracking reward -> increase the difficulty
+    - when the robot achieve < 75% of maximum tracking reward -> decrease the difficulty
 
     Args :
         env       : The RL environment
@@ -118,8 +118,8 @@ def speed_command_levels_tracking_rewards(env: RLTaskEnv, env_ids: Sequence[int]
     tracking_quality = (lin_velocity_tracking + ang_velocity_tracking) / (env.reward_manager.get_term_cfg('track_lin_vel_xy_exp').weight + env.reward_manager.get_term_cfg('track_ang_vel_z_exp').weight)
 
     # Compute the number of environment that progress or regress in the difficulty (ie. maximal velocity command sampling range)
-    increase_difficulty = torch.sum( tracking_quality > 0.85 )
-    decrease_difficulty = torch.sum( tracking_quality < 0.7 )
+    increase_difficulty = torch.sum( tracking_quality > 0.90 )
+    decrease_difficulty = torch.sum( tracking_quality < 0.75 )
 
     difficulty_progress = (increase_difficulty - decrease_difficulty) / env.num_envs
 

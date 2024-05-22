@@ -340,7 +340,7 @@ class RewardsCfg:
     penalty_leg_frequency        = RewTerm(func=mdp.penalize_large_leg_frequency_L1,  weight=1.0,  params={"action_name": "model_base_variable", "bound": (1.0,2.0)})
     penalty_leg_duty_cycle       = RewTerm(func=mdp.penalize_large_leg_duty_cycle_L1, weight=2.0,  params={"action_name": "model_base_variable", "bound": (0.3,0.7)})
     penalty_large_force          = RewTerm(func=mdp.penalize_large_Forces_L1,         weight=0.1,  params={"action_name": "model_base_variable", "bound": (0.0,160.0)})
-    penalty_large_step           = RewTerm(func=mdp.penalize_large_steps_L1,          weight=1.0,  params={"action_name": "model_base_variable", "bound_x": (0.10,-0.04), "bound_y": (0.04,-0.04), "bound_z": (-1.0,1.0)})
+    penalty_large_step           = RewTerm(func=mdp.penalize_large_steps_L1,          weight=1.0,  params={"action_name": "model_base_variable", "bound_x": (0.25,-0.15), "bound_y": (0.04,-0.04), "bound_z": (-1.0,1.0)})
     penalty_frequency_variation  = RewTerm(func=mdp.penalize_frequency_variation_L2,  weight=1.0,  params={"action_name": "model_base_variable" })
     penatly_duty_cycle_variation = RewTerm(func=mdp.penalize_duty_cycle_variation_L2, weight=2.5,  params={"action_name": "model_base_variable" })
     penalty_step_variation       = RewTerm(func=mdp.penalize_steps_variation_L2,      weight=2.5,  params={"action_name": "model_base_variable" })

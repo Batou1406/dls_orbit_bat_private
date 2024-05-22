@@ -45,6 +45,7 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
         self.commands.base_velocity.ranges.lat_vel_b = (-0.2, 0.2)
         self.commands.base_velocity.ranges.ang_vel_b = (-0.5, 0.5)
         self.commands.base_velocity.ranges.initial_heading_err = (-0.5, 0.5)
+        self.commands.base_velocity.std = 1.0
 
 
         """ ----- Observation ----- """
@@ -62,9 +63,9 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
             self.curriculum.terrain_levels = None                                                                       # By default activated
 
         if Speed_curriculum :
-            self.commands.base_velocity.initial_difficulty = 0.35
-            self.commands.base_velocity.minmum_difficulty = 0.35
-            self.commands.base_velocity.difficulty_scaling = 0.1
+            self.commands.base_velocity.initial_difficulty = 0.0
+            self.commands.base_velocity.minmum_difficulty = 0.0
+            self.commands.base_velocity.difficulty_scaling = 0.2
         else :
             self.curriculum.speed_levels = None
 
@@ -128,7 +129,7 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
         self.rewards.penalty_leg_frequency               = None
         self.rewards.penalty_leg_duty_cycle              = None
         self.rewards.penalty_large_force.weight          = 0.1
-        self.rewards.penalty_large_step                  = None
+        self.rewards.penalty_large_step.weight           = 2.5
         self.rewards.penalty_frequency_variation.weight  = 2.5
         self.rewards.penatly_duty_cycle_variation.weight = 10
         self.rewards.penalty_step_variation.weight       = 2.5
