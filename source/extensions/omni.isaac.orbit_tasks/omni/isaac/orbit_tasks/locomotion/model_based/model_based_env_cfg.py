@@ -110,33 +110,33 @@ class CommandsCfg:
     """
 
     # train the robot to follow a velocity command with arbitrary velocity, direction, yaw rate and heading
-    # base_velocity = mdp.CurriculumUniformVelocityCommandCfg(
-    #     asset_name="robot",
-    #     resampling_time_range=(1000.0, 1000.0),
-    #     heading_control_stiffness=0.5,
-    #     debug_vis=True,
-    #     ranges=mdp.CurriculumUniformVelocityCommandCfg.Ranges(
-    #         for_vel_b=(-0.5,0.5), lat_vel_b=(-0.5, 0.5), ang_vel_b=(-0.5,0.5), initial_heading_err=(-math.pi,math.pi),
-    #     ),
-    #     # These parameters supress the curriculum
-    #     initial_difficulty=1.0,
-    #     minmum_difficulty=1.0,
-    #     difficulty_scaling=0.0,
-    # )
-    base_velocity = mdp.CurriculumNormalVelocityCommandCfg(
+    base_velocity = mdp.CurriculumUniformVelocityCommandCfg(
         asset_name="robot",
         resampling_time_range=(1000.0, 1000.0),
         heading_control_stiffness=0.5,
         debug_vis=True,
-        ranges=mdp.CurriculumNormalVelocityCommandCfg.Ranges(
+        ranges=mdp.CurriculumUniformVelocityCommandCfg.Ranges(
             for_vel_b=(-0.5,0.5), lat_vel_b=(-0.5, 0.5), ang_vel_b=(-0.5,0.5), initial_heading_err=(-math.pi,math.pi),
         ),
-        std=0.5,
         # These parameters supress the curriculum
         initial_difficulty=1.0,
         minmum_difficulty=1.0,
         difficulty_scaling=0.0,
     )
+    # base_velocity = mdp.CurriculumNormalVelocityCommandCfg(
+    #     asset_name="robot",
+    #     resampling_time_range=(1000.0, 1000.0),
+    #     heading_control_stiffness=0.5,
+    #     debug_vis=True,
+    #     ranges=mdp.CurriculumNormalVelocityCommandCfg.Ranges(
+    #         for_vel_b=(-0.5,0.5), lat_vel_b=(-0.5, 0.5), ang_vel_b=(-0.5,0.5), initial_heading_err=(-math.pi,math.pi),
+    #     ),
+    #     std=0.5,
+    #     # These parameters supress the curriculum
+    #     initial_difficulty=1.0,
+    #     minmum_difficulty=1.0,
+    #     difficulty_scaling=0.0,
+    # )
 
 
 @configclass
