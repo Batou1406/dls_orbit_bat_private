@@ -15,6 +15,9 @@ from omni.isaac.orbit_assets.unitree import UNITREE_ALIENGO_CFG, UNITREE_GO2_CFG
 from omni.isaac.orbit_assets.anymal import ANYMAL_C_CFG  # isort: skip
 
 from omni.isaac.orbit.terrains.config.speed import SPEED_TERRAINS_CFG
+from omni.isaac.orbit_tasks.locomotion.model_based.mdp import CurriculumNormalVelocityCommandCfg, modify_reward_weight
+
+from omni.isaac.orbit.managers import CurriculumTermCfg as CurrTerm
 
 @configclass
 class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
@@ -22,6 +25,11 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
 
         # --- Select the speed terrain -> Must be done before super().__post_init__() otherwise it won't load the terrain properly
         self.scene.terrain.terrain_generator = SPEED_TERRAINS_CFG
+
+        # --- Initialsie the large step
+        Large_step_curriculum = True 
+        if Large_step_curriculum :
+            self.curriculum.penalty_large_step_curr = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_large_step", "weight": 2.5, "num_steps": 500})
 
         # post init of parent
         super().__post_init__()
@@ -41,11 +49,18 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
 
 
         """ ----- Commands ----- """
-        self.commands.base_velocity.ranges.for_vel_b = ( 0.0, 2.5)
-        self.commands.base_velocity.ranges.lat_vel_b = (-0.2, 0.2)
-        self.commands.base_velocity.ranges.ang_vel_b = (-0.5, 0.5)
-        self.commands.base_velocity.ranges.initial_heading_err = (-0.5, 0.5)
-        self.commands.base_velocity.std = 1.0
+        Speed_curriculum = True
+        if Speed_curriculum :
+            self.commands.base_velocity = CurriculumNormalVelocityCommandCfg(
+                asset_name="robot",
+                resampling_time_range=(1000.0, 1000.0),
+                heading_control_stiffness=0.5,
+                debug_vis=True,
+                ranges=CurriculumNormalVelocityCommandCfg.Ranges(
+                    for_vel_b=(0.0,2.5), lat_vel_b=(-0.2, 0.2), ang_vel_b=(-0.5,0.5), initial_heading_err=(-0.5,0.5),
+                ),
+                std=1.0,
+            )
 
 
         """ ----- Observation ----- """
@@ -55,7 +70,8 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
 
         """ ----- Curriculum ----- """
         Terrain_curriculum = False
-        Speed_curriculum = True
+        # Speed_curriculum = True : declared in 'Commands'
+        # Large_step_curriculum = True : 'Must be declared before post init'
 
         if Terrain_curriculum : 
             pass
@@ -63,8 +79,8 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
             self.curriculum.terrain_levels = None                                                                       # By default activated
 
         if Speed_curriculum :
-            self.commands.base_velocity.initial_difficulty = 0.0
-            self.commands.base_velocity.minmum_difficulty = 0.0
+            self.commands.base_velocity.initial_difficulty = 0.2
+            self.commands.base_velocity.minmum_difficulty = 0.2
             self.commands.base_velocity.difficulty_scaling = 0.2
         else :
             self.curriculum.speed_levels = None
@@ -129,7 +145,7 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
         self.rewards.penalty_leg_frequency               = None
         self.rewards.penalty_leg_duty_cycle              = None
         self.rewards.penalty_large_force.weight          = 0.1
-        self.rewards.penalty_large_step.weight           = 2.5
+        self.rewards.penalty_large_step.weight           = 0.0
         self.rewards.penalty_frequency_variation.weight  = 2.5
         self.rewards.penatly_duty_cycle_variation.weight = 10
         self.rewards.penalty_step_variation.weight       = 2.5
