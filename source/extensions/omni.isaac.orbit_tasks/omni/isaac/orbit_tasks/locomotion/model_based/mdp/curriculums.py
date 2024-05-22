@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 from omni.isaac.orbit.assets import Articulation
 from omni.isaac.orbit.managers import SceneEntityCfg
 from omni.isaac.orbit.terrains import TerrainImporter
+from omni.isaac.orbit_tasks.locomotion.model_based.mdp import CurriculumUniformVelocityCommand
 
 if TYPE_CHECKING:
     from omni.isaac.orbit.envs import RLTaskEnv
@@ -72,13 +73,13 @@ def speed_command_levels_walked_distance(env: RLTaskEnv, env_ids: Sequence[int],
         The mean maximum commanded velocity"""
     # extract the used quantities (to enable type-hinting)
     asset: Articulation = env.scene[asset_cfg.name]
-    command = env.command_manager.get_command("base_velocity")
+    speed_command = env.command_manager.get_command("base_velocity")
 
     # compute the distance the robot walked
     walked_distance = torch.norm(asset.data.root_pos_w[env_ids, :2] - env.scene.env_origins[env_ids, :2], dim=1)
 
     # compute the commanded distance
-    required_distance = torch.norm(command[env_ids, :2], dim=1) * env.max_episode_length_s
+    required_distance = torch.norm(speed_command[env_ids, :2], dim=1) * env.max_episode_length_s
 
     # Compute the number of environment that progress or regress in the difficulty (ie. maximal velocity command sampling range)
     increase_difficulty = torch.sum( walked_distance > (0.8 * required_distance) )
@@ -124,5 +125,45 @@ def speed_command_levels_tracking_rewards(env: RLTaskEnv, env_ids: Sequence[int]
     difficulty_progress = (increase_difficulty - decrease_difficulty) / env.num_envs
 
     new_difficulty = env.command_manager.get_term(commandTermName).update_difficulty(difficulty_progress)
+
+    return new_difficulty
+
+
+def speed_command_levels_fast_walked_distance(env: RLTaskEnv, env_ids: Sequence[int], commandTermName: str, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) :
+    """ Curriculum based on the distance the robot walken when commanded to move at a desired velocity.
+    This curriculum term is called after an episodic reset, before all the other managers (eg. before the command update)
+    
+    This term is used to progressively increase the difficulty of tracking a speed command as the robot becomes better. 
+    - When the robot walks > 80% of the required distance -> increase the difficulty
+    - when the robot walsk < 50% of the required distance -> decrease the difficulty
+
+    Args :
+        env       : The RL environment
+        env_ids   : The list of environment IDs to update. If None, all the environments are updated. Defaults to None.
+        asset_cfg : The configuration of the robot
+    
+    Returns :
+        The mean maximum commanded velocity"""
+    # extract the used quantities (to enable type-hinting)
+    asset: Articulation = env.scene[asset_cfg.name]
+    speed_command = env.command_manager.get_command("base_velocity")
+    speed_commandTerm: CurriculumUniformVelocityCommand = env.command_manager.get_term(commandTermName)
+
+    # compute the distance the robot walked
+    walked_distance = torch.norm(asset.data.root_pos_w[env_ids, :2] - env.scene.env_origins[env_ids, :2], dim=1)
+
+    # compute the commanded distance
+    required_distance = torch.norm(speed_command[env_ids, :2], dim=1) * env.max_episode_length_s
+
+    # Update difficulty only for Robots that needed to travel faster than 50% of maximum available speed
+    fast = speed_command[env_ids, 0] > (0.5 * speed_commandTerm.cfg.ranges.for_vel_b[1] * speed_commandTerm.difficulty)
+
+    # Compute the number of environment that progress or regress in the difficulty (ie. maximal velocity command sampling range)
+    increase_difficulty = torch.sum( walked_distance[fast] > (0.8 * required_distance[fast]) )
+    decrease_difficulty = torch.sum( walked_distance[fast] < (0.5 * required_distance[fast]) )
+
+    difficulty_progress = (increase_difficulty - decrease_difficulty) / env.num_envs
+
+    new_difficulty = speed_commandTerm.update_difficulty(difficulty_progress)
 
     return new_difficulty

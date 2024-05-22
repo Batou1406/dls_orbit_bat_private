@@ -123,20 +123,6 @@ class CommandsCfg:
         minmum_difficulty=1.0,
         difficulty_scaling=0.0,
     )
-    # base_velocity = mdp.CurriculumNormalVelocityCommandCfg(
-    #     asset_name="robot",
-    #     resampling_time_range=(1000.0, 1000.0),
-    #     heading_control_stiffness=0.5,
-    #     debug_vis=True,
-    #     ranges=mdp.CurriculumNormalVelocityCommandCfg.Ranges(
-    #         for_vel_b=(-0.5,0.5), lat_vel_b=(-0.5, 0.5), ang_vel_b=(-0.5,0.5), initial_heading_err=(-math.pi,math.pi),
-    #     ),
-    #     std=0.5,
-    #     # These parameters supress the curriculum
-    #     initial_difficulty=1.0,
-    #     minmum_difficulty=1.0,
-    #     difficulty_scaling=0.0,
-    # )
 
 
 @configclass
@@ -379,7 +365,7 @@ class CurriculumCfg:
     # penalty_large_step_curr = CurrTerm(func=mdp.modify_reward_weight, params={"term_name": "penalty_large_step", "weight": 2.5, "num_steps": 500})
 
     # --- Commands Curriculum
-    speed_levels = CurrTerm(func=mdp.speed_command_levels_tracking_rewards, params={'commandTermName': 'base_velocity'})
+    speed_levels = CurrTerm(func=mdp.speed_command_levels_fast_walked_distance, params={'commandTermName': 'base_velocity'})
 
 
 ##

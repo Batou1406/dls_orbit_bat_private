@@ -49,18 +49,10 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
 
 
         """ ----- Commands ----- """
-        Speed_curriculum = True
-        if Speed_curriculum :
-            self.commands.base_velocity = CurriculumNormalVelocityCommandCfg(
-                asset_name="robot",
-                resampling_time_range=(1000.0, 1000.0),
-                heading_control_stiffness=0.5,
-                debug_vis=True,
-                ranges=CurriculumNormalVelocityCommandCfg.Ranges(
-                    for_vel_b=(0.0,2.5), lat_vel_b=(-0.2, 0.2), ang_vel_b=(-0.5,0.5), initial_heading_err=(-0.5,0.5),
-                ),
-                std=1.0,
-            )
+        self.commands.base_velocity.ranges.for_vel_b = ( 0.0, 3.0)
+        self.commands.base_velocity.ranges.lat_vel_b = (-0.2, 0.2)
+        self.commands.base_velocity.ranges.ang_vel_b = (-0.5, 0.5)
+        self.commands.base_velocity.ranges.initial_heading_err = (-0.5, 0.5)
 
 
         """ ----- Observation ----- """
@@ -70,7 +62,7 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
 
         """ ----- Curriculum ----- """
         Terrain_curriculum = False
-        # Speed_curriculum = True : declared in 'Commands'
+        Speed_curriculum = True
         # Large_step_curriculum = True : 'Must be declared before post init'
 
         if Terrain_curriculum : 
@@ -81,7 +73,7 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
         if Speed_curriculum :
             self.commands.base_velocity.initial_difficulty = 0.2
             self.commands.base_velocity.minmum_difficulty = 0.2
-            self.commands.base_velocity.difficulty_scaling = 0.2
+            self.commands.base_velocity.difficulty_scaling = 0.3
         else :
             self.curriculum.speed_levels = None
 
