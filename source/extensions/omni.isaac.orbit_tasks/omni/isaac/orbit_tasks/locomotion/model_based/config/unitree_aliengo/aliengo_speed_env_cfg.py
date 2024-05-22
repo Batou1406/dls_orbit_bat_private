@@ -29,7 +29,7 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
         # --- Initialsie the large step
         Large_step_curriculum = True 
         if Large_step_curriculum :
-            self.curriculum.penalty_large_step_curr = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_large_step", "weight": 2.5, "num_steps": 500})
+            self.curriculum.penalty_large_step_curr = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_large_step", "weight": 2.5, "num_steps": (500*24)})
 
         # post init of parent
         super().__post_init__()
