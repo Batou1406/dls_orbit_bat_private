@@ -758,7 +758,7 @@ class ModelBaseAction(ActionTerm):
             std_p_x = +0.03
             std_n_x = -0.01
             std_p_y = +0.01
-            std_n_y = -0.02
+            std_n_y = -0.01
             max_p_x = +0.36
             min_p_x = -0.24
             max_p_y = +0.20
@@ -809,9 +809,9 @@ class ModelBaseAction(ActionTerm):
         verbose_loop+=1
         if verbose_loop>=40:
             verbose_loop=0
-            print('\nContact sequence : ', c0_star[0,...].flatten())
-            print('  Leg  frequency : ', self.f[0,...].flatten())
-            print('   duty   cycle  : ', self.d[0,...].flatten())
+            # print('\nContact sequence : ', c0_star[0,...].flatten())
+            # print('  Leg  frequency : ', self.f[0,...].flatten())
+            # print('   duty   cycle  : ', self.d[0,...].flatten())
             print('terrain dificulty: ', torch.mean(self._env.scene.terrain.terrain_levels.float()))
             # print('Touch-down pos   : ', self.p_lw[0,0,:,0])
             # print(' Foot  position  : ', p_lw[0,...])

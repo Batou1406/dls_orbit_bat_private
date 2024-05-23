@@ -26,7 +26,7 @@ STAIRS_TERRAINS_CFG = TerrainGeneratorCfg(
             step_height_range=(0.02, 0.28),
             step_width=0.3,
             platform_width=2.0,
-            border_width=0.15,
+            border_width=1.0,
             holes=False,
         ),
         "pyramid_stairs_inv": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
@@ -34,7 +34,7 @@ STAIRS_TERRAINS_CFG = TerrainGeneratorCfg(
             step_height_range=(0.02, 0.28),
             step_width=0.3,
             platform_width=2.0,
-            border_width=0.15,
+            border_width=1.0,
             holes=False,
         ),
     },

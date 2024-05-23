@@ -118,7 +118,7 @@ class CommandsCfg:
         ranges=mdp.CurriculumUniformVelocityCommandCfg.Ranges(
             for_vel_b=(-0.5,0.5), lat_vel_b=(-0.5, 0.5), ang_vel_b=(-0.5,0.5), initial_heading_err=(-math.pi,math.pi),
         ),
-        # These parameters supress the curriculum
+        # These parameters supress the curriculum -> become fairly equivalent to UniformVelocityCommand
         initial_difficulty=1.0,
         minmum_difficulty=1.0,
         difficulty_scaling=0.0,
@@ -359,7 +359,7 @@ class CurriculumCfg:
     """
 
     # --- Terrains Curriculum
-    terrain_levels = CurrTerm(func=mdp.terrain_levels_vel) # None
+    terrain_levels = CurrTerm(func=mdp.improved_terrain_levels_vel) # None
 
     # --- Rewards Curriculum
     # penalty_large_step_curr = CurrTerm(func=mdp.modify_reward_weight, params={"term_name": "penalty_large_step", "weight": 2.5, "num_steps": 500})
@@ -399,7 +399,7 @@ class LocomotionModelBasedEnvCfg(RLTaskEnvCfg):
         """Post initialization."""
         # general settings
         self.decimation = 4
-        self.episode_length_s = 20.0
+        self.episode_length_s = 12.0
         # simulation settings
         self.sim.dt = 0.005
         self.sim.disable_contact_processing = True
