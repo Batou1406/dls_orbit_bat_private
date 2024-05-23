@@ -17,13 +17,13 @@ import cli_args  # isort: skip
 
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Train an RL agent with RSL-RL.")
-parser.add_argument("--cpu", action="store_true", default=False, help="Use CPU pipeline.")
-parser.add_argument("--disable_fabric", action="store_true", default=False, help="Disable fabric and use USD I/O operations.")
-parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
-parser.add_argument("--num_step", type=int, default=1000, help="Number of simulation step : the number of datapoints would be : num_step*num_envs")
-parser.add_argument("--task", type=str, default=None, help="Name of the task.")
-parser.add_argument("--seed", type=int, default=None, help="Seed used for the environment")
-parser.add_argument("--dataset_name", type=str, default=None, help="Folder where to log the generated dataset (in /dataset/task/)")
+parser.add_argument("--cpu", action="store_true",   default=False,                                  help="Use CPU pipeline.")
+parser.add_argument("--disable_fabric", action="store_true", default=False,                         help="Disable fabric and use USD I/O operations.")
+parser.add_argument("--num_envs", type=int,         default=8,                                      help="Number of environments to simulate.")
+parser.add_argument("--task", type=str,             default='Isaac-Model-Based-Speed-Aliengo-v0',   help="Name of the task.")
+parser.add_argument("--seed", type=int,             default=None,                                   help="Seed used for the environment")
+parser.add_argument("--controller_name", type=str,  default='aliengo_model_based_speed',            help="Name of the controller")
+parser.add_argument("--model_name", type=str,       default='mcQueenNine/model1',                   help="Name of the model to load (in /model/controller/)")
 
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
@@ -61,16 +61,18 @@ def main():
     # create isaac environment
     env = gym.make(args_cli.task, cfg=env_cfg)
 
-    # wrap around environment for rsl-rl -> needed for device and get_observations()
+    # wrap around environment for rsl-rl -> usefull to get the properties and method 
     env = RslRlVecEnvWrapper(env)
 
+    # Retrieve the Model parameters
     buffer_size = 5
-    input_size = 259  # Example input size
-    output_size = buffer_size*28  # Example output size
+    input_size = env.num_obs  
+    output_size = buffer_size*env.num_actions  
 
+    model_path = 'model/' + args_cli.controller_name + '/' + args_cli.model_name + '.pt'
     policy = Model(input_size, output_size)
-    policy.load_state_dict(torch.load('model/aliengo_model_based_speed/mcQueenNine/model1.pt'))
-    policy = policy.to(env.unwrapped.device)
+    policy.load_state_dict(torch.load(model_path))
+    policy = policy.to(env.device)
 
     # reset environment
     obs, _ = env.get_observations()
@@ -83,7 +85,7 @@ def main():
             actions = policy(obs)
 
             # Select only actions at next step
-            actions = actions[:,:28]
+            actions = actions.view(-1, env.num_actions, buffer_size)
 
             # env stepping
             obs, _, _, _ = env.step(actions)
