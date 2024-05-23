@@ -80,7 +80,7 @@ def improved_terrain_levels_vel(
     distance = torch.norm(asset.data.root_pos_w[env_ids, :2] - env.scene.env_origins[env_ids, :2], dim=1)
 
     # robots that reached 80% of the distance the the border progress to harder terrains + must be time_out reset. Ie. can't be a fall or other early termination condition
-    move_up = (distance > terrain.cfg.terrain_generator.size[0] / 2.5) * env.reset_terminated[env_ids,]
+    move_up = (distance > terrain.cfg.terrain_generator.size[0] / 2.5) * env.reset_time_outs[env_ids,]
 
     # robots that walked less than half of their required distance go to simpler terrains
     move_down = distance < torch.norm(speed_command[env_ids, :2], dim=1) * env.max_episode_length_s * 0.5
