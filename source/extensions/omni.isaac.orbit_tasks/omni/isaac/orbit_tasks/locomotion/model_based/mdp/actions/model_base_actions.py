@@ -51,7 +51,7 @@ plt_i = 0
 
 verbose_mb = False
 verbose_loop = 40
-vizualise_debug = {'foot': False, 'jacobian': False, 'foot_traj': False, 'lift-off': False, 'touch-down': False, 'GRF': False, 'touch-down polygon': False}
+vizualise_debug = {'foot': False, 'jacobian': False, 'foot_traj': True, 'lift-off': False, 'touch-down': False, 'GRF': True, 'touch-down polygon': False}
 torch.set_printoptions(precision=4, linewidth=200, sci_mode=False)
 if verbose_mb: import omni.isaac.debug_draw._debug_draw as omni_debug_draw
 
@@ -398,6 +398,7 @@ class ModelBaseAction(ActionTerm):
             print('Problem with NaN in foot touch down position')
             breakpoint()
 
+        # Todo Fix this ! Why is there infinite value as the network output
         if torch.isinf(self.p_lw).any():
             print('Problem with Infinite value in foot touch down position')
             # breakpoint() 
@@ -810,11 +811,11 @@ class ModelBaseAction(ActionTerm):
         if verbose_loop>=40:
             verbose_loop=0
             # print('\nContact sequence : ', c0_star[0,...].flatten())
-            print('  Leg  frequency : ', self.f[0,:])
+            # print('  Leg  frequency : ', self.f[0,:])
             # print('   duty   cycle  : ', self.d[0,...].flatten())
             # print('terrain dificulty: ', torch.mean(self._env.scene.terrain.terrain_levels.float()))
-            print('speed difficulty : ', self._env.command_manager.get_term("base_velocity").difficulty)
-            print('speed command    : ', self._env.command_manager.get_command("base_velocity")[:,0])
+            # print('speed difficulty : ', self._env.command_manager.get_term("base_velocity").difficulty)
+            # print('speed command    : ', self._env.command_manager.get_command("base_velocity")[:,0])
             # print('Touch-down pos   : ', self.p_lw[0,0,:,0])
             # print(' Foot  position  : ', p_lw[0,...])
             # print(' Robot position  : ', self._asset.data.root_pos_w[0,...])
