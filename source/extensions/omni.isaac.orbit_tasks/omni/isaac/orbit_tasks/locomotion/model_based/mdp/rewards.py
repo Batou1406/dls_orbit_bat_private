@@ -240,3 +240,24 @@ def reward_terrain_progress(env: RLTaskEnv, assetName: str="robot") -> torch.Ten
     reward = (torch.norm(robot.data.root_pos_w - env.scene.env_origins, dim=1).clamp(min=0, max=0.7)) / (env.episode_length_buf * env.step_dt)
 
     return reward
+
+def penalize_cost_of_transport(env: RLTaskEnv, assetName: str="robot") -> torch.Tensor:
+    """ Penalize for cost of transport : CoT = P/(m*g*v)
+    Which is a dimensionless unit that measure the energy efficiency of the displacement"""
+    
+    # extract the used quantities (to enable type-hinting)
+    robot: Articulation = env.scene[assetName]
+    
+    # Retrieve the joint torques and joint angular velocity of shape(num_envs, num_joints)
+    torque = robot.data.applied_torque
+    q_dot = robot.data.joint_vel
+
+    # Retrieve the robot speed
+    speed = torch.clamp_min(torch.norm(robot.data.root_vel_b[:,:3], dim=1) , min=0.1) # to avoid division by 0 and CoT that tends to infinity with low speed
+
+    # Compute the Cost of Transport : P/(m*g*v) with P=Torques*omega
+    CoT = (torch.sum((torque * q_dot), dim=1)) / (9.81 * 20 * speed)
+
+    penalty = CoT
+
+    return penalty
