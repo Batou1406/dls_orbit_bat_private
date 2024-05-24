@@ -125,7 +125,7 @@ class UnitreeAliengoClimbEnvCfg(LocomotionModelBasedEnvCfg):
         self.rewards.flat_orientation_l2                 = None
         self.rewards.dof_pos_limits                      = None
         self.rewards.penalty_friction                    = None #-0.25
-        self.rewards.penalty_stance_foot_vel.weight      = -1.0 
+        self.rewards.penalty_stance_foot_vel.weight      = -1.e-4
 
         # -- Model based penalty : Positive weight -> penalty is already negative
         self.rewards.penalty_leg_frequency               = None
