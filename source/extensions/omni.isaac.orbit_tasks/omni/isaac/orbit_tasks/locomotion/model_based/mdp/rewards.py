@@ -237,6 +237,6 @@ def reward_terrain_progress(env: RLTaskEnv, assetName: str="robot") -> torch.Ten
     robot: Articulation = env.scene[assetName]
 
     # Reward linearly for average speed in terrain progression
-    reward = (torch.norm(robot.data.root_pos_w - env.scene.env_origins, dim=1).clamp(min=0, max=0.7)) / env.max_episode_length_s
+    reward = (torch.norm(robot.data.root_pos_w - env.scene.env_origins, dim=1).clamp(min=0, max=0.7)) / (env.episode_length_buf * env.step_dt)
 
     return reward
