@@ -86,7 +86,7 @@ class ModelBaseAction(ActionTerm):
         _joint_ids    (list): list of int corresponding to joint index
         _joint_names  (list): list of str corresponding to joint name                                                   Received from ModelBaseActionCfg
         _num_joints    (int): Number of joints
-        _foot_idx     (list): List of index of the feet
+        foot_idx      (list): List of index of the feet
         _num_legs      (int): Number of legs of the robot  : useful for dimension definition
         _num_joints_per_leg : Number of joints per leg     : useful for dimension definition
         _joint_idx    (list): List of list of joints [FL_joints=[FL_Hip,...], FR_joints, ...]
@@ -209,8 +209,8 @@ class ModelBaseAction(ActionTerm):
 
         # Retrieve series of information usefull for computation and generalisation
         # Feet Index in body, list [13, 14, 15, 16]
-        self._foot_idx = self._asset.find_bodies(".*foot")[0]
-        self._num_legs = len(self._foot_idx)
+        self.foot_idx = self._asset.find_bodies(".*foot")[0]
+        self._num_legs = len(self.foot_idx)
         self._num_joints_per_leg = self._num_joints // self._num_legs
         self._decimation = self._env.cfg.decimation  
 
@@ -485,11 +485,11 @@ class ModelBaseAction(ActionTerm):
 
         # Retrieve Feet position in world frame : [num_instances, num_bodies, 3] select right indexes to get 
         # shape(batch_size, num_legs, 3) : position is translation depend, thus : pos_lw = pos_w - env.scene.env_origin
-        p_w = self._asset.data.body_pos_w[:, self._foot_idx,:]
+        p_w = self._asset.data.body_pos_w[:, self.foot_idx,:]
         p_lw = p_w - self._env.scene.env_origins.unsqueeze(1).expand(p_w.shape)
 
         # Transformation to get feet position in body frame
-        # p_orientation_w = self._asset.data.body_quat_w[:, self._foot_idx,:]
+        # p_orientation_w = self._asset.data.body_quat_w[:, self.foot_idx,:]
         # p_b_0, _ = math_utils.subtract_frame_transforms(robot_pos_w, robot_orientation_w, p_w[:,0,:], p_orientation_w[:,0,:])
         # p_b_1, _ = math_utils.subtract_frame_transforms(robot_pos_w, robot_orientation_w, p_w[:,1,:], p_orientation_w[:,1,:])
         # p_b_2, _ = math_utils.subtract_frame_transforms(robot_pos_w, robot_orientation_w, p_w[:,2,:], p_orientation_w[:,2,:])
@@ -498,7 +498,7 @@ class ModelBaseAction(ActionTerm):
 
         # Retrieve Feet velocity in world frame : [num_instances, num_bodies, 3] select right indexes to get 
         # shape(batch_size, num_legs, 3) : Velocity is translation independant, thus p_dot_w = p_dot_lw
-        p_dot_lw = self._asset.data.body_lin_vel_w[:, self._foot_idx,:]
+        p_dot_lw = self._asset.data.body_lin_vel_w[:, self.foot_idx,:]
 
         # Transformation to get feet velocity in body frame
         # p_dot_b_0, _ = math_utils.subtract_frame_transforms(robot_vel_w, robot_orientation_w, p_dot_w[:,0,:], p_orientation_w[:,0,:])
@@ -555,7 +555,7 @@ class ModelBaseAction(ActionTerm):
         # shape(batch_size, num_legs, 3, num_joints_per_leg)
         # Intermediary step : extract feet jacobian [batch_size, num_bodies=17, 6, num_joints+6=18] -> [..., 4, 3, 18]
         # Shift from 6 due to an offset. This is due to how the model is define I think
-        jacobian_feet_full_w = self._asset.root_physx_view.get_jacobians()[:, self._foot_idx, :3, :]
+        jacobian_feet_full_w = self._asset.root_physx_view.get_jacobians()[:, self.foot_idx, :3, :]
         jacobian_w = torch.cat((jacobian_feet_full_w[:, 0, :, 6+np.asarray(self._joints_idx[0])].unsqueeze(1),          # FL (idx 13)
                                 jacobian_feet_full_w[:, 1, :, 6+np.asarray(self._joints_idx[1])].unsqueeze(1),          # FR (idx 14)
                                 jacobian_feet_full_w[:, 2, :, 6+np.asarray(self._joints_idx[2])].unsqueeze(1),          # RL (idx 15)
@@ -732,14 +732,14 @@ class ModelBaseAction(ActionTerm):
         # F_z:[-1,1]->[mean-std,mean+std]      : mean=m*g/2, std=mean/10
         # shape(batch_size, num_legs, 3, time_horizon)
         if F is not None :
-            # shape (batch_size,1)
-            number_leg_in_contact = torch.clamp_min(torch.sum(self.c_star, dim=1),1) # set a minimum of 1 to avoid div by 0
-
-            std_xy = (10 / number_leg_in_contact).unsqueeze(-1) # shape (batch_size,1,1)
+            # shape (batch_size)
+            number_leg_in_contact = torch.clamp_min(torch.sum(self.c_star[:,:,0], dim=1),1) # set a minimum of 1 to avoid div by 0 
+            
+            std_xy = (10 / number_leg_in_contact).unsqueeze(-1).unsqueeze(-1) # shape (batch_size,1,1)
             F_x = F[:,:,0,:]*std_xy 
             F_y = F[:,:,1,:]*std_xy
 
-            mean_z = (200 / number_leg_in_contact).unsqueeze(-1) # 200/x~= 20[kg_aliengo] * 9.81 [m/s²] / x [leg in contact]
+            mean_z = (200 / number_leg_in_contact).unsqueeze(-1).unsqueeze(-1) # 200/x~= 20[kg_aliengo] * 9.81 [m/s²] / x [leg in contact]
             std_z = mean_z/5   # shape (batch_size, 1, 1)
             F_z = ((F[:,:,2,:]  * (std_z)) + (mean_z)) #.clamp(-200,200)
 
@@ -810,9 +810,11 @@ class ModelBaseAction(ActionTerm):
         if verbose_loop>=40:
             verbose_loop=0
             # print('\nContact sequence : ', c0_star[0,...].flatten())
-            # print('  Leg  frequency : ', self.f[0,...].flatten())
+            print('  Leg  frequency : ', self.f[0,:])
             # print('   duty   cycle  : ', self.d[0,...].flatten())
-            print('terrain dificulty: ', torch.mean(self._env.scene.terrain.terrain_levels.float()))
+            # print('terrain dificulty: ', torch.mean(self._env.scene.terrain.terrain_levels.float()))
+            print('speed difficulty : ', self._env.command_manager.get_term("base_velocity").difficulty)
+            print('speed command    : ', self._env.command_manager.get_command("base_velocity")[:,0])
             # print('Touch-down pos   : ', self.p_lw[0,0,:,0])
             # print(' Foot  position  : ', p_lw[0,...])
             # print(' Robot position  : ', self._asset.data.root_pos_w[0,...])
@@ -832,7 +834,7 @@ class ModelBaseAction(ActionTerm):
             # Transformation if p in base frame
             # robot_pos_w = self._asset.data.root_pos_w
             # robot_orientation_w = self._asset.data.root_quat_w
-            # p_orientation_w = self._asset.data.body_quat_w[:, self._foot_idx,:]
+            # p_orientation_w = self._asset.data.body_quat_w[:, self.foot_idx,:]
             # p_w_0, _ = math_utils.combine_frame_transforms(robot_pos_w, robot_orientation_w, p_b[:,0,:])
             # p_w_1, _ = math_utils.combine_frame_transforms(robot_pos_w, robot_orientation_w, p_b[:,1,:])
             # p_w_2, _ = math_utils.combine_frame_transforms(robot_pos_w, robot_orientation_w, p_b[:,2,:])
@@ -906,7 +908,7 @@ class ModelBaseAction(ActionTerm):
             # p_b = self.controller.p0_lw.clone().detach()
             # robot_pos_w = self._asset.data.root_pos_w
             # robot_orientation_w = self._asset.data.root_quat_w
-            # p_orientation_w = self._asset.data.body_quat_w[:, self._foot_idx,:]
+            # p_orientation_w = self._asset.data.body_quat_w[:, self.foot_idx,:]
             # p_w_0, _ = math_utils.combine_frame_transforms(robot_pos_w, robot_orientation_w, p_b[:,0,:])
             # p_w_1, _ = math_utils.combine_frame_transforms(robot_pos_w, robot_orientation_w, p_b[:,1,:])
             # p_w_2, _ = math_utils.combine_frame_transforms(robot_pos_w, robot_orientation_w, p_b[:,2,:])

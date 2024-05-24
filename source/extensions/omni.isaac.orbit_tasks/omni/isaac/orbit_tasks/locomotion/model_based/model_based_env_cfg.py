@@ -296,23 +296,24 @@ class RewardsCfg:
     - dof_pos_limits        - pen. joint pos > soft lim - weight=0.0
     """
     # -- task
-    track_lin_vel_xy_exp   = RewTerm(func=mdp.track_lin_vel_xy_exp, weight=1.5, params={"command_name": "base_velocity", "std": math.sqrt(0.25)})
-    track_ang_vel_z_exp    = RewTerm(func=mdp.track_ang_vel_z_exp, weight=0.75, params={"command_name": "base_velocity", "std": math.sqrt(0.25)})
-    track_robot_height     = RewTerm(func=mdp.base_height_l2, weight=-10, params={"target_height": 0.4}) #TODO Change that with a custom function : This doesn't work with terrains other than 'plane'
+    track_lin_vel_xy_exp    = RewTerm(func=mdp.track_lin_vel_xy_exp, weight=1.5, params={"command_name": "base_velocity", "std": math.sqrt(0.25)})
+    track_ang_vel_z_exp     = RewTerm(func=mdp.track_ang_vel_z_exp, weight=0.75, params={"command_name": "base_velocity", "std": math.sqrt(0.25)})
+    track_robot_height      = RewTerm(func=mdp.base_height_l2, weight=-10, params={"target_height": 0.4}) #TODO Change that with a custom function : This doesn't work with terrains other than 'plane'
+    reward_terrain_progress = RewTerm(func=mdp.reward_terrain_progress, weight=1.0)
 
     # -- Additionnal penalties : Need a negative weight
-    penalty_lin_vel_z_l2   = RewTerm(func=mdp.lin_vel_z_l2, weight=-2.0)
-    penalty_ang_vel_xy_l2  = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
-    penalty_dof_torques_l2 = RewTerm(func=mdp.joint_torques_l2, weight=-0.0001)
-    penalty_dof_acc_l2     = RewTerm(func=mdp.joint_acc_l2, weight=-2.5e-8)
-    penalty_action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.001)
-    undesired_contacts     = RewTerm(
+    penalty_lin_vel_z_l2    = RewTerm(func=mdp.lin_vel_z_l2, weight=-2.0)
+    penalty_ang_vel_xy_l2   = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
+    penalty_dof_torques_l2  = RewTerm(func=mdp.joint_torques_l2, weight=-0.0001)
+    penalty_dof_acc_l2      = RewTerm(func=mdp.joint_acc_l2, weight=-2.5e-8)
+    penalty_action_rate_l2  = RewTerm(func=mdp.action_rate_l2, weight=-0.001)
+    undesired_contacts      = RewTerm(
         func=mdp.undesired_contacts,
         weight=-1.0,
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*thigh"), "threshold": 1.0},)
-    flat_orientation_l2    = RewTerm(func=mdp.flat_orientation_l2, weight=-1.0)
-    dof_pos_limits         = RewTerm(func=mdp.joint_pos_limits, weight=0.0)
-    penalty_friction       = RewTerm(
+    flat_orientation_l2     = RewTerm(func=mdp.flat_orientation_l2, weight=-1.0)
+    dof_pos_limits          = RewTerm(func=mdp.joint_pos_limits, weight=0.0)
+    penalty_friction        = RewTerm(
         func=mdp.friction_constraint,
         weight=-0.1,
         params={
@@ -320,6 +321,7 @@ class RewardsCfg:
             "mu": 0.75
         }
     )
+    penalty_stance_foot_vel = RewTerm(func=mdp.penalize_foot_in_contact_displacement_l2, weight=-1.0)
 
 
     # -- Model based penalty : Positive weight -> penalty is already negative
@@ -399,7 +401,7 @@ class LocomotionModelBasedEnvCfg(RLTaskEnvCfg):
         """Post initialization."""
         # general settings
         self.decimation = 4
-        self.episode_length_s = 12.0
+        self.episode_length_s = 15.0
         # simulation settings
         self.sim.dt = 0.005
         self.sim.disable_contact_processing = True

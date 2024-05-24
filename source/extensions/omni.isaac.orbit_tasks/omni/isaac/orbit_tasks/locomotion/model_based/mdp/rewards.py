@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING
 
 from omni.isaac.orbit.managers import SceneEntityCfg
 from omni.isaac.orbit.sensors import ContactSensor
+from omni.isaac.orbit_tasks.locomotion.model_based.mdp.actions import ModelBaseAction
+from omni.isaac.orbit.assets.articulation import Articulation
 
 if TYPE_CHECKING:
     from omni.isaac.orbit.envs import RLTaskEnv
@@ -183,6 +185,9 @@ def friction_constraint(env: RLTaskEnv, sensor_cfg: SceneEntityCfg, mu: float = 
     Args:
         sensor_cfg: The contact sensor configuration
         mu: the friction coefficient
+
+    Returns :
+        - penalty (torch.Tensor): penalty term in [0, +inf[ for friction cone violation
     """
     # extract the used quantities (to enable type-hinting)
     contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
@@ -195,3 +200,43 @@ def friction_constraint(env: RLTaskEnv, sensor_cfg: SceneEntityCfg, mu: float = 
     penalty = torch.sum(residuals.clamp(min=0), dim=1)
 
     return penalty
+
+
+def penalize_foot_in_contact_displacement_l2(env: RLTaskEnv, actionName: str="model_base_variable", assetName: str="robot") -> torch.Tensor:
+    """ Penalize foot spliping by penalizing quadratically the distance the foot moved while in contact
+
+    Args : 
+        - actionName (str): Action term name. The actionTerm must be of type 'ModelBaseAction'.
+        - assetName  (str): Asset name of the robot in the simulation
+    
+    Returns :
+        - penalty (torch.Tensor): Penalty term i [0, +inf[ for foot displacement while in contact"""
+    
+    # extract the used quantities (to enable type-hinting)
+    action: ModelBaseAction = env.action_manager.get_term(actionName)
+    robot: Articulation = env.scene[assetName]
+
+    # Retrieve the foot linear velocity -> proportionnal to the foot displacement : shape(batch, legs)
+    p_dot_w = torch.norm(robot.data.body_lin_vel_w[:, action.foot_idx,:], dim=2)
+
+    # Retrieve which foot is in contact : True if foot in contact, False in in swing, shape (batch_size, num_legs)
+    in_contact = action.c_star[:,:,0] == 1
+
+    # Compute the penalty only for leg in contact
+    penalty = torch.sum(p_dot_w * in_contact)
+
+    return penalty
+
+def reward_terrain_progress(env: RLTaskEnv, assetName: str="robot") -> torch.Tensor:
+    """ Reward for progress made in the terrain
+    
+    Returns :
+        - reward (torch.Tensor): """
+    
+    # extract the used quantities (to enable type-hinting)
+    robot: Articulation = env.scene[assetName]
+
+    # Reward linearly for average speed in terrain progression
+    reward = (torch.norm(robot.data.root_pos_w - env.scene.env_origins, dim=1).clamp(min=0, max=0.7)) / env.max_episode_length_s
+
+    return reward
