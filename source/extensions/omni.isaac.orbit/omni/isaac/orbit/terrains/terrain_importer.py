@@ -360,3 +360,49 @@ class TerrainImporter:
         env_origins[:, 1] = (jj.flatten()[:num_envs] - (num_cols - 1) / 2) * env_spacing
         env_origins[:, 2] = 0.0
         return env_origins
+
+
+class TerrainImporterUniformDifficulty(TerrainImporter):
+    """ Same as TerrainImporter, except for the difficulty scalling.
+    Instead of scalling up in the difficulty each time. Sample randomly a difficulty between [0, max_difficulty] 
+    with probability : 
+        - 75% uniform between [0, max_difficulty]
+        - 25% max_difficulty
+
+    Increase the difficulty, only if traversed last difficulty. Decreased difficulty as in standard TerrainImporter
+    """
+
+    def __init__(self, cfg: TerrainImporterCfg):
+        super().__init__(cfg)
+
+        # maximum initial level possible for the terrains
+        max_init_level = max(1,min(self.cfg.max_init_terrain_level, 10))
+
+        # Create new property : called difficulty
+        self.difficulty = torch.randint(0, max_init_level, (self.cfg.num_envs,), device=self.device)
+
+    def update_env_origins(self, env_ids: torch.Tensor, move_up: torch.Tensor, move_down: torch.Tensor):
+        """Update the environment origins based on the terrain levels."""
+        # check if grid-like spawning
+        if self.terrain_origins is None:
+            return
+        # update terrain level for the envs
+
+        # Increase difficulty only if succed in the last terrain
+        move_up = move_up * (self.terrain_levels[env_ids] == self.difficulty[env_ids])
+
+        # update difficulty for the envs
+        self.difficulty[env_ids] += 1 * move_up - 1 * move_down
+
+        # Generate 75%-25% binomial law. (diffiuclty is of type 'int' thus we have to specify the float type for comparison)
+        proportion = (torch.rand_like(self.difficulty[env_ids], dtype=torch.float) > 0.75)
+
+        # Generate sampled law
+        uniform = torch.floor(torch.rand_like(self.terrain_levels[env_ids], dtype=torch.float) * (0.999 + self.difficulty[env_ids])).to(torch.int)
+        maximum = self.difficulty[env_ids]*torch.ones_like(self.terrain_levels[env_ids])
+
+        # Sample 75% of the terrain with uniform law between [0,difficulty], and 25% of the terrain with difficulty
+        self.terrain_levels[env_ids] = (uniform * proportion) + (maximum * ~proportion)
+
+        # update the env origins
+        self.env_origins[env_ids] = self.terrain_origins[self.terrain_levels[env_ids], self.terrain_types[env_ids]]

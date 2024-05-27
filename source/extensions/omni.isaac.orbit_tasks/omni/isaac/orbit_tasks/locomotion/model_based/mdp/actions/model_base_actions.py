@@ -51,7 +51,7 @@ plt_i = 0
 
 verbose_mb = False
 verbose_loop = 40
-vizualise_debug = {'foot': False, 'jacobian': False, 'foot_traj': True, 'lift-off': False, 'touch-down': False, 'GRF': True, 'touch-down polygon': False}
+vizualise_debug = {'foot': False, 'jacobian': False, 'foot_traj': True, 'lift-off': False, 'touch-down': True, 'GRF': True, 'touch-down polygon': False}
 torch.set_printoptions(precision=4, linewidth=200, sci_mode=False)
 if verbose_mb: import omni.isaac.debug_draw._debug_draw as omni_debug_draw
 
@@ -370,6 +370,9 @@ class ModelBaseAction(ActionTerm):
         # Normalize the actions
         self.f, self.d, self.F_norm, self.p_norm = self.normalize_actions(f=self.f_raw, d=self.d_raw, F=self.F_raw, p=self.p_raw)
 
+        # Enforce friction cone constraints for GRF
+        # self.F_norm_clipped = self.enforce_friction_cone_constraints(F=self.F_norm, mu=0.7)
+
         # Transform p_norm : foot touch down position centered arround the hip position projected onto the xy plane with robot heading -> transform to local world frame
         self.p_lw = self.transform_p_from_rl_frame_to_lw(p_norm=self.p_norm)
 
@@ -391,7 +394,7 @@ class ModelBaseAction(ActionTerm):
             self.p_lw[:,:,2] += terrain_height_feet.unsqueeze(-1) #shape (batch_size, num_legs, num_predict_step)
 
         # Transform GRF into local world frame
-        self.F_lw = self.rotate_GRF_from_rl_frame_to_lw(F_norm=self.F_norm)
+        self.F_lw = self.rotate_GRF_from_rl_frame_to_lw(F_norm=self.F_norm) #self.F_norm_clipped
 
         # Check if there is a problem with foot touch down position -> NaN value
         if not torch.distributions.constraints.real.check(self.p_lw).all() :
@@ -712,8 +715,8 @@ class ModelBaseAction(ActionTerm):
         if f is not None:
             std_p_f = 1.7
             std_n_f = 1.3
-            max_f = 3
-            min_f = 0
+            max_f = 3 # [Hz]
+            min_f = 0 # [Hz]
             f = ((f * ((std_p_f-std_n_f)/2)) + ((std_p_f+std_n_f)/2)).clamp(min_f,max_f)
 
 
@@ -723,8 +726,8 @@ class ModelBaseAction(ActionTerm):
         if d is not None:
             std_d_p = 0.63
             std_d_n = 0.57
-            max_d = 1.0
-            min_d = 0.0
+            max_d = 1.0 # [2pi Rad]
+            min_d = 0.0 # [2pi Rad]
             d = ((d * ((std_d_p-std_d_n)/2)) + ((std_d_p+std_d_n)/2)).clamp(min_d,max_d)
 
 
@@ -779,6 +782,35 @@ class ModelBaseAction(ActionTerm):
                 p = torch.cat((p_x, p_y), dim=2).reshape_as(p)
 
         return f, d, F, p
+
+
+    def enforce_friction_cone_constraints(self, F:torch.Tensor, mu:float) -> torch.Tensor:
+        """ Enforce the friction cone constraints
+        ||F_xy|| < F_z*mu
+        Args :
+            F (torch.Tensor): The GRF   of shape(batch_size, num_legs, 3, time_horizon)
+
+        Returns :
+            F (torch.Tensor): The GRF with enforced friction constraints of shape(batch_size, num_legs, 3, time_horizon)
+        """
+
+        F_x = F[:,:,0,:].unsqueeze(2)
+        F_y = F[:,:,1,:].unsqueeze(2)
+
+        # Angle between vec_x and vec_F_xy
+        alpha = torch.atan2(F[:,:,1,:], F[:,:,0,:]).unsqueeze(2)
+
+        # Compute the maximal Force in the xy plane
+        F_xy_max = mu*F[:,:,2,:].unsqueeze(2)
+
+        # Clipped the violation for the x and y component (unsqueeze to avoid to loose that dimension) : To use clamp_max -> need to remove the sign...
+        F_x_clipped =  F_x.sign()*(torch.abs(F_x).clamp_max(torch.abs(torch.cos(alpha)*F_xy_max)))
+        F_y_clipped =  F_y.sign()*(torch.abs(F_y).clamp_max(torch.abs(torch.sin(alpha)*F_xy_max)))
+
+        # Reconstruct the vector
+        F = torch.cat((F_x_clipped, F_y_clipped, F[:,:,2,:].unsqueeze(2)), dim=2)
+
+        return F
 
 #-------------------------------------------------- Helpers ------------------------------------------------------------
     def height_scan_index_from_pos_b(self, pos_b: torch.Tensor) -> torch.Tensor:

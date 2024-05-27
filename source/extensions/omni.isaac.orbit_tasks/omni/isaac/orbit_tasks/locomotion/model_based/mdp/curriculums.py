@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 
 from omni.isaac.orbit.assets import Articulation
 from omni.isaac.orbit.managers import SceneEntityCfg
-from omni.isaac.orbit.terrains import TerrainImporter
+from omni.isaac.orbit.terrains import TerrainImporter, TerrainImporterUniformDifficulty
 from omni.isaac.orbit_tasks.locomotion.model_based.mdp import CurriculumUniformVelocityCommand
 
 if TYPE_CHECKING:
@@ -91,8 +91,13 @@ def improved_terrain_levels_vel(
     # update terrain levels
     terrain.update_env_origins(env_ids, move_up, move_down)
 
-    # return the mean terrain level
+    # return the mean difficulty
+    if isinstance(terrain, TerrainImporterUniformDifficulty) :
+        return torch.mean(terrain.difficulty.float())
+
+    # else is instance of TerrainImporter and return the mean terrain level    
     return torch.mean(terrain.terrain_levels.float())
+ 
 
 
 def speed_command_levels_walked_distance(env: RLTaskEnv, env_ids: Sequence[int], commandTermName: str, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
