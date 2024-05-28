@@ -125,9 +125,12 @@ def penalize_frequency_variation_L2(env: RLTaskEnv, action_name: str) -> torch.T
     Returns :
         - penalty (torch.Tensor): penalty term in ]-inf, 0] for leg frequency variation of shape(batch_size)
     """
+    # extract the used quantities (to enable type-hinting)
+    action : ModelBaseAction = env.action_manager.get_term(action_name)
+
     # Shape (batch_size, num_legs, 3, number_predict step) -> (batch_size, num_legs * 3 * number_predict_step)
-    f:     torch.Tensor = env.action_manager.get_term(action_name).f.flatten(1,-1)
-    f_prev:torch.Tensor = env.action_manager.get_term(action_name).f_prev.flatten(1,-1)
+    f      = action.f.flatten(1,-1)
+    f_prev = action.f_prev.flatten(1,-1)
 
     penalty = -torch.sum(torch.square(f-f_prev), dim=1)
 
@@ -170,9 +173,29 @@ def penalize_Forces_variation_L2(env: RLTaskEnv, action_name: str) -> torch.Tens
     Returns :
         - penalty (torch.Tensor): penalty term in ]-inf, 0] for Forces (GRF) variation of shape(batch_size)
     """
+    # extract the used quantities (to enable type-hinting)
+    action : ModelBaseAction = env.action_manager.get_term(action_name)
+
     # Shape (batch_size, num_legs, 3, prediction_horizon) -> (batch_size, num_legs * 3 * prediction_horizon)
-    F:     torch.Tensor = env.action_manager.get_term(action_name).F_norm.flatten(1,-1)
-    F_prev:torch.Tensor = env.action_manager.get_term(action_name).F_norm_prev.flatten(1,-1)
+    F:     torch.Tensor = action.F_norm.flatten(1,-1)
+    F_prev:torch.Tensor = action.F_norm_prev.flatten(1,-1)
+
+    penalty = -torch.sum(torch.square(F-F_prev), dim=1)
+
+    return penalty
+
+def penalize_Forces_variation_orientation_L2(env: RLTaskEnv, action_name: str) -> torch.Tensor:
+    """ Penalize Ground Reaction Forces variation quadraticaly with L2 kernel (penalty term in ]-inf, 0])
+
+    Returns :
+        - penalty (torch.Tensor): penalty term in ]-inf, 0] for Forces (GRF) variation of shape(batch_size)
+    """
+    # extract the used quantities (to enable type-hinting)
+    action : ModelBaseAction = env.action_manager.get_term(action_name)
+
+    # Shape (batch_size, num_legs, 3, prediction_horizon) -> (batch_size, num_legs * 3 * prediction_horizon)
+    F:     torch.Tensor = action.F_norm.flatten(1,-1)
+    F_prev:torch.Tensor = action.F_norm_prev.flatten(1,-1)
 
     penalty = -torch.sum(torch.square(F-F_prev), dim=1)
 
@@ -261,3 +284,43 @@ def penalize_cost_of_transport(env: RLTaskEnv, assetName: str="robot") -> torch.
     penalty = CoT
 
     return penalty
+
+
+def soft_track_lin_vel_xy_exp(
+    env: RLTaskEnv, std: float, command_name: str, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+) -> torch.Tensor:
+    """Reward tracking of linear velocity commands (xy axes) using modified exponential kernel for soft tracking.
+    Maximal reward is awarded for a plateau ranging from [v_cmd - epislon*difficulty, v_cmd]
+    With difficulty, the terrain difficulty, thus enabling more flexibility in the speed tracking for challenging terrain"""
+
+    # Retrieve used quantities
+    v_cmd = env.command_manager.get_command(command_name)[:, :2]    # Commanded speed in xy plane   : shape(batch_size, 2)
+    v_rob = env.scene[asset_cfg.name].data.root_lin_vel_b[:, :2]    # Robot's speed in xy plane     : shape(batch_size, 2)
+    difficulty = env.scene.terrain.difficulty.float()               # Terrain difficulty            : shape(batch_size,)
+
+    # Compute the dot product : shape(batch_size)
+    dot_product = torch.sum(v_cmd * v_rob, dim=1) #torch.dot(v_cmd, v_rob)
+
+    # Compute the magnitudes (norms) : shape(batch_size)
+    v_cmd_norm = torch.norm(v_cmd)
+    v_rob_norm = torch.norm(v_rob)
+
+    # Compute the cosine of the angle : shape(batch_size)
+    cos_theta = dot_product / (v_cmd_norm * v_rob_norm)e)
+
+    # Compute the angle in radians between commanded speed and robot speed in xy plane : shape(batch_size)
+    theta = torch.acos(cos_theta)
+
+    # Project the robot's speed on the commanded speed and compute the error as parrallel (forward) and perpendicular (lateral) component
+    forward_speed_error = torch.norm(v_cmd) - (torch.norm(v_rob)*torch.cos(theta)) # shape(batch_size)
+    lateral_speed_error = torch.norm(v_rob)*torch.sin(theta)                       # shape(batch_size)
+
+    # Give some tolerance on the forward error (difficulty in [0,10]. Give 50% of the commanded speed * difficulty in % as tolerance)
+    tol = 0.05 * v_cmd_norm * difficulty
+    forward_speed_error[forward_speed_error <= -tol] += tol[forward_speed_error <= -tol]
+    forward_speed_error[forward_speed_error <=   0 ]  = 0
+
+    # compute the error
+    error = torch.square(forward_speed_error) + torch.square(lateral_speed_error) # shape(batch_size)
+
+    return torch.exp(-error / std**2)

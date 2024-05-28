@@ -3,7 +3,7 @@ from collections.abc import Sequence
 import torch
 from torch.distributions.constraints import real
 
-# import jax.numpy as jnp
+import jax.numpy as jnp
 import numpy as np
 
 import omni.isaac.orbit.utils.math as math_utils
@@ -704,7 +704,7 @@ class samplingController(modelBaseController):
 #         # Robot height is proprioceptive : need to compute it
 #         com_pos_lw[2] = ... #TODO
 
-#         # Retrieve the robot orientation in lw as euler angle xxx TODO of shape(3)
+#         # Retrieve the robot orientation in lw as euler angle ZXY of shape(3)
 #         roll, pitch, yaw = math_utils.euler_xyz_from_quat(robot.data.root_quat_w)
 #         com_pose_lw = torch.tensor((roll, pitch, yaw))
 
@@ -719,11 +719,11 @@ class samplingController(modelBaseController):
 
 #         # Prepare the state (at time t)
 #         initial_state = torch.cat((
-#             com_pos_lw,    # Position
-#             com_vel_b[:3], # Linear Velocity
-#             com_pose_lw,   # Orientation as euler_angle
-#             com_vel_b[3:], # Angular velocity
-#             p_lw,          # Foot position
+#             com_pos_lw,    # Position TODO Should be center at the COM -> Thus (0,0,0) -> height tracking is proprioceptive -> would be done with the feet
+#             com_vel_b[:3], # Linear Velocity    TODO in world frame
+#             com_pose_lw,   # Orientation as euler_angle ZXY TODO in world frame
+#             com_vel_b[3:], # Angular velocity   TODO in base frame (Roll, Pitch, Yaw)
+#             p_lw,          # Foot position TODO Should be center at the COM
 #         ))
 
 

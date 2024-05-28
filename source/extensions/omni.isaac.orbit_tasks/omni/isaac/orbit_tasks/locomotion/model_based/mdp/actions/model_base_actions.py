@@ -20,7 +20,7 @@ from omni.isaac.orbit.managers.action_manager import ActionTerm
 import torch.distributions.constraints
 
 if TYPE_CHECKING:
-    from omni.isaac.orbit.envs import BaseEnv
+    from omni.isaac.orbit.envs import BaseEnv, RLTaskEnv
 
 from . import actions_cfg
 
@@ -159,6 +159,9 @@ class ModelBaseAction(ActionTerm):
 
     _offset: torch.Tensor | float
     """The offset applied to the input action."""
+
+    _env : RLTaskEnv
+    """To enable type hinting"""
 
     # controller: model_base_controller.modelBaseController
     controller: model_base_controller.samplingController
@@ -840,7 +843,7 @@ class ModelBaseAction(ActionTerm):
 
         # --- Print --- 
         verbose_loop+=1
-        if verbose_loop>=40:
+        if verbose_loop>=400:
             verbose_loop=0
             # print('\nContact sequence : ', c0_star[0,...].flatten())
             # print('  Leg  frequency : ', self.f[0,:])
@@ -854,7 +857,12 @@ class ModelBaseAction(ActionTerm):
             # print('Foot traj shape  : ', self.pt_star_lw.shape)
             # print('Foot traj : ', self.pt_star_lw[0,0,:3,:])
             # print('Foot Force :', self.F_star_lw[0,:,:])
-
+            print('\nZ lin vel : ', self._asset.data.root_lin_vel_b[0, 2])
+            try : 
+                print('Penalty Lin vel z  : ',self._env.reward_manager._episode_sums["penalty_lin_vel_z_l2"][0])
+                print('Track ang vel z    : ',self._env.reward_manager._episode_sums["track_ang_vel_z_exp"][0])
+                print('Penalty frequency  : ',self._env.reward_manager._episode_sums["penalty_frequency_variation"][0])
+            except : pass
 
             if (self.F_lw != self.F_star_lw).any():
                 assert ValueError('F value don\'t match...')
