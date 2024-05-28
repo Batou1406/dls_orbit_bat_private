@@ -365,7 +365,7 @@ class CurriculumCfg:
     terrain_levels = CurrTerm(func=mdp.improved_terrain_levels_vel) # None
 
     # --- Rewards Curriculum
-    # penalty_large_step_curr = CurrTerm(func=mdp.modify_reward_weight, params={"term_name": "penalty_large_step", "weight": 2.5, "num_steps": 500})
+    # penalty_large_step_curr = CurrTerm(func=mdp.modify_reward_weight, params={"term_name": "penalty_large_step", "weight": 1.0, "num_steps": (400*24)})
 
     # --- Commands Curriculum
     speed_levels = CurrTerm(func=mdp.speed_command_levels_fast_walked_distance, params={'commandTermName': 'base_velocity'})
