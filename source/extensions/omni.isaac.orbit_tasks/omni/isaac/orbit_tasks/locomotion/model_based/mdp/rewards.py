@@ -306,7 +306,7 @@ def soft_track_lin_vel_xy_exp(
     v_rob_norm = torch.norm(v_rob)
 
     # Compute the cosine of the angle : shape(batch_size)
-    cos_theta = dot_product / (v_cmd_norm * v_rob_norm))
+    cos_theta = dot_product / (v_cmd_norm * v_rob_norm)
 
     # Compute the angle in radians between commanded speed and robot speed in xy plane : shape(batch_size)
     theta = torch.acos(cos_theta)
