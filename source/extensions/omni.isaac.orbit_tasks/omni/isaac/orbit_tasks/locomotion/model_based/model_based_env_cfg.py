@@ -312,7 +312,7 @@ class RewardsCfg:
         weight=-1.0,
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*thigh"), "threshold": 1.0},)
     flat_orientation_l2     = RewTerm(func=mdp.flat_orientation_l2, weight=-1.0)
-    dof_pos_limits          = RewTerm(func=mdp.joint_pos_limits, weight=0.0)
+    dof_pos_limits          = RewTerm(func=mdp.joint_pos_limits, weight=-1.0)
     penalty_friction        = RewTerm(
         func=mdp.friction_constraint,
         weight=-0.1,
@@ -322,7 +322,7 @@ class RewardsCfg:
         }
     )
     penalty_stance_foot_vel = RewTerm(func=mdp.penalize_foot_in_contact_displacement_l2, weight=-1e-4)
-    penalty_CoT             = RewTerm(func=mdp.penalize_cost_of_transport, weight=0.0)
+    penalty_CoT             = RewTerm(func=mdp.penalize_cost_of_transport, weight=-0.1)
 
 
     # -- Model based penalty : Positive weight -> penalty is already negative
