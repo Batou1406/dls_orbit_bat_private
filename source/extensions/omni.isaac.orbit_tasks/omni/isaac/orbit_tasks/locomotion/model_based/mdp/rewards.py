@@ -184,23 +184,6 @@ def penalize_Forces_variation_L2(env: RLTaskEnv, action_name: str) -> torch.Tens
 
     return penalty
 
-def penalize_Forces_variation_orientation_L2(env: RLTaskEnv, action_name: str) -> torch.Tensor:
-    """ Penalize Ground Reaction Forces variation quadraticaly with L2 kernel (penalty term in ]-inf, 0])
-
-    Returns :
-        - penalty (torch.Tensor): penalty term in ]-inf, 0] for Forces (GRF) variation of shape(batch_size)
-    """
-    # extract the used quantities (to enable type-hinting)
-    action : ModelBaseAction = env.action_manager.get_term(action_name)
-
-    # Shape (batch_size, num_legs, 3, prediction_horizon) -> (batch_size, num_legs * 3 * prediction_horizon)
-    F:     torch.Tensor = action.F_norm.flatten(1,-1)
-    F_prev:torch.Tensor = action.F_norm_prev.flatten(1,-1)
-
-    penalty = -torch.sum(torch.square(F-F_prev), dim=1)
-
-    return penalty
-
 
 def friction_constraint(env: RLTaskEnv, sensor_cfg: SceneEntityCfg, mu: float = 0.8) -> torch.Tensor:
     """Penalize contact forces out of the friction cone
@@ -233,7 +216,7 @@ def penalize_foot_in_contact_displacement_l2(env: RLTaskEnv, actionName: str="mo
         - assetName  (str): Asset name of the robot in the simulation
     
     Returns :
-        - penalty (torch.Tensor): Penalty term i [0, +inf[ for foot displacement while in contact"""
+        - penalty (torch.Tensor): Penalty term i [0, +inf[ for foot displacement while in contact of shape(num_envs)"""
     
     # extract the used quantities (to enable type-hinting)
     action: ModelBaseAction = env.action_manager.get_term(actionName)
@@ -245,10 +228,11 @@ def penalize_foot_in_contact_displacement_l2(env: RLTaskEnv, actionName: str="mo
     # Retrieve which foot is in contact : True if foot in contact, False in in swing, shape (batch_size, num_legs)
     in_contact = action.c_star[:,:,0] == 1
 
-    # Compute the penalty only for leg in contact
-    penalty = torch.sum(p_dot_w * in_contact)
+    # Sum the foot velocity for only for legs in contact : shape(batch_size)
+    penalty = torch.sum(p_dot_w * in_contact, dim=1)
 
     return penalty
+
 
 def reward_terrain_progress(env: RLTaskEnv, assetName: str="robot") -> torch.Tensor:
     """ Reward for progress made in the terrain
@@ -263,6 +247,7 @@ def reward_terrain_progress(env: RLTaskEnv, assetName: str="robot") -> torch.Ten
     reward = (torch.norm(robot.data.root_pos_w - env.scene.env_origins, dim=1).clamp(min=0, max=0.7)) / (env.episode_length_buf * env.step_dt)
 
     return reward
+
 
 def penalize_cost_of_transport(env: RLTaskEnv, assetName: str="robot", alpha: float=0.3) -> torch.Tensor:
     """ Penalize for cost of transport : CoT = P/(m*g*v)
