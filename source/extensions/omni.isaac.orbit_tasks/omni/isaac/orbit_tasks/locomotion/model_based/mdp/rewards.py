@@ -296,7 +296,7 @@ def penalize_cost_of_transport(env: RLTaskEnv, assetName: str="robot", alpha: fl
     speed = torch.clamp_min(torch.norm(robot.data.root_vel_b[:,:3], dim=1) , min=0.1) 
 
     # Compute the Robot's power [W] : T*q_dot : mechanical power, alpha*T^2 : stalk torque power dissipation, no negative value : no regenerative breaking
-    power = torch.sum(torch.max(torque*q_dot + alpha*torque*torque, 0), dim=1)
+    power = torch.sum((torque*q_dot + alpha*torque*torque).clamp(min=0.0), dim=1)
 
     # Compute the Cost of Transport : P/(m*g*v)
     CoT = (power) / (9.81 * 20 * speed)
