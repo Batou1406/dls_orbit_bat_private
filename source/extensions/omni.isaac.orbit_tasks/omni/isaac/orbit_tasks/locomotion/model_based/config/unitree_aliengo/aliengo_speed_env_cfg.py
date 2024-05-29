@@ -27,7 +27,7 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
         self.scene.terrain.terrain_generator = SPEED_TERRAINS_CFG
 
         # --- Initialsie the large step
-        Large_step_curriculum = False 
+        Large_step_curriculum = True 
         if Large_step_curriculum :
             self.curriculum.penalty_large_step_curr = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_large_step", "weight": 1.0, "num_steps": (400*24)})
 
@@ -134,8 +134,8 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
         self.rewards.flat_orientation_l2.weight          = -2.0
         self.rewards.dof_pos_limits.weight               = -2.0
         self.rewards.penalty_friction.weight             = -0.3
-        self.rewards.penalty_stance_foot_vel             = None#-1.0
-        self.rewards.penalty_CoT.weight                  = -0.002
+        self.rewards.penalty_stance_foot_vel             = None #-1.0
+        self.rewards.penalty_CoT                         = None #-0.002
 
         # -- Model based penalty : Positive weight -> penalty is already negative
         self.rewards.penalty_leg_frequency               = None

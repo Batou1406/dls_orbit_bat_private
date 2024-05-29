@@ -748,7 +748,7 @@ class ModelBaseAction(ActionTerm):
 
             mean_z = (200 / number_leg_in_contact).unsqueeze(-1).unsqueeze(-1) # 200/x~= 20[kg_aliengo] * 9.81 [m/s²] / x [leg in contact]
             std_z = mean_z/5   # shape (batch_size, 1, 1)
-            F_z = ((F[:,:,2,:]  * (std_z)) + (mean_z)) #.clamp(-200,200)
+            F_z = ((F[:,:,2,:]  * (std_z)) + (mean_z)).clamp(min=0)
 
             # F_x = 0*F_x
             # F_y = 0*F_y
@@ -799,19 +799,20 @@ class ModelBaseAction(ActionTerm):
 
         F_x = F[:,:,0,:].unsqueeze(2)
         F_y = F[:,:,1,:].unsqueeze(2)
+        F_z = F[:,:,1,:].unsqueeze(2).clamp(min=0)
 
         # Angle between vec_x and vec_F_xy
         alpha = torch.atan2(F[:,:,1,:], F[:,:,0,:]).unsqueeze(2)
 
         # Compute the maximal Force in the xy plane
-        F_xy_max = mu*F[:,:,2,:].unsqueeze(2)
+        F_xy_max = mu*F_z
 
         # Clipped the violation for the x and y component (unsqueeze to avoid to loose that dimension) : To use clamp_max -> need to remove the sign...
         F_x_clipped =  F_x.sign()*(torch.abs(F_x).clamp_max(torch.abs(torch.cos(alpha)*F_xy_max)))
         F_y_clipped =  F_y.sign()*(torch.abs(F_y).clamp_max(torch.abs(torch.sin(alpha)*F_xy_max)))
 
         # Reconstruct the vector
-        F = torch.cat((F_x_clipped, F_y_clipped, F[:,:,2,:].unsqueeze(2)), dim=2)
+        F = torch.cat((F_x_clipped, F_y_clipped, F_z), dim=2)
 
         return F
 
@@ -857,12 +858,12 @@ class ModelBaseAction(ActionTerm):
             # print('Foot traj shape  : ', self.pt_star_lw.shape)
             # print('Foot traj : ', self.pt_star_lw[0,0,:3,:])
             # print('Foot Force :', self.F_star_lw[0,:,:])
-            print('\nZ lin vel : ', self._asset.data.root_lin_vel_b[0, 2])
-            try : 
-                print('Penalty Lin vel z  : ',self._env.reward_manager._episode_sums["penalty_lin_vel_z_l2"][0])
-                print('Track ang vel z    : ',self._env.reward_manager._episode_sums["track_ang_vel_z_exp"][0])
-                print('Penalty frequency  : ',self._env.reward_manager._episode_sums["penalty_frequency_variation"][0])
-            except : pass
+            # print('\nZ lin vel : ', self._asset.data.root_lin_vel_b[0, 2])
+            # try : 
+            #     print('Penalty Lin vel z  : ',self._env.reward_manager._episode_sums["penalty_lin_vel_z_l2"][0])
+            #     print('Track ang vel z    : ',self._env.reward_manager._episode_sums["track_ang_vel_z_exp"][0])
+            #     print('Penalty frequency  : ',self._env.reward_manager._episode_sums["penalty_frequency_variation"][0])
+            # except : pass
 
             if (self.F_lw != self.F_star_lw).any():
                 assert ValueError('F value don\'t match...')
