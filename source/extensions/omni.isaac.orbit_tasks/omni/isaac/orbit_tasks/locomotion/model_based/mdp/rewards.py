@@ -264,9 +264,26 @@ def reward_terrain_progress(env: RLTaskEnv, assetName: str="robot") -> torch.Ten
 
     return reward
 
-def penalize_cost_of_transport(env: RLTaskEnv, assetName: str="robot") -> torch.Tensor:
+def penalize_cost_of_transport(env: RLTaskEnv, assetName: str="robot", alpha: float=0.3) -> torch.Tensor:
     """ Penalize for cost of transport : CoT = P/(m*g*v)
-    Which is a dimensionless unit that measure the energy efficiency of the displacement"""
+    Which is a dimensionless unit that measure the energy efficiency of the displacement
+    The energy consumption of the robot is not accessible, and thus is estimated from the motor torque.
+    However, the mechanical power P=T*q_dot, neglect stalk talk (for gravity compensation eg.), assume 
+    perfect conversion efficiency and perfect regenerative breaking. This is why we reformulate this formula to 
+    account for stalk torque and assume no regenerative breaking.
+    Moreover, CoT is not defined for 0 speed and tends toward infinity with low speed. Thus speed is clamped to a
+    minimum of 0.1 ([m/s])
+    
+    Note :
+        The CoT is computed as presented in 'Fast and Efficient Locomotion via Learned Gait Transitions'
+        https://arxiv.org/pdf/2104.04644
+
+    Args :
+        alpha (float): Coefficient to compute the stalk torque. For Unitree A1 = 0.3 (see source)
+
+    Returns:
+        penalty (torch.Tensor): The CoT in [0, +inf] of shape (batch_size)
+    """
     
     # extract the used quantities (to enable type-hinting)
     robot: Articulation = env.scene[assetName]
@@ -275,11 +292,14 @@ def penalize_cost_of_transport(env: RLTaskEnv, assetName: str="robot") -> torch.
     torque = robot.data.applied_torque
     q_dot = robot.data.joint_vel
 
-    # Retrieve the robot speed
-    speed = torch.clamp_min(torch.norm(robot.data.root_vel_b[:,:3], dim=1) , min=0.1) # to avoid division by 0 and CoT that tends to infinity with low speed
+    # Retrieve the robot speed, clamp to minimum 0.1 to avoid division by 0 and CoT that tends to infinity with low speed
+    speed = torch.clamp_min(torch.norm(robot.data.root_vel_b[:,:3], dim=1) , min=0.1) 
 
-    # Compute the Cost of Transport : P/(m*g*v) with P=Torques*omega
-    CoT = (torch.sum((torque * q_dot), dim=1)) / (9.81 * 20 * speed)
+    # Compute the Robot's power [W] : T*q_dot : mechanical power, alpha*T^2 : stalk torque power dissipation, no negative value : no regenerative breaking
+    power = torch.sum(torch.max(torque*q_dot + alpha*torque*torque, 0), dim=1)
+
+    # Compute the Cost of Transport : P/(m*g*v)
+    CoT = (power) / (9.81 * 20 * speed)
 
     penalty = CoT
 
