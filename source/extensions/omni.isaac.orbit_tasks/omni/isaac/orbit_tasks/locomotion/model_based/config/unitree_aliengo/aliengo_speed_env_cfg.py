@@ -27,7 +27,7 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
         self.scene.terrain.terrain_generator = SPEED_TERRAINS_CFG
 
         # --- Initialsie the large step
-        Large_step_curriculum = True 
+        Large_step_curriculum = False 
         if Large_step_curriculum :
             self.curriculum.penalty_large_step_curr = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_large_step", "weight": 1.0, "num_steps": (400*24)})
 
