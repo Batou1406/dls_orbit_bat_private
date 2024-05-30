@@ -232,6 +232,14 @@ def penalize_foot_in_contact_displacement_l2(env: RLTaskEnv, actionName: str="mo
     # Sum the foot velocity for only for legs in contact : shape(batch_size)
     penalty = torch.sum(p_dot_w * in_contact, dim=1)
 
+    # print()
+    # print('in contact', in_contact[0])
+    # print(' Foot  vel', p_dot_w[0])
+    # print(' Foot Vel ', robot.data.body_lin_vel_w[0, action.foot_idx,:])
+    # print('  Penalty ', (p_dot_w * in_contact)[0])
+    # print('  Penalty ', penalty[0])
+
+
     return penalty
 
 
@@ -409,22 +417,3 @@ def track_proprioceptive_height_exp(env: RLTaskEnv, target_height: float, height
     
     return reward
 
-
-
- 
-
-#  {"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*thigh"), "threshold": 1.0}
-
-# def undesired_contacts(env: RLTaskEnv, threshold: float, sensor_cfg: SceneEntityCfg) -> torch.Tensor:
-#     """Penalize undesired contacts as the number of violations that are above a threshold."""
-#     # extract the used quantities (to enable type-hinting)
-#     contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
-#     # check if contact force is above threshold
-#     net_contact_forces = contact_sensor.data.net_forces_w_history
-#     is_contact = torch.max(torch.norm(net_contact_forces[:, :, sensor_cfg.body_ids], dim=-1), dim=1)[0] > threshold
-#     # sum over contacts for each environment
-#     return torch.sum(is_contact, dim=1)
-
-
-
-#     return torch.square(asset.data.root_pos_w[:, 2] - target_height)

@@ -376,6 +376,9 @@ class ModelBaseAction(ActionTerm):
         # Enforce friction cone constraints for GRF
         # self.F_norm_clipped = self.enforce_friction_cone_constraints(F=self.F_norm, mu=0.7)
 
+        # Disable Action : useful for debug
+        # self.f, s elf.d, self.p = self.debug_disable_action()
+
         # Transform p_norm : foot touch down position centered arround the hip position projected onto the xy plane with robot heading -> transform to local world frame
         self.p_lw = self.transform_p_from_rl_frame_to_lw(p_norm=self.p_norm)
 
@@ -838,6 +841,14 @@ class ModelBaseAction(ActionTerm):
 
         return height_scan_index.to(torch.int) 
 
+
+    def debug_disable_action(self):
+        """For debugging purposes, fix duty cycle, leg frequency and foot touch down position"""
+        f = 1.4 * torch.ones_like(self.f)
+        d = 0.6 * torch.ones_like(self.d)
+        p = torch.zeros_like(self.p_lw)
+
+        return f, d, p
 
     def debug_apply_action(self, p_lw, p_dot_lw, q_dot, jacobian_lw, jacobian_dot_lw, mass_matrix, h, F0_star_lw, c0_star, pt_i_star_lw):
         global verbose_loop

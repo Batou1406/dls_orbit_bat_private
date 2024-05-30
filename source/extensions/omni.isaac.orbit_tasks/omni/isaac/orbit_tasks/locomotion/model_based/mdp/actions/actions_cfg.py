@@ -60,7 +60,7 @@ class ModelBaseActionCfg(ActionTermCfg):
         step_height: float = 0.05
         """ Default step height : used by the swing trajectory generator to determine the apex height in the middle of the trajectory  """
 
-        foot_offset: float = 0.03
+        foot_offset: float = 0.1
         """ Offset between the foot position (as returned in body view by the simulator) and the ground when in contact. """
 
     footTrajectoryCfg: FootTrajectoryCfg = FootTrajectoryCfg()
