@@ -442,19 +442,21 @@ def penalize_close_feet(env: RLTaskEnv, assetName: str="robot", threshold: float
     foot_distances = torch.norm(foot_pos_diff, dim=3) # shape(batch_size, num_legs, num_legs)
 
     # Retrieve only the distances of interest, ie. the upper diagonal of foot_distances (diagonal=0 : diff between same foot, lowerDiag=upperDiag ||f1-f2|| = ||f2-f1||)
-    foot_distances = foot_distances.triu(diagonal=1) # shape(batch_size, 6)
+    foot_distances = foot_distances.triu(diagonal=1) 
+    upper_triangle_indices = torch.triu_indices(4, 4, offset=1)
+    foot_distances_diag = foot_distances[:, upper_triangle_indices[0], upper_triangle_indices[1]]# shape(batch_size, 6)
 
     # Compute the penalty
     if kernel == 'quadratic':
         # Compute the L2 penalty : with f(x)=ax²+bx+x, with f(x)=1, f(+/-threshold)=0
-        penalty = (-1/(threshold**2))*(foot_distances**2) + 1
+        penalty = (-1/(threshold**2))*(foot_distances_diag**2) + 1
         penalty= torch.sum(torch.where(penalty < 0, 0, penalty), dim=1)
     elif kernel == 'linear':
         # Compute the linear penalty : f(0)=1, f(+/-threshold)=0
-        penalty = 1-(1/threshold)*torch.abs(foot_distances)
+        penalty = 1-(1/threshold)*torch.abs(foot_distances_diag)
         penalty= torch.sum(torch.where(penalty < 0, 0, penalty), dim=1)
     elif kernel == 'constant' :
-        penalty = torch.sum(foot_distances < threshold,dim=1).float()
+        penalty = torch.sum(foot_distances_diag < threshold,dim=1).float()
 
     return penalty
 
