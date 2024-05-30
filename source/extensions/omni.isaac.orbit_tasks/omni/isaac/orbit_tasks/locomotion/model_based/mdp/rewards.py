@@ -232,14 +232,6 @@ def penalize_foot_in_contact_displacement_l2(env: RLTaskEnv, actionName: str="mo
     # Sum the foot velocity for only for legs in contact : shape(batch_size)
     penalty = torch.sum(p_dot_w * in_contact, dim=1)
 
-    # print()
-    # print('in contact', in_contact[0])
-    # print(' Foot  vel', p_dot_w[0])
-    # print(' Foot Vel ', robot.data.body_lin_vel_w[0, action.foot_idx,:])
-    # print('  Penalty ', (p_dot_w * in_contact)[0])
-    # print('  Penalty ', penalty[0])
-
-
     return penalty
 
 
@@ -416,4 +408,53 @@ def track_proprioceptive_height_exp(env: RLTaskEnv, target_height: float, height
     reward =  torch.exp(-torch.square(tracking_error) / std**2)
     
     return reward
+
+
+def penalize_close_feet(env: RLTaskEnv, assetName: str="robot", threshold: float=0.05, footName: str=".*foot", kernel: str='constant'):
+    """Penalize feet that are too close to each other (in the xy plane), with the XX kernel
+    
+    Args :
+        assetName   (str): Name of the 'robot' in the scene manage
+        threshold (float): Distance threshold where the feet are considered too close to each other and would be penalize
+        footName    (str): Regex Epression to retrieve the foot indexes in the robot 'articulation'
+        kernel      (str): Kernel type for the penalty in 'constant', 'linear', 'quadratic'
+
+    Returns :
+        penalty (torch.Tensor): penalty term in [0, +inf]
+    """
+    # extract the used quantities (to enable type-hinting)
+    robot: Articulation = env.scene[assetName]
+
+    # Retrieve the foot idx
+    foot_idx = robot.find_bodies(footName)[0]
+
+   # Retrieve foot position in world frame
+    foot_xy_pos_w = robot.data.body_pos_w[:,foot_idx,:2]
+
+    # Augment the dimension to  efficiently compute the difference
+    foot_xy_pos1_w = foot_xy_pos_w.unsqueeze(2) # shape(batch_size, num_legs,        1, 2)
+    foot_xy_pos2_w = foot_xy_pos_w.unsqueeze(1) # shape(batch_size,        1, num_legs, 2)
+
+    # Compute the pair wise difference of the foot positions (it compute 16 difference while only 6 are need but it's a fast and optimized operation for GPU)
+    foot_pos_diff = foot_xy_pos1_w - foot_xy_pos2_w # shape(batch_size, num_legs, num_legs, 2) 
+
+    # compute the norm of the position difference to obtain the distance between the feet
+    foot_distances = torch.norm(foot_pos_diff, dim=3) # shape(batch_size, num_legs, num_legs)
+
+    # Retrieve only the distances of interest, ie. the upper diagonal of foot_distances (diagonal=0 : diff between same foot, lowerDiag=upperDiag ||f1-f2|| = ||f2-f1||)
+    foot_distances = foot_distances.triu(diagonal=1) # shape(batch_size, 6)
+
+    # Compute the penalty
+    if kernel == 'quadratic':
+        # Compute the L2 penalty : with f(x)=ax²+bx+x, with f(x)=1, f(+/-threshold)=0
+        penalty = (-1/(threshold**2))*(foot_distances**2) + 1
+        penalty= torch.sum(torch.where(penalty < 0, 0, penalty), dim=1)
+    elif kernel == 'linear':
+        # Compute the linear penalty : f(0)=1, f(+/-threshold)=0
+        penalty = 1-(1/threshold)*torch.abs(foot_distances)
+        penalty= torch.sum(torch.where(penalty < 0, 0, penalty), dim=1)
+    elif kernel == 'constant' :
+        penalty = torch.sum(foot_distances < threshold,dim=1).float()
+
+    return penalty
 
