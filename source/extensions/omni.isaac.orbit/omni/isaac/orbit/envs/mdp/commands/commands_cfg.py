@@ -108,6 +108,9 @@ class CurriculumUniformVelocityCommandCfg(CommandTermCfg):
     heading_control_stiffness: float = MISSING
     """Scale factor to convert the heading error to angular velocity command."""
 
+    speed_threshold: float = 0.1
+    """ Threshold under which a sample velocity (in xy plane) is clamp to zero"""
+
     initial_difficulty: float = 0.0
     """The initial difficulty for the sampled speed in [0,1]"""
 

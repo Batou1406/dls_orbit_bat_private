@@ -376,6 +376,11 @@ class CurriculumUniformVelocityCommand(CommandTerm):
         self.vel_command_b[env_ids, 1] = self.difficulty * empty_tensor.uniform_(*self.cfg.ranges.lat_vel_b) # in [m/s]
         self.vel_command_b[env_ids, 2] = self.difficulty * empty_tensor.uniform_(*self.cfg.ranges.ang_vel_b) # in [rad/s]
 
+        # if sample linear velocity is too low : clamp it to zero
+        low_velocity_mask = torch.norm(self.vel_command_b[env_ids,:2], dim=1) < self.cfg.speed_threshold
+        self.vel_command_b[env_ids,0] = torch.where(low_velocity_mask, 0.0, self.vel_command_b[env_ids,0])
+        self.vel_command_b[env_ids,1] = torch.where(low_velocity_mask, 0.0, self.vel_command_b[env_ids,1])
+
         # Define desired angular velocity (=angular velocity - heading error compensation)
         self.desired_ang_vel_b[env_ids,] = self.vel_command_b[env_ids, 2] # in [rad/s]
 
