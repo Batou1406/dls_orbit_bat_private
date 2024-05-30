@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import torch
+import math
 from typing import TYPE_CHECKING
 
 from omni.isaac.orbit.managers import SceneEntityCfg
@@ -299,10 +300,11 @@ def soft_track_lin_vel_xy_exp(
     With difficulty, the terrain difficulty, thus enabling more flexibility in the speed tracking for challenging terrain"""
 
     # Retrieve used quantities
-    v_cmd = env.command_manager.get_command(command_name)[:, :2]    # Commanded speed in xy plane   : shape(batch_size, 2)
-    v_rob = env.scene[asset_cfg.name].data.root_lin_vel_b[:, :2]    # Robot's speed in xy plane     : shape(batch_size, 2)
-    difficulty = env.scene.terrain.difficulty.float()               # Terrain difficulty            : shape(batch_size,)
-
+    v_cmd = env.command_manager.get_command(command_name)[:, :2]    # Commanded speed in xy plane                  : shape(batch_size, 2)
+    v_rob = env.scene[asset_cfg.name].data.root_lin_vel_b[:, :2]    # Robot's speed in xy plane                    : shape(batch_size, 2)
+    difficulty = env.scene.terrain.terrain_levels.float()           # Terrain's actual difficulty (sampled)        : shape(batch_size,)
+    # difficulty = env.scene.terrain.difficulty.float()             # Terrain maximum difficulty  (sampling range) : shape(batch_size,)
+          
     # Compute the dot product : shape(batch_size)
     dot_product = torch.sum(v_cmd * v_rob, dim=1) #torch.dot(v_cmd, v_rob)
 
@@ -317,13 +319,24 @@ def soft_track_lin_vel_xy_exp(
     theta = torch.acos(cos_theta)
 
     # Project the robot's speed on the commanded speed and compute the error as parrallel (forward) and perpendicular (lateral) component
-    forward_speed_error = (torch.norm(v_rob)*torch.cos(theta)) - torch.norm(v_cmd) # shape(batch_size)
-    lateral_speed_error = torch.norm(v_rob)*torch.sin(theta)                       # shape(batch_size)
+    # forward_speed_error = (torch.norm(v_rob)*torch.cos(theta)) - torch.norm(v_cmd) # shape(batch_size)
+    # lateral_speed_error = torch.norm(v_rob)*torch.sin(theta)                       # shape(batch_size)
+    forward_speed_error = (v_rob_norm*cos_theta) - v_cmd_norm # shape(batch_size)
+    lateral_speed_error = v_rob_norm*torch.sin(theta)                       # shape(batch_size)
+
 
     # Give some tolerance on the forward error (difficulty in [0,10]. Give 50% of the commanded speed * difficulty in % as tolerance)
     tol = 0.05 * v_cmd_norm * difficulty
-    forward_speed_error[forward_speed_error <= -tol] += tol[forward_speed_error <= -tol]
-    forward_speed_error[forward_speed_error <=   0 ]  = 0
+
+    # Apply the tolerance : continous function, with error = 0 if error in [-tol, 0]
+    forward_speed_error = torch.where(
+        forward_speed_error > 0, forward_speed_error, # if error > 0 -> error=error
+        torch.where(
+            forward_speed_error < -tol, forward_speed_error + tol, # if error < -tol -> error=error+tol
+            0 # if error inside tolerance -> error=0
+        ))
+    # forward_speed_error[forward_speed_error <= -tol] += tol[forward_speed_error <= -tol] # Same results but slower implementation
+    # forward_speed_error[forward_speed_error <=   0 ]  = 0
 
     # compute the error
     error = torch.square(forward_speed_error) + torch.square(lateral_speed_error) # shape(batch_size)
@@ -331,31 +344,86 @@ def soft_track_lin_vel_xy_exp(
     return torch.exp(-error / std**2)
 
 
-# def Track_proprioceptive_height_l2(env: RLTaskEnv, target_height: float, actionName: str="model_base_variable", assetName: str="robot", height_bound: tuple[float,float]=(0.0,0.0)) -> torch.Tensor:
-#     """Penalize asset height from its target using L2-kernel. The height is the proprioceptive height
+def track_proprioceptive_height_exp(env: RLTaskEnv, target_height: float, height_bound: tuple[float,float]|None=None, std: float=math.sqrt(0.25), assetName: str="robot", footName: str=".*foot", method: str="Action", actionName: str="model_base_variable", sensorCfg:SceneEntityCfg|None=None) -> torch.Tensor:
+    """Penalize asset height from its target using exponential-kernel. The height is the proprioceptive height, which is the
+    height distance between the CoM and the average position (z only) of the feet in contact.
 
-#     Args :
-#         target_height (float): Target height to track
-#         height_bound (float, float): min and max bound arround the target height before the robot is penalized
-
-#     Return :
-#         penalty : Penalty term using L2 kernel in [0, +inf] 
-#     """
-#     # extract the used quantities (to enable type-hinting)
-#     action: ModelBaseAction = env.action_manager.get_term(actionName)
-#     robot: Articulation = env.scene[assetName]
+    Two methods are proposed to determine the feet in contact :
+        - Using the contact variable c from the ModelBasedAction term (method=='Action')
+        - Using the force sensor on the feet  (method=='Sensor') (eg. SceneEntityCfg("contact_forces", body_names=".*foot"))
 
 
-#     # retrieve the feet height : shape(batch_size, num_legs)
-#     foot_height_w = robot.data.body_pos_w[:,action.foot_idx,2]
+    Args :
+        target_height       (float): Target height to track
+        height_bound (float, float): lower and upper bound  arround the target height before the robot is penalized (eg. (-0.1,+0.1))
+        std                 (float): Standard variation for the exponential kernel
+        assetName             (str): Name of the 'robot' in the scene manager
+        actionName            (str): Name of the action term (ModelBasedAction) in the action manager
+        footName              (str): Regex Epression to retrieve the foot indexes in the robot
 
-#     # retrieve the CoM height : shape(batch_size) 
-#     CoM_height_w = robot.data.root_pos_w[:,2]
+    Return :
+        penalty      (torch.Tensor): Penalty term using L2 kernel in [0, +inf] 
+    """
+    # extract the used quantities (to enable type-hinting)
+    robot: Articulation = env.scene[assetName]
+
+    # Retrieve the foot idx
+    foot_idx = robot.find_bodies(footName)[0]
+
+    # Retrieve the feet height : shape(batch_size, num_legs)
+    foot_height_w = robot.data.body_pos_w[:,foot_idx,2]
+
+    # Retrieve the CoM height : shape(batch_size) 
+    CoM_height_w = robot.data.root_pos_w[:,2]
+
+    # Retrieve the number of feet in contact (set as a minimum of 1 to avoid division by zero)
+    if method == "Action":
+        action: ModelBaseAction = env.action_manager.get_term(actionName)
+        num_feet_in_contact = (torch.sum(action.c_star[:,:,0], dim=1)).clamp(min=1)
+    elif method == "Sensor":
+        sensor: ContactSensor = env.scene.sensors[sensorCfg.name]
+        contact_forces = sensor.data.net_forces_w_history[:,0,sensorCfg.body_ids,2] # 0=last measurement, 2=z dim, shape(batch_size, num_legs)
+        num_feet_in_contact = (torch.sum(contact_forces > 1, dim=1)).clamp(min=1) # set contact threshold to 1 [N]
+    else :
+        raise NotImplementedError("Provided method for proprioceptive height not in {Action, Sensor}")
+    
+    # Compute the proprioceptive robot height
+    robot_height_prop = CoM_height_w - (torch.sum(foot_height_w, dim=1) / num_feet_in_contact)
+
+    # Compute the tracking error
+    tracking_error = robot_height_prop - target_height
+
+    # If tolerance bound are provided adjusted error with bounds
+    if height_bound is not None :
+        tracking_error = torch.where(
+            robot_height_prop > target_height + height_bound[1],    
+            tracking_error - height_bound[1],
+            torch.where(
+                robot_height_prop < target_height + height_bound[0],
+                tracking_error - height_bound[0],
+                torch.zeros_like(tracking_error)                    # 0 if the error is inside boundaries
+            )
+        )
+
+    reward =  torch.exp(-torch.square(tracking_error) / std**2)
+    
+    return reward
+
+
+
  
 
+#  {"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*thigh"), "threshold": 1.0}
 
-#     asset: RigidObject = env.scene[asset_cfg.name]
-#     # TODO: Fix this for rough-terrain.
+# def undesired_contacts(env: RLTaskEnv, threshold: float, sensor_cfg: SceneEntityCfg) -> torch.Tensor:
+#     """Penalize undesired contacts as the number of violations that are above a threshold."""
+#     # extract the used quantities (to enable type-hinting)
+#     contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+#     # check if contact force is above threshold
+#     net_contact_forces = contact_sensor.data.net_forces_w_history
+#     is_contact = torch.max(torch.norm(net_contact_forces[:, :, sensor_cfg.body_ids], dim=-1), dim=1)[0] > threshold
+#     # sum over contacts for each environment
+#     return torch.sum(is_contact, dim=1)
 
 
 
