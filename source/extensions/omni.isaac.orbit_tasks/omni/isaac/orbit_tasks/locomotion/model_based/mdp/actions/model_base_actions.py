@@ -859,11 +859,13 @@ class ModelBaseAction(ActionTerm):
             # print('Foot traj : ', self.pt_star_lw[0,0,:3,:])
             # print('Foot Force :', self.F_star_lw[0,:,:])
             # print('\nZ lin vel : ', self._asset.data.root_lin_vel_b[0, 2])
-            # try : 
-            #     print('Penalty Lin vel z  : ',self._env.reward_manager._episode_sums["penalty_lin_vel_z_l2"][0])
-            #     print('Track ang vel z    : ',self._env.reward_manager._episode_sums["track_ang_vel_z_exp"][0])
-            #     print('Penalty frequency  : ',self._env.reward_manager._episode_sums["penalty_frequency_variation"][0])
-            # except : pass
+            try : 
+                # print('Penalty Lin vel z  : ',self._env.reward_manager._episode_sums["penalty_lin_vel_z_l2"][0])
+                # print('Track ang vel z    : ',self._env.reward_manager._episode_sums["track_ang_vel_z_exp"][0])
+                # print('Penalty frequency  : ',self._env.reward_manager._episode_sums["penalty_frequency_variation"][0])
+                print('Track soft exp    : ',self._env.reward_manager._episode_sums["track_soft_vel_xy_exp"][0])
+                print('Track exp         : ',self._env.reward_manager._episode_sums["track_lin_vel_xy_exp"][0])
+            except : pass
 
             if (self.F_lw != self.F_star_lw).any():
                 assert ValueError('F value don\'t match...')

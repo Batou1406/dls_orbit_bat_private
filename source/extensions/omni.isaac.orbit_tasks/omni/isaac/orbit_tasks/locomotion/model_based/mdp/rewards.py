@@ -307,17 +307,17 @@ def soft_track_lin_vel_xy_exp(
     dot_product = torch.sum(v_cmd * v_rob, dim=1) #torch.dot(v_cmd, v_rob)
 
     # Compute the magnitudes (norms) : shape(batch_size)
-    v_cmd_norm = torch.norm(v_cmd)
-    v_rob_norm = torch.norm(v_rob)
+    v_cmd_norm = torch.norm(v_cmd, dim=1)
+    v_rob_norm = torch.norm(v_rob, dim=1)
 
     # Compute the cosine of the angle : shape(batch_size)
-    cos_theta = dot_product / (v_cmd_norm * v_rob_norm)
+    cos_theta = dot_product / (v_cmd_norm * v_rob_norm + 1e-7)
 
     # Compute the angle in radians between commanded speed and robot speed in xy plane : shape(batch_size)
     theta = torch.acos(cos_theta)
 
     # Project the robot's speed on the commanded speed and compute the error as parrallel (forward) and perpendicular (lateral) component
-    forward_speed_error = torch.norm(v_cmd) - (torch.norm(v_rob)*torch.cos(theta)) # shape(batch_size)
+    forward_speed_error = (torch.norm(v_rob)*torch.cos(theta)) - torch.norm(v_cmd) # shape(batch_size)
     lateral_speed_error = torch.norm(v_rob)*torch.sin(theta)                       # shape(batch_size)
 
     # Give some tolerance on the forward error (difficulty in [0,10]. Give 50% of the commanded speed * difficulty in % as tolerance)
@@ -329,3 +329,34 @@ def soft_track_lin_vel_xy_exp(
     error = torch.square(forward_speed_error) + torch.square(lateral_speed_error) # shape(batch_size)
 
     return torch.exp(-error / std**2)
+
+
+# def Track_proprioceptive_height_l2(env: RLTaskEnv, target_height: float, actionName: str="model_base_variable", assetName: str="robot", height_bound: tuple[float,float]=(0.0,0.0)) -> torch.Tensor:
+#     """Penalize asset height from its target using L2-kernel. The height is the proprioceptive height
+
+#     Args :
+#         target_height (float): Target height to track
+#         height_bound (float, float): min and max bound arround the target height before the robot is penalized
+
+#     Return :
+#         penalty : Penalty term using L2 kernel in [0, +inf] 
+#     """
+#     # extract the used quantities (to enable type-hinting)
+#     action: ModelBaseAction = env.action_manager.get_term(actionName)
+#     robot: Articulation = env.scene[assetName]
+
+
+#     # retrieve the feet height : shape(batch_size, num_legs)
+#     foot_height_w = robot.data.body_pos_w[:,action.foot_idx,2]
+
+#     # retrieve the CoM height : shape(batch_size) 
+#     CoM_height_w = robot.data.root_pos_w[:,2]
+ 
+
+
+#     asset: RigidObject = env.scene[asset_cfg.name]
+#     # TODO: Fix this for rough-terrain.
+
+
+
+#     return torch.square(asset.data.root_pos_w[:, 2] - target_height)
