@@ -119,9 +119,11 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
         """ ----- rewards ----- """
         # -- task
         self.rewards.track_lin_vel_xy_exp.weight         = 1.5
+        self.rewards.track_lin_vel_xy_exp.params['std']  = math.sqrt(0.16)        
         self.rewards.track_soft_vel_xy_exp               = None
         self.rewards.track_ang_vel_z_exp.weight          = 0.75
-        self.rewards.track_robot_height_exp              = None  
+        self.rewards.track_robot_height_exp.weight       = 0.1
+        self.rewards.track_robot_height_exp.params['height_bound'] = (-0.01,0.01)
 
         # -- Additionnal penalties : Need a negative weight
         self.rewards.penalty_lin_vel_z_l2.weight         = -10.0
@@ -134,7 +136,7 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
         self.rewards.dof_pos_limits.weight               = -2.0
         self.rewards.penalty_friction.weight             = -0.3
         self.rewards.penalty_stance_foot_vel             = None #-1.0
-        self.rewards.penalty_CoT                         = None #-0.002
+        self.rewards.penalty_CoT.weight                  = -0.002
 
         # -- Model based penalty : Positive weight -> penalty is already negative
         self.rewards.penalty_leg_frequency               = None

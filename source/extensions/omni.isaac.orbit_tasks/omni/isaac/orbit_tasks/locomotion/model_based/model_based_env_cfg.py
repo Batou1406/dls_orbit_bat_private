@@ -299,7 +299,7 @@ class RewardsCfg:
     track_lin_vel_xy_exp    = RewTerm(func=mdp.track_lin_vel_xy_exp, weight=1.5, params={"command_name": "base_velocity", "std": math.sqrt(0.25)})
     track_soft_vel_xy_exp   = RewTerm(func=mdp.soft_track_lin_vel_xy_exp, weight=1.5, params={"command_name": "base_velocity", "std": math.sqrt(0.16)})
     track_ang_vel_z_exp     = RewTerm(func=mdp.track_ang_vel_z_exp, weight=0.75, params={"command_name": "base_velocity", "std": math.sqrt(0.25)})
-    track_robot_height_exp  = RewTerm(func=mdp.track_proprioceptive_height_exp, weight=0.1, params={"target_height": 0.4, "std": 0.2})
+    track_robot_height_exp  = RewTerm(func=mdp.track_proprioceptive_height_exp, weight=0.1, params={"target_height": 0.38, "std": 0.1})
 
     # -- Additionnal penalties : Need a negative weight
     penalty_lin_vel_z_l2    = RewTerm(func=mdp.lin_vel_z_l2, weight=-2.0)
