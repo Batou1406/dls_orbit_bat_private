@@ -44,9 +44,9 @@ class UnitreeAliengoClimbEnvCfg(LocomotionModelBasedEnvCfg):
 
 
         """ ----- Commands ----- """
-        self.commands.base_velocity.ranges.for_vel_b = ( 0.2, 0.5)
+        self.commands.base_velocity.ranges.for_vel_b = ( 0.3, 0.3)
         self.commands.base_velocity.ranges.lat_vel_b = (-0.1, 0.1)
-        self.commands.base_velocity.ranges.ang_vel_b = (0.0, 0.0)
+        self.commands.base_velocity.ranges.ang_vel_b = (-0.1, 0.1)
         self.commands.base_velocity.ranges.initial_heading_err = (0.0, 0.0)
 
 
@@ -118,28 +118,36 @@ class UnitreeAliengoClimbEnvCfg(LocomotionModelBasedEnvCfg):
         self.rewards.track_robot_height_exp              = None 
 
         # -- Additionnal penalties : Need a negative weight
-        self.rewards.penalty_lin_vel_z_l2.weight         = -2.0
-        self.rewards.penalty_ang_vel_xy_l2.weight        = -0.05
-        self.rewards.penalty_dof_torques_l2              = None
-        self.rewards.penalty_dof_acc_l2                  = None
+        self.rewards.penalty_lin_vel_z_l2.weight         = -10.0 #-2.0
+        self.rewards.penalty_ang_vel_xy_l2.weight        = -0.10 #-0.05
+        self.rewards.penalty_dof_torques_l2.weight       = -0.0001 # None
+        self.rewards.penalty_dof_acc_l2                  = None # -1.0e-07 TODO test
         self.rewards.penalty_action_rate_l2              = None
         self.rewards.undesired_contacts.weight           = -1.0
         self.rewards.flat_orientation_l2                 = None
-        self.rewards.dof_pos_limits                      = None
+        self.rewards.dof_pos_limits                      = None # -2.0 TODO test
         self.rewards.penalty_friction                    = None #-0.25
-        self.rewards.penalty_stance_foot_vel.weight      = -0.2
+        self.rewards.penalty_stance_foot_vel.weight      = -0.4 #-0.2
         self.rewards.penalty_CoT                         = None
         self.rewards.penalty_close_feet                  = None
 
         # -- Model based penalty : Positive weight -> penalty is already negative
+        # self.rewards.penalty_leg_frequency               = None
+        # self.rewards.penalty_leg_duty_cycle              = None
+        # self.rewards.penalty_large_force.weight          = 0.1
+        # self.rewards.penalty_large_step                  = None
+        # self.rewards.penalty_frequency_variation.weight  = 1.0
+        # self.rewards.penatly_duty_cycle_variation.weight = 2.5
+        # self.rewards.penalty_step_variation.weight       = 2.5
+        # self.rewards.penatly_force_variation.weight      = 1e-4 #4e-5
         self.rewards.penalty_leg_frequency               = None
         self.rewards.penalty_leg_duty_cycle              = None
-        self.rewards.penalty_large_force.weight          = 0.1
+        self.rewards.penalty_large_force                 = None
         self.rewards.penalty_large_step                  = None
-        self.rewards.penalty_frequency_variation.weight  = 1.0
-        self.rewards.penatly_duty_cycle_variation.weight = 2.5
-        self.rewards.penalty_step_variation.weight       = 2.5
-        self.rewards.penatly_force_variation.weight      = 1e-4 #4e-5
+        self.rewards.penalty_frequency_variation         = None
+        self.rewards.penatly_duty_cycle_variation        = None
+        self.rewards.penalty_step_variation              = None
+        self.rewards.penatly_force_variation             = None #4e-5
 
         # -- Additionnal Reward : Need a positive weight
         self.rewards.reward_is_alive                     = None
