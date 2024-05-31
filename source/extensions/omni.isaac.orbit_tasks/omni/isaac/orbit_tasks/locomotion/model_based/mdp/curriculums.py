@@ -194,7 +194,8 @@ def speed_command_levels_fast_walked_distance(env: RLTaskEnv, env_ids: Sequence[
     speed_commandTerm: CurriculumUniformVelocityCommand = env.command_manager.get_term(commandTermName)
 
     # compute the distance the robot walked
-    walked_distance = torch.norm(asset.data.root_pos_w[env_ids, :2] - env.scene.env_origins[env_ids, :2], dim=1)
+    # walked_distance = torch.norm(asset.data.root_pos_w[env_ids, :2] - env.scene.env_origins[env_ids, :2], dim=1) # Neglect the radius due to angular speed
+    walked_distance = speed_commandTerm.metrics['cumulative_distance'][env_ids]
 
     # compute the commanded distance
     required_distance = torch.norm(speed_command[env_ids, :2], dim=1) * env.max_episode_length_s

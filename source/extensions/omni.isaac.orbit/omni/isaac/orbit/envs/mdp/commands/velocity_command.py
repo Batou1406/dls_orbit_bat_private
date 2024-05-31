@@ -293,6 +293,8 @@ class CurriculumUniformVelocityCommand(CommandTerm):
         heading_target_w: heading target in world frame of shape(num_env,)
         desired_ang_vel_b: Desired angular velocity in base frame
         difficulty      : float value between 0 and 1
+        metrics["cumulative_distance"]
+                        : Computing the distance walked by the robot is not trivial, thus a variable is updated at each iteration to keep track of that.
 
 
     Methods :
@@ -337,9 +339,14 @@ class CurriculumUniformVelocityCommand(CommandTerm):
         # Difficulty parameter
         self.difficulty = max(cfg.initial_difficulty, cfg.minmum_difficulty)
 
+        
+
         # metrics
         self.metrics["error_vel_xy"] = torch.zeros(self.num_envs, device=self.device)
         self.metrics["error_vel_yaw"] = torch.zeros(self.num_envs, device=self.device)
+
+        # Cumulative distance to keep tracked of the robot walked distance -> defined as a metric to benefut from automatic reset
+        self.metrics["cumulative_distance"] = torch.zeros(self.num_envs, device=self.device)
 
     def __str__(self) -> str:
         """Return a string representation of the command generator."""
@@ -407,6 +414,8 @@ class CurriculumUniformVelocityCommand(CommandTerm):
             )
 
     def _update_metrics(self):
+        """Update the metrics based on the current state.
+        This function is called periodically along the episode (at outer loop frequency)"""
         # time for which the command was executed
         max_command_time = self.cfg.resampling_time_range[1]
         max_command_step = max_command_time / self._env.step_dt
@@ -417,6 +426,10 @@ class CurriculumUniformVelocityCommand(CommandTerm):
         self.metrics["error_vel_yaw"] += (
             torch.abs(self.vel_command_b[:, 2] - self.robot.data.root_ang_vel_b[:, 2]) / max_command_step
         )
+
+        # Update the walked distance
+        self.metrics['cumulative_distance'] += (torch.norm(self.robot.data.root_lin_vel_w[:,:2], dim=1) * self._env.step_dt)
+
 
     def update_difficulty(self, difficulty_progress):
         """ Update the difficulty given the difficulty_progress variable and the difficulty scaling.
