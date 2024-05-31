@@ -44,9 +44,9 @@ class UnitreeAliengoClimbEnvCfg(LocomotionModelBasedEnvCfg):
 
 
         """ ----- Commands ----- """
-        self.commands.base_velocity.ranges.for_vel_b = ( 0.3, 0.3)
+        self.commands.base_velocity.ranges.for_vel_b = ( 0.3, 0.5)
         self.commands.base_velocity.ranges.lat_vel_b = (-0.1, 0.1)
-        self.commands.base_velocity.ranges.ang_vel_b = (-0.1, 0.1)
+        self.commands.base_velocity.ranges.ang_vel_b = (-0.0, 0.0)
         self.commands.base_velocity.ranges.initial_heading_err = (0.0, 0.0)
 
 
