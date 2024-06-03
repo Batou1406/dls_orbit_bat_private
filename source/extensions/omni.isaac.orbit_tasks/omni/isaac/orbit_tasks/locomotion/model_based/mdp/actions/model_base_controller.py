@@ -3,8 +3,8 @@ from collections.abc import Sequence
 import torch
 from torch.distributions.constraints import real
 
-import jax.numpy as jnp
-import numpy as np
+# import jax.numpy as jnp
+# import numpy as np
 
 import omni.isaac.orbit.utils.math as math_utils
 
