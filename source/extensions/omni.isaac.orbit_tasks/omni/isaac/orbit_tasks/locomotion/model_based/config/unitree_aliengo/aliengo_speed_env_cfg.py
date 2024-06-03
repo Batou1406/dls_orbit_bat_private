@@ -127,7 +127,7 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
         self.rewards.track_robot_height_exp.params['height_bound'] = (-0.01,0.01)
 
         # -- Additionnal penalties : Need a negative weight
-        self.rewards.penalty_lin_vel_z_l2.weight         = -10.0
+        self.rewards.penalty_lin_vel_z_l2.weight         = -2.0
         self.rewards.penalty_ang_vel_xy_l2.weight        = -0.2
         self.rewards.penalty_dof_torques_l2.weight       = -0.0001
         self.rewards.penalty_dof_acc_l2.weight           = -1.0e-07
@@ -143,12 +143,21 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
         # -- Model based penalty : Positive weight -> penalty is already negative
         self.rewards.penalty_leg_frequency               = None
         self.rewards.penalty_leg_duty_cycle              = None
-        self.rewards.penalty_large_force.weight          = 0.1
-        self.rewards.penalty_large_step.weight           = 0.0
-        self.rewards.penalty_frequency_variation.weight  = 1.0
-        self.rewards.penatly_duty_cycle_variation.weight = 2.5
-        self.rewards.penalty_step_variation.weight       = 2.5
-        self.rewards.penatly_force_variation.weight      = 1e-4
+        self.rewards.penalty_large_force                 = None
+        self.rewards.penalty_large_step                  = None
+        self.rewards.penalty_frequency_variation         = None
+        self.rewards.penatly_duty_cycle_variation        = None
+        self.rewards.penalty_step_variation              = None
+        self.rewards.penatly_force_variation             = None
+
+        # self.rewards.penalty_leg_frequency               = None
+        # self.rewards.penalty_leg_duty_cycle              = None
+        # self.rewards.penalty_large_force.weight          = 0.1
+        # self.rewards.penalty_large_step.weight           = 0.0
+        # self.rewards.penalty_frequency_variation.weight  = 1.0
+        # self.rewards.penatly_duty_cycle_variation.weight = 2.5
+        # self.rewards.penalty_step_variation.weight       = 2.5
+        # self.rewards.penatly_force_variation.weight      = 1e-4
 
         # -- Additionnal Reward : Need a positive weight
         self.rewards.reward_is_alive                     = None
