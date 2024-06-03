@@ -200,12 +200,12 @@ def speed_command_levels_fast_walked_distance(env: RLTaskEnv, env_ids: Sequence[
     # compute the commanded distance
     required_distance = torch.norm(speed_command[env_ids, :2], dim=1) * env.max_episode_length_s
 
-    # Update difficulty only for Robots that needed to travel faster than 50% of maximum available speed
-    fast = speed_command[env_ids, 0] > (0.7 * speed_commandTerm.cfg.ranges.for_vel_b[1] * speed_commandTerm.difficulty)
+    # Update difficulty only for Robots that needed to travel faster than 90% of maximum available speed
+    fast = speed_command[env_ids, 0] > (0.9 * speed_commandTerm.cfg.ranges.for_vel_b[1] * speed_commandTerm.difficulty)
 
     # Compute the number of environment that progress or regress in the difficulty (ie. maximal velocity command sampling range)
-    increase_difficulty = torch.sum( walked_distance[fast] > (0.8 * required_distance[fast]) )
-    decrease_difficulty = torch.sum( walked_distance[fast] < (0.5 * required_distance[fast]) )
+    increase_difficulty = torch.sum( walked_distance[fast] > (0.9 * required_distance[fast]) )
+    decrease_difficulty = torch.sum( walked_distance[fast] < (0.8 * required_distance[fast]) )
 
     difficulty_progress = (increase_difficulty - decrease_difficulty) / env.num_envs
 

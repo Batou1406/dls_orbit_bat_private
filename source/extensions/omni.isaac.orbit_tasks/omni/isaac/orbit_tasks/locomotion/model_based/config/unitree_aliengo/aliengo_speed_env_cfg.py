@@ -11,7 +11,7 @@ from omni.isaac.orbit_tasks.locomotion.model_based.model_based_env_cfg import Lo
 ##
 # Pre-defined configs
 ##
-from omni.isaac.orbit_assets.unitree import UNITREE_ALIENGO_CFG, UNITREE_GO2_CFG, UNITREE_ALIENGO_TORQUE_CONTROL_CFG  # isort: skip
+from omni.isaac.orbit_assets.unitree import UNITREE_ALIENGO_CFG, UNITREE_GO2_CFG, UNITREE_ALIENGO_TORQUE_CONTROL_CFG, UNITREE_ALIENGO_SELF_COLLISION_TORQUE_CONTROL_CFG  # isort: skip
 from omni.isaac.orbit_assets.anymal import ANYMAL_C_CFG  # isort: skip
 
 from omni.isaac.orbit.terrains.config.speed import SPEED_TERRAINS_CFG
@@ -39,7 +39,8 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
         # self.scene.robot = UNITREE_ALIENGO_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
         # self.scene.robot = UNITREE_GO2_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
         # self.scene.robot = ANYMAL_C_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
-        self.scene.robot = UNITREE_ALIENGO_TORQUE_CONTROL_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")                 
+        # self.scene.robot = UNITREE_ALIENGO_TORQUE_CONTROL_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")   
+        self.scene.robot = UNITREE_ALIENGO_SELF_COLLISION_TORQUE_CONTROL_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")                 
 
         # --- Select the prime path of the height sensor
         self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/base"                                               # Unnecessary : already default 
@@ -73,7 +74,7 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
         if Speed_curriculum :
             self.commands.base_velocity.initial_difficulty = 0.2
             self.commands.base_velocity.minmum_difficulty = 0.2
-            self.commands.base_velocity.difficulty_scaling = 0.1
+            self.commands.base_velocity.difficulty_scaling = 0.15
         else :
             self.curriculum.speed_levels = None
 
@@ -137,7 +138,7 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
         self.rewards.penalty_friction.weight             = -0.3
         self.rewards.penalty_stance_foot_vel             = None #-1.0
         self.rewards.penalty_CoT.weight                  = -0.002
-        self.rewards.penalty_close_feet.weight           = -1e-3
+        self.rewards.penalty_close_feet.weight           = -0.01
 
         # -- Model based penalty : Positive weight -> penalty is already negative
         self.rewards.penalty_leg_frequency               = None

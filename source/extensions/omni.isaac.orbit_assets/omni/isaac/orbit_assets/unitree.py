@@ -275,3 +275,55 @@ UNITREE_ALIENGO_TORQUE_CONTROL_CFG = ArticulationCfg(
 )
 """Configuration of Unitree AlienGo using DC-Motor actuator model. The damping and stiffness of the DCMotors have been set to zero.
  This allow to do torque control of the robot's joint. Otherwise, only position control was possible"""
+
+UNITREE_ALIENGO_SELF_COLLISION_TORQUE_CONTROL_CFG = ArticulationCfg(
+    spawn=sim_utils.UsdFileCfg(
+        usd_path=f"{LOCAL_NUCLEUS_DIR}/Library/aliengo/aliengo.usd",
+        activate_contact_sensors=True,
+        rigid_props=sim_utils.RigidBodyPropertiesCfg(
+            disable_gravity=False,
+            retain_accelerations=False,
+            linear_damping=0.0,
+            angular_damping=0.0,
+            max_linear_velocity=1000.0,
+            max_angular_velocity=1000.0,
+            max_depenetration_velocity=1.0,
+        ),
+        articulation_props=sim_utils.ArticulationRootPropertiesCfg(
+            enabled_self_collisions=True, solver_position_iteration_count=4, solver_velocity_iteration_count=0
+        ),
+    ),
+    init_state=ArticulationCfg.InitialStateCfg(
+        pos=(0.0, 0.0, 0.4),
+        # joint_pos={
+        #     ".*L_hip_joint": 0.1,
+        #     ".*R_hip_joint": -0.1,
+        #     "F[L,R]_thigh_joint": 0.8,
+        #     "R[L,R]_thigh_joint": 1.0,
+        #     ".*_calf_joint": -1.5,
+        # },
+        joint_pos={
+            ".*L_hip_joint": 0.0,
+            ".*R_hip_joint": 0.0,
+            "F[L,R]_thigh_joint": 0.9,
+            "R[L,R]_thigh_joint": 0.9,
+            ".*_calf_joint": -1.8,
+        },
+        joint_vel={".*": 0.0},
+    ),
+    soft_joint_pos_limit_factor=0.9,
+    actuators={
+        "base_legs": DCMotorCfg(
+            joint_names_expr=[".*_hip_joint", ".*_thigh_joint", ".*_calf_joint"],
+            effort_limit=44.4,
+            saturation_effort=44.4,
+            velocity_limit=40.0,
+            stiffness=0.0,
+            damping=0.0,
+            friction=0.0,
+        ),
+    },
+)
+"""Configuration of Unitree AlienGo using DC-Motor actuator model and self-collision. The damping and stiffness of the DCMotors have been set to zero.
+ This allow to do torque control of the robot's joint. Otherwise, only position control was possible.
+ Moreover, self-collision is enable"""
