@@ -977,13 +977,13 @@ class SamplingOptimizer():
         cost_samples_jax = ...
 
         # Prepare the inital variable
-        state = initial_state_jax
         cost  = jnp.float32(0.0)
         n_    = jnp.array([-1,-1,-1,-1])
 
         num_of_contact = ...
 
         def iterate_fun(n, carry):
+            # --- Step 1 : Update variables
             # Extract the last state from carry
             cost, state, reference, n_ = carry # TODO check why we don't use the next reference...
 
@@ -1004,13 +1004,16 @@ class SamplingOptimizer():
             ], dtype=self.dtype_general)
 
             current_contact = jnp.array([
-                action_seq_samples_jax['c_samples']
+                action_seq_samples_jax['c_samples'][n]
             ], dtype=self.dtype_general)
 
-            # Integrate the dynamics with the centroidal model
+
+
+            # --- Step 2 : Integrate the dynamics with the centroidal model
             state_next = self.centroidal_step(state, input, current_contact)
 
-            # --- Step xx : Compute the cost
+
+            # --- Step 3 : Compute the cost
 
             # Compute the state cost
             state_error = state_next - reference_seq_jax[n]
@@ -1024,7 +1027,7 @@ class SamplingOptimizer():
 
             return (cost + step_cost, state_next, reference, n_)
 
-        carry = (cost, state, reference_seq_jax, n_)
+        carry = (cost, initial_state_jax, reference_seq_jax, n_)
         cost, state, reference, n_ = jax.lax.fori_loop(0, self.sampling_horizon, iterate_fun, carry)
 
         return cost_samples_jax
