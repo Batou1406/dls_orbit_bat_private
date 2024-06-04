@@ -415,7 +415,7 @@ class ModelBaseAction(ActionTerm):
             
 
         # Optimize the latent variable with the model base controller
-        self.p_star_lw, self.F_star_lw, self.c_star, self.pt_star_lw, self.full_pt_lw = self.controller.optimize_latent_variable(f=self.f, d=self.d, p_lw=self.p_lw, F_lw=self.F_lw)
+        self.p_star_lw, self.F_star_lw, self.c_star, self.pt_star_lw, self.full_pt_lw = self.controller.optimize_latent_variable(f=self.f, d=self.d, p_lw=self.p_lw, F_lw=self.F_lw, env=self._env)
 
         # Reset the inner loop counter
         self.inner_loop = 0      

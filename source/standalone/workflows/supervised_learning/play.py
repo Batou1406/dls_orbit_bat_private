@@ -85,7 +85,8 @@ def main():
             actions = policy(obs)
 
             # Select only actions at next step
-            actions = actions.view(-1, env.num_actions, buffer_size)
+            actions = actions.view(-1, buffer_size, env.num_actions) # reshape /!\ buffer_size comes before num_actions otherwise it don't work /!\
+            actions = actions[:,0,:] # select first action
 
             # env stepping
             obs, _, _, _ = env.step(actions)
