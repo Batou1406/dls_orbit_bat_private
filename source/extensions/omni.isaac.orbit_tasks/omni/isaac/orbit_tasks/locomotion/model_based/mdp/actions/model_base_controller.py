@@ -701,7 +701,7 @@ class SamplingOptimizer():
         f_samples, d_samples, p_lw_samples, F_lw_samples = self.generate_samples(f=f, d=d, p_lw=p_lw, F_lw=F_lw)
 
         # --- Step 2 : Given f and d samples -> generate the contact sequence for the samples
-        c_samples, new_phase = self.gait_generator(f_samples=f_samples, d_samples=d_samples, phase=phase, time_horizon=self.time_horizon, dt=self.dt)
+        c_samples, new_phase = self.gait_generator(f_samples=f_samples, d_samples=d_samples, phase=phase.squeeze(0), time_horizon=self.time_horizon, dt=self.dt)
 
         # --- Step 2 : prepare the variables : convert from torch.Tensor to Jax
         initial_state_jax, reference_seq_jax, action_seq_samples_jax = self.prepare_variable_for_compute_rollout(env=env, c_samples=c_samples, p_lw_samples=p_lw_samples, F_lw_samples=F_lw_samples, feet_in_contact=c_prev[0,])
@@ -927,7 +927,7 @@ class SamplingOptimizer():
             var = torch.ones_like(mean)
 
         # Sample from a normal law with the provided parameters
-        samples = mean + torch.sqrt(var) * torch.randn((num_samples,) + mean.shape)
+        samples = mean + torch.sqrt(var) * torch.randn((num_samples,) + mean.shape, device=self.device)
 
         return samples
 
