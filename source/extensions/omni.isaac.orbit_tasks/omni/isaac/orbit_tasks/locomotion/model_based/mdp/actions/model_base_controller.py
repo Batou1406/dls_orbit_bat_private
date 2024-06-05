@@ -25,7 +25,7 @@ def jax_to_torch(x):#: jax.Array):
 def torch_to_jax(x):
     return jax.dlpack.from_dlpack(torch.utils.dlpack.to_dlpack(x))
 
-from .quadrupedpympc.sampling.centroidal_nmpc_jax import Sampling_MPC
+from .quadrupedpympc.sampling.centroidal_model_jax import Centroidal_Model_JAX
 
 # import numpy as np
 # import matplotlib.pyplot as plt
@@ -650,14 +650,33 @@ class SamplingOptimizer():
         self.dt = 0.02
 
         self.device = 'cuda'
+        self.device_jax = jax.devices('gpu')[0]
+
+        self.num_legs = 4
 
         self.sampling_horizon = 200
 
-        self.samplingMPC = Sampling_MPC(horizon=self.sampling_horizon, dt=self.dt, num_parallel_computations=self.num_samples)
-
-        self.jitted_compute_rollout = self.samplingMPC.compute_rollout
+        self.state_dim = 20
+        self.input_dim = 12
 
         self.dtype_general = 'float32'
+
+        interpolation_F_method = 'cubic spline' # 'discrete', 'cubic spline'
+        if interpolation_F_method=='cubic spline' : self.interpolation_F=self.compute_cubic_spline
+        if interpolation_F_method=='discrete'     : raise NotImplementedError
+
+        # Initialize the robot model
+        self.robot_model = Centroidal_Model_JAX(self.dt,self.device)
+
+        self.F_z_min = 0
+        self.F_z_max = self.robot_model.mass*9.81
+        self.mu = 0.5
+
+        # State weight matrix (JAX)
+        self.Q = jnp.identity(self.state_dim, dtype=self.dtype_general)*0
+
+        # Input weight matrix (JAX)
+        self.R = jnp.identity(self.input_dim, dtype=self.dtype_general)
 
 
     def optimize_latent_variable(self, env: RLTaskEnv, f:torch.Tensor, d:torch.Tensor, p_lw:torch.Tensor, F_lw:torch.Tensor, phase:torch.Tensor, c_prev:torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -699,7 +718,7 @@ class SamplingOptimizer():
         return f_star, d_star, p_star_lw, F_star_lw
 
 
-    def prepare_variable_for_compute_rollout(self, env: RLTaskEnv, c_samples:torch.Tensor, p_lw_samples:torch.Tensor, F_lw_samples:torch.Tensor, feet_in_contact:torch.Tensor) -> tuple[jnp.array, jnp.array, dict]:
+    def prepare_variable_for_compute_rollout(self, env: RLTaskEnv, c_samples:torch.Tensor, p_lw_samples:torch.Tensor, F_lw_samples:torch.Tensor, feet_in_contact:torch.Tensor) -> tuple[jnp.array, dict, dict]:
         """ Helper function to modify the embedded state, reference and action to be used with the 'compute_rollout' function
 
         Note :
@@ -707,7 +726,7 @@ class SamplingOptimizer():
 
         Args :
             env (RLTaskEnv): Environment manager to retrieve all necessary simulation variable
-            c_samples       (Tensor): Leg frequency                of shape(num_samples, num_leg)
+            c_samples       (t.bool): Foot contact sequence sample of shape(num_samples, num_legs, time_horizon)
             p_lw_samples    (Tensor): Foot touch down position     of shape(num_samples, num_leg, 3, p_param)
             F_lw_samples    (Tensor): ground Reaction Forces       of shape(num_samples, num_leg, 3, F_param)
             feet_in_contact (Tensor): Feet in contact, determined by prevous solution of shape(num_legs)
@@ -747,13 +766,6 @@ class SamplingOptimizer():
         p_lw = p_lw.flatten(0,1) # shape(12) TODO, check that it reshaped correctly
 
         # Prepare the state (at time t)
-        # initial_state = {
-        #     'com_pos_lw'    : com_pos_lw,    # Position                       TODO Should be center at the COM -> Thus (0,0,0) -> height tracking is proprioceptive -> would be done with the feet
-        #     'com_lin_vel_b' : com_vel_b[:3], # Linear Velocity                TODO in world frame
-        #     'com_pose_lw'   : com_pose_lw,   # Orientation as euler_angle ZXY TODO in world frame
-        #     'com_ang_vel_b' : com_vel_b[3:], # Angular velocity               TODO in base frame (Roll, Pitch, Yaw)
-        #     'p_lw'          : p_lw,          # Foot position                  TODO Should be center at the COM
-        # }
         initial_state = torch.cat((
             com_pos_lw,    # Position                       TODO Should be center at the COM -> Thus (0,0,0) -> height tracking is proprioceptive -> would be done with the feet
             com_vel_b[:3], # Linear Velocity                TODO in world frame
@@ -778,28 +790,33 @@ class SamplingOptimizer():
 
         # Defining the foot position sequence is tricky.. Since we only have number of predicted step < time_horizon
         p_ref_lw = torch.empty((3, self.time_horizon), device=env.device) #TODO Define this !
+
+        # Compute the gravity compensation GRF along the horizon : of shape (num_samples, num_legs, 3, time_horizon)
+        number_of_leg_in_contact = (torch.sum(c_samples, dim=1)).clamp(min=1) # Compute the number of leg in contact, clamp by minimum 1 to avoid division by zero. shape(num_samples, time_horizon)
+        gravity_compensation_F = torch.zeros((self.num_samples, self.num_legs, 3, self.time_horizon), device=self.device) # shape (num_samples, num_legs, 3, time_horizon)
+        gravity_compensation_F[:,:,2,:] = ((self.robot_model.mass * 9.81) / number_of_leg_in_contact).unsqueeze(1).unsqueeze(2)  # shape (num_samples, 1, 1, time_horizon)
         
         # Prepare the reference sequence (at time t, t+dt, etc.)
-        # reference_seq = {
-        #     'com_pos_ref_lw'    : com_pos_ref_lw,    # Position reference
-        #     'com_lin_vel_ref_b' : com_vel_ref_b[:3], # Linear Velocity reference
-        #     'com_pose_ref_lw'   : com_pose_ref_lw,   # Orientation reference as euler_angle
-        #     'com_ang_vel_ref_b' : com_vel_ref_b[3:], # Angular velocity reference
-        #     'p_ref_lw'          : p_ref_lw,          # Foot position reference (xy plane in horizontal plane, hip centered)
-        # }
-        reference_seq = torch.cat((
+        reference_seq_state = torch.cat((
             com_pos_ref_lw,    # Position reference
             com_vel_ref_b[:3], # Linear Velocity reference
             com_pose_ref_lw,   # Orientation reference as euler_angle
             com_vel_ref_b[3:], # Angular velocity reference
             p_ref_lw,          # Foot position reference (xy plane in horizontal plane, hip centered)
         ))
+        reference_seq_input = torch.cat((
+            gravity_compensation_F,
+        ))
+        reference_seq = {
+            'state' : reference_seq_state,
+            'input' : reference_seq_input,
+        }
 
 
         # ----- Step 3 : Retrieve the actions and prepare them with the correct method
 
-        # TODO prepare the action (discrete, spline, etc.)
-
+        # TODO One could prepare the action here (discrete, spline, etc.)
+        
         action_seq_samples = {
             'c_samples'    : c_samples,      # Contact sequence samples          of shape(TODO)
             'p_lw_samples' : p_lw_samples,   # Foot touch down position samples  of shape(TODO)
@@ -809,14 +826,10 @@ class SamplingOptimizer():
 
         # ----- Step 4 : Convert torch tensor to jax.array
         initial_state_jax       = torch_to_jax(initial_state)
-        reference_seq_jax       = torch_to_jax(reference_seq)
 
-        # initial_state_jax = {}
-        # reference_seq_jax = {}
+        reference_seq_jax = {}
         action_seq_samples_jax = {}
-
-        # for key, value in initial_state.items      : initial_state_jax[key]       = torch_to_jax(value)
-        # for key, value in reference_seq.items      : reference_seq_jax[key]       = torch_to_jax(value)
+        for key, value in reference_seq.items      : reference_seq_jax[key]       = torch_to_jax(value)
         for key, value in action_seq_samples.items : action_seq_samples_jax[key]  = torch_to_jax(value)  
              
 
@@ -960,78 +973,203 @@ class SamplingOptimizer():
         return c_samples, new_phase_samples
 
 
-    def compute_rollout(self, initial_state_jax: jnp.array, reference_seq_jax: jnp.array, action_seq_samples_jax: dict) -> jnp.array:
+    def compute_rollout(self, initial_state_jax: jnp.array, reference_seq_jax: dict, action_seq_samples_jax: dict) -> jnp.array:
         """Calculate cost of rollouts of given action sequence samples 
 
         Args :
-            initial_state_jax      (dict): Inital state of the robot                   of shape(TODO)
-            reference_seq_jax      (dict): reference sequence for the robot state      of shape(TODO)
-            action_seq_samples_jax (dict): Action sequence to apply to the robot       of shape(TODO)          
+            initial_state_jax   (jnp.array): Inital state of the robot                  of shape(TODO)
+            reference_seq_jax        (dict): reference sequence for the robot state
+                'state'         (jnp.array):                                            of shape(TODO)
+                'input'         (jnp.array):                                            of shape(TODO)
+            action_seq_samples_jax   (dict): Action sequence to apply to the robot   
+                'c_samples'    (jnp.array) :  Contact sequence samples                  of shape(TODO)
+                'p_lw_samples' (jnp.array) :  Foot touch down position samples          of shape(TODO)
+                'F_lw_samples' (jnp.array) :  Ground Reaction Forces                    of shape(TODO)            
             
         Returns:
             cost_samples_jax  (jnp.array): costs of the rollouts                       of shape(num_samples)   
         """  
 
         # cost_samples_jax = self.jitted_compute_rollout(initial_state_jax, reference_seq_jax, action_seq_samples_jax, c_samples_jax)
-        
-        cost_samples_jax = ...
-
-        # Prepare the inital variable
-        cost  = jnp.float32(0.0)
-        n_    = jnp.array([-1,-1,-1,-1])
-
-        num_of_contact = ...
 
         def iterate_fun(n, carry):
-            # --- Step 1 : Update variables
-            # Extract the last state from carry
-            cost, state, reference, n_ = carry # TODO check why we don't use the next reference...
+            # --- Step 1 : Prepare variables
+            # Extract the last state and cost from the carried over variable
+            cost, state = carry 
 
-            # Increment n_ if leg is in contact TODO : check that its True
-            n_ = ...
-
-            F = self.spline_fun_F(action_seq_samples_jax['F_lw_samples'], n_, num_of_contact) # TODO Should be done outside... and not redone at each iteration
-
-            # Should also be done outside
-            F = F*in_contact[n]
-
-            # Enforce foot constraints : should also be done outside
-            F = self.enforce_force_constraints(F)
-
-            input = jnp.array([
-                # action_seq_samples_jax['p_lw_samples'][n], # TODO : implement this 
-                action_seq_samples_jax['F_lw_samples'][n],
-            ], dtype=self.dtype_general)
-
+            # Embed current contact into variable for the centroidal model
             current_contact = jnp.array([
                 action_seq_samples_jax['c_samples'][n]
             ], dtype=self.dtype_general)
 
 
+            # --- Step 2 : Retrieve the input given the interpolation parameters
+            # Compute the GRFs given the interpolation parameter and the point in the curve
+            F_lw_x_FL, F_lw_y_FL, F_lw_z_FL = self.interpolation_F(action_seq_samples_jax['F_lw_samples'][0,n], step, horizon)
+            F_lw_x_FR, F_lw_y_FR, F_lw_z_FR = self.interpolation_F(action_seq_samples_jax['F_lw_samples'][1,n], step, horizon)
+            F_lw_x_RL, F_lw_y_RL, F_lw_z_RL = self.interpolation_F(action_seq_samples_jax['F_lw_samples'][2,n], step, horizon)
+            F_lw_x_RR, F_lw_y_RR, F_lw_z_RR = self.interpolation_F(action_seq_samples_jax['F_lw_samples'][3,n], step, horizon)
+
+            # Apply F_lw only if in contact
+            F_lw_x_FL = F_lw_x_FL * current_contact[0]
+            F_lw_y_FL = F_lw_y_FL * current_contact[0]
+            F_lw_z_FL = F_lw_z_FL * current_contact[0]
+            
+            F_lw_x_FR = F_lw_x_FR * current_contact[1]
+            F_lw_y_FR = F_lw_y_FR * current_contact[1]
+            F_lw_z_FR = F_lw_z_FR * current_contact[1]
+
+            F_lw_x_RL = F_lw_x_RL * current_contact[2]
+            F_lw_y_RL = F_lw_y_RL * current_contact[2]
+            F_lw_z_RL = F_lw_z_RL * current_contact[2]
+
+            F_lw_x_RR = F_lw_x_RR * current_contact[3]
+            F_lw_y_RR = F_lw_y_RR * current_contact[3]
+            F_lw_z_RR = F_lw_z_RR * current_contact[3]
+
+            # Enforce force constraints
+            F_lw_x_FL, F_lw_y_FL, F_lw_z_FL, \
+            F_lw_x_FR, F_lw_y_FR, F_lw_z_FR, \
+            F_lw_x_RL, F_lw_y_RL, F_lw_z_RL, \
+            F_lw_x_RR, F_lw_y_RR, F_lw_z_RR = self.enforce_force_constraints(F_lw_x_FL, F_lw_y_FL, F_lw_z_FL,
+                                                                    F_lw_x_FR, F_lw_y_FR, F_lw_z_FR,
+                                                                    F_lw_x_RL, F_lw_y_RL, F_lw_z_RL,
+                                                                    F_lw_x_RR, F_lw_y_RR, F_lw_z_RR)
+
+            # Embed input into variable for the centroidal model
+            input = jnp.array([
+                jnp.float32(0), jnp.float32(0), jnp.float32(0), # action_seq_samples_jax['p_lw_samples'][n], # TODO : implement this 
+                jnp.float32(0), jnp.float32(0), jnp.float32(0),
+                jnp.float32(0), jnp.float32(0), jnp.float32(0),
+                jnp.float32(0), jnp.float32(0), jnp.float32(0),
+                F_lw_x_FL, F_lw_y_FL, F_lw_z_FL, # foot position fl
+                F_lw_x_FR, F_lw_y_FR, F_lw_z_FR, # foot position fr
+                F_lw_x_RL, F_lw_y_RL, F_lw_z_RL, # foot position rl
+                F_lw_x_RR, F_lw_y_RR, F_lw_z_RR, # foot position rr
+            ], dtype=self.dtype_general)
+
 
             # --- Step 2 : Integrate the dynamics with the centroidal model
-            state_next = self.centroidal_step(state, input, current_contact)
+            state_next = self.robot_model.integrate_jax(state, input, current_contact)
 
 
             # --- Step 3 : Compute the cost
 
             # Compute the state cost
-            state_error = state_next - reference_seq_jax[n]
+            state_error = state_next - reference_seq_jax['state'][n]
             state_cost = state_error.T @ self.Q @ state_error
 
             # Compute the input cost
-            # input_error = ... # F - gravity_compensation
-            # input_cost = input_error.T @ self.R @ input_error
+            input_error = input - reference_seq_jax['input'][n] 
+            input_cost = input_error.T @ self.R @ input_error
 
-            step_cost = state_cost #+ input_cost
+            step_cost = state_cost + input_cost
 
-            return (cost + step_cost, state_next, reference, n_)
+            return (cost + step_cost, state_next)
 
-        carry = (cost, initial_state_jax, reference_seq_jax, n_)
-        cost, state, reference, n_ = jax.lax.fori_loop(0, self.sampling_horizon, iterate_fun, carry)
+        # Prepare the inital variable
+        initial_cost  = jnp.float32(0.0)
+        carry = (initial_cost, initial_state_jax)
+
+        # Iterate the model over the time horizon and retrieve the cost
+        cost, state = jax.lax.fori_loop(0, self.sampling_horizon, iterate_fun, carry)
+
+        cost_samples_jax = cost
 
         return cost_samples_jax
-    
+
+
+    def compute_cubic_spline(self, parameters, step, horizon):
+        """ Given a set of spline parameters, and the point in the trajectory return the function value 
+        
+        Args :
+            parameters (jnp.array): of shape(TODO)
+            step             (int): The point in the curve in [0, horizon]
+            horizon          (int): The length of the curve
+            
+        Returns : 
+        
+        """
+
+        # Find the point in the curve q in [0,1]
+        tau = step/(horizon)        
+        q = (tau - 0.0)/(1.0-0.0)
+        
+        # Compute the spline interpolation parameters
+        a = 2*q*q*q - 3*q*q + 1
+        b = (q*q*q - 2*q*q + q)*0.5
+        c = -2*q*q*q + 3*q*q
+        d = (q*q*q - q*q)*0.5
+
+        # Compute the phi parameters
+        phi_x = (1./2.)*(((parameters[2] - parameters[1])/0.5) + ((parameters[1] - parameters[0])/0.5))
+        phi_next_x = (1./2.)*(((parameters[3] - parameters[2])/0.5) + ((parameters[2] - parameters[1])/0.5))
+
+        phi_y = (1./2.)*(((parameters[6] - parameters[5])/0.5) + ((parameters[5] - parameters[4])/0.5))
+        phi_next_y = (1./2.)*(((parameters[7] - parameters[6])/0.5) + ((parameters[6] - parameters[5])/0.5))
+
+        phi_z = (1./2.)*(((parameters[10] - parameters[9])/0.5) + ((parameters[9] - parameters[8])/0.5))
+        phi_next_z = (1./2.)*(((parameters[11] - parameters[10])/0.5) + ((parameters[10] - parameters[9])/0.5))
+
+        # Compute the function value f(x)
+        f_x = a*parameters[1] + b*phi_x + c*parameters[2]  + d*phi_next_x
+        f_y = a*parameters[5] + b*phi_y + c*parameters[6]  + d*phi_next_y
+        f_z = a*parameters[9] + b*phi_z + c*parameters[10] + d*phi_next_z
+       
+        return f_x, f_y, f_z  
+
+
+    def enforce_force_constraints(self, F_x_FL, F_y_FL, F_z_FL,
+                                        F_x_FR, F_y_FR, F_z_FR,
+                                        F_x_RL, F_y_RL, F_z_RL,
+                                        F_x_RR, F_y_RR, F_z_RR):
+       
+        # Enforce push-only of the ground!
+
+        F_z_FL = jnp.where(F_z_FL > self.F_z_min, F_z_FL, self.F_z_min)
+        F_z_FR = jnp.where(F_z_FR > self.F_z_min, F_z_FR, self.F_z_min)
+        F_z_RL = jnp.where(F_z_RL > self.F_z_min, F_z_RL, self.F_z_min)
+        F_z_RR = jnp.where(F_z_RR > self.F_z_min, F_z_RR, self.F_z_min)
+
+        # Enforce maximum force per leg!
+        F_z_FL = jnp.where(F_z_FL<self.F_z_max, F_z_FL, self.F_z_max)
+        F_z_FR = jnp.where(F_z_FR<self.F_z_max, F_z_FR, self.F_z_max)
+        F_z_RL = jnp.where(F_z_RL<self.F_z_max, F_z_RL, self.F_z_max)
+        F_z_RR = jnp.where(F_z_RR<self.F_z_max, F_z_RR, self.F_z_max)
+        
+
+
+        # Enforce friction cone
+        #( F_{\text{min}} \leq F_z \leq F_{\text{max}} )
+        # ( -\mu F_{\text{z}} \leq F_x \leq \mu F_{\text{z}} )
+        # ( -\mu F_{\text{z}} \leq F_y \leq \mu F_{\text{z}} )
+        
+        # TODO REDO this ! This is wrong ! This is not the friction cone but the friction pyramide 
+        F_x_FL = jnp.where(F_x_FL > -self.mu*F_z_FL, F_x_FL, -self.mu*F_z_FL)
+        F_x_FL = jnp.where(F_x_FL <  self.mu*F_z_FL, F_x_FL,  self.mu*F_z_FL)
+        F_y_FL = jnp.where(F_y_FL > -self.mu*F_z_FL, F_y_FL, -self.mu*F_z_FL)
+        F_y_FL = jnp.where(F_y_FL <  self.mu*F_z_FL, F_y_FL,  self.mu*F_z_FL)
+
+        F_x_FR = jnp.where(F_x_FR > -self.mu*F_z_FR, F_x_FR, -self.mu*F_z_FR)
+        F_x_FR = jnp.where(F_x_FR <  self.mu*F_z_FR, F_x_FR,  self.mu*F_z_FR)
+        F_y_FR = jnp.where(F_y_FR > -self.mu*F_z_FR, F_y_FR, -self.mu*F_z_FR)
+        F_y_FR = jnp.where(F_y_FR <  self.mu*F_z_FR, F_y_FR,  self.mu*F_z_FR)
+
+        F_x_RL = jnp.where(F_x_RL > -self.mu*F_z_RL, F_x_RL, -self.mu*F_z_RL)
+        F_x_RL = jnp.where(F_x_RL <  self.mu*F_z_RL, F_x_RL,  self.mu*F_z_RL)
+        F_y_RL = jnp.where(F_y_RL > -self.mu*F_z_RL, F_y_RL, -self.mu*F_z_RL)
+        F_y_RL = jnp.where(F_y_RL <  self.mu*F_z_RL, F_y_RL,  self.mu*F_z_RL)
+
+        F_x_RR = jnp.where(F_x_RR > -self.mu*F_z_RR, F_x_RR, -self.mu*F_z_RR)
+        F_x_RR = jnp.where(F_x_RR <  self.mu*F_z_RR, F_x_RR,  self.mu*F_z_RR)
+        F_y_RR = jnp.where(F_y_RR > -self.mu*F_z_RR, F_y_RR, -self.mu*F_z_RR)
+        F_y_RR = jnp.where(F_y_RR <  self.mu*F_z_RR, F_y_RR,  self.mu*F_z_RR)
+
+        
+        return  F_x_FL, F_y_FL, F_z_FL, \
+                F_x_FR, F_y_FR, F_z_FR, \
+                F_x_RL, F_y_RL, F_z_RL, \
+                F_x_RR, F_y_RR, F_z_RR
 
 if __name__ == "__main__":
     print('alo')
