@@ -80,7 +80,7 @@ def improved_terrain_levels_vel(
     distance = torch.norm(asset.data.root_pos_w[env_ids, :] - env.scene.env_origins[env_ids, :], dim=1)
 
     # robots that reached 80% of the distance the the border progress to harder terrains + must be time_out reset. Ie. can't be a fall or other early termination condition
-    move_up = (distance > terrain.cfg.terrain_generator.size[0] / 4.5) #* env.reset_time_outs[env_ids,] : last term don't work at init...
+    move_up = (distance > terrain.cfg.terrain_generator.size[0] / 2) #* env.reset_time_outs[env_ids,] : last term don't work at init...
 
     # robots that walked less than half of their required distance go to simpler terrains
     move_down = distance < torch.norm(speed_command[env_ids, :2], dim=1) * env.max_episode_length_s * 0.5
@@ -204,7 +204,7 @@ def speed_command_levels_fast_walked_distance(env: RLTaskEnv, env_ids: Sequence[
     fast = speed_command[env_ids, 0] > (0.9 * speed_commandTerm.cfg.ranges.for_vel_b[1] * speed_commandTerm.difficulty)
 
     # Compute the number of environment that progress or regress in the difficulty (ie. maximal velocity command sampling range)
-    increase_difficulty = torch.sum( walked_distance[fast] > (0.9 * required_distance[fast]) )
+    increase_difficulty = torch.sum( walked_distance[fast] > (0.95 * required_distance[fast]) )
     decrease_difficulty = torch.sum( walked_distance[fast] < (0.8 * required_distance[fast]) )
 
     difficulty_progress = (increase_difficulty - decrease_difficulty) / env.num_envs
