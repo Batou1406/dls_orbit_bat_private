@@ -688,6 +688,8 @@ class SamplingOptimizer():
         self.F_z_max = self.robot_model.mass*9.81
         self.mu = 0.5
 
+        self.height_ref = 0.4
+
         # State weight matrix (JAX)
         self.Q = jnp.identity(self.state_dim, dtype=self.dtype_general)*0
         self.Q = self.Q.at[0,0].set(0.0)
@@ -845,15 +847,14 @@ class SamplingOptimizer():
             com_vel_b[:3], # Linear Velocity in base frame               
             com_pose_lw,   # Orientation as euler_angle (roll, pitch, yaw) in world frame
             com_vel_b[3:], # Angular velocity as (roll, pitch, yaw)      
-            p_hip,         # Foot position centered at the hip
+            p_hip,         # Foot position centered at the hip ~(0,0,-h)
         )) # of shape(24) -> 3 + 3 + 3 + 3 + (4*3)
 
 
         # ----- Step 2 : Retrieve the robot's reference along the integration horizon
 
         # The reference position is tracked only for the height
-        com_pos_ref_lw = torch.tensor((0,0,0.4), device=self.device).unsqueeze(1).expand(3,self.sampling_horizon) # TODO : get the height reference from the right place + in the right frame
-
+        com_pos_ref_lw = torch.tensor((0,0,self.height_ref), device=self.device).unsqueeze(1).expand(3,self.sampling_horizon) # TODO should COM_heigt=0 and feet_h=-height_ref or com_height=height_ref  and feet_h=0 ??
         # The speed reference is tracked for x_b, y_b and yaw   # shape(6, time_horizon)
         speed_command = (env.command_manager.get_command("base_velocity")).squeeze(0) # shape(3)
         com_vel_ref_b = torch.tensor((speed_command[0], speed_command[1], 0, 0, 0, speed_command[2]), device=self.device).unsqueeze(1).expand(6, self.sampling_horizon) 
@@ -1262,6 +1263,44 @@ class SamplingOptimizer():
                 F_x_FR, F_y_FR, F_z_FR, \
                 F_x_RL, F_y_RL, F_z_RL, \
                 F_x_RR, F_y_RR, F_z_RR
+
+    def enforce_force_constraints_new(self, F_lw: jnp.array, c: jnp.array) -> jnp.array:
+        """ Given raw GRFs in local world frame and the contact sequence, return the GRF clamped by the friction cone
+        and set to zero if not in contact
+        
+        Args :
+            F_lw (jnp.array): Ground Reaction forces samples in lw frame     of shape(num_legs*3)
+            c    (jnp.array): contact sequence samples                       of shape(num_legs)
+            
+        Return
+            F_lw (jnp.array): Clamped ground reaction forces                 of shape(num_legs*3)"""
+
+        # --- Step 1 : Enforce the friction cone constraints
+        # Compute the maximum Force in the xz plane
+        F_xy_lw_max = self.mu * F_z
+
+        # Compute the actual force in the xy plane
+        F_xy_lw = norm(F_lw[:2])
+
+        # Compute the angle in the xy plane of the Force
+        alpha = acos(F_lw[0]/F_xy_lw)
+
+        # Apply the constraint in the xy plane
+        F_xy_lw_clamped = min(F_xy_lw, F_xy_lw_max)
+
+        # Project these clamped forces in the xy plane back as x,y component
+        F_x_lw_clamped = F_xy_lw_clamped*cos(alpha)
+        F_y_lw_clamped = F_xy_lw_clamped*sin(alpha)
+
+        # Finally reconstruct the vector
+        F_lw_clamped = (F_x_lw_clamped, F_y_lw_clamped, F_lw[2])
+
+
+        # --- Step 2 : Set force to zero for feet not in contact
+        F_lw_constrained = F_y_lw_clamped * c 
+
+        return F_lw_constrained
+        
 
 if __name__ == "__main__":
     print('alo')
