@@ -318,7 +318,7 @@ class RewardsCfg:
         weight=-0.1,
         params={
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*foot"),
-            "mu": 0.75
+            "mu": 0.55
         }
     )
     penalty_stance_foot_vel = RewTerm(func=mdp.penalize_foot_in_contact_displacement_l2, weight=-1.0)
