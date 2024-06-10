@@ -14,7 +14,7 @@ from omni.isaac.orbit_tasks.utils.wrappers.rsl_rl import (
 @configclass
 class UnitreeAliengoBasePPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
-    max_iterations = 1500
+    max_iterations = 15000
     save_interval = 50
     experiment_name = "aliengo_model_based_base"
     wandb_project = "model based"
