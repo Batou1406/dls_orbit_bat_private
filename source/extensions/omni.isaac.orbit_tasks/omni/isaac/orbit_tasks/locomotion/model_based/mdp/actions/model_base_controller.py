@@ -782,6 +782,11 @@ class SamplingOptimizer():
 
         Note :
             Initial state and reference can be retrieved only with the environment
+            _w   : World frame
+            _lw  : World frame centered at the environment center -> local world frame
+            _b   : Base frame 
+            _h   : Horizontal frame -> Base frame position for xy, world frame for z, roll, pitch, base frame for yaw
+            _bw  : Base/world frame -> Base frame position, world frame rotation
 
         Args :
             env (RLTaskEnv): Environment manager to retrieve all necessary simulation variable
@@ -815,18 +820,21 @@ class SamplingOptimizer():
         # com_pos_lw = (robot.data.root_pos_w - env.scene.env_origins).squeeze(0)
         com_pos_w = (robot.data.root_pos_w).squeeze(0)
         com_pos_b = torch.zeros_like(com_pos_w)
+        com_pos_bw = com_pos_b
 
         # Robot height is proprioceptive : need to compute it
         # feet_pos_lw = (robot.data.body_pos_w[:, foot_idx,:]).squeeze(0) - env.scene.env_origins # ((4,3) - (1,3)) -> shape(4,3) - retrieve position
         feet_pos_w = (robot.data.body_pos_w[:, foot_idx,:]).squeeze(0) # ((4,3) - (1,3)) -> shape(4,3) - retrieve position
-        com_pos_h = com_pos_w[2] - (torch.sum(feet_pos_w[:,2] * feet_in_contact)) / (torch.sum(feet_in_contact)) # shape(1)
+        height_mean_foot_w = (torch.sum(feet_pos_w[:,2] * feet_in_contact)) / (torch.sum(feet_in_contact)) #shape(1)
+        com_pos_height_h = com_pos_w[2] - height_mean_foot_w # shape(1)
 
         # Compute the robot CoM position into the horiontal frame -> (0,0, proprioceptive height)
-        com_pos_h = torch.cat((com_pos_b[0], com_pos_b[0], com_pos_h), dim=0)
+        com_pos_h = torch.cat((com_pos_b[0], com_pos_b[0], com_pos_height_h), dim=0)
 
         # Retrieve the robot orientation in lw as euler angle ZXY of shape(3)
         roll, pitch, yaw = math_utils.euler_xyz_from_quat(robot.data.root_quat_w) # TODO Check the angles !
-        com_pose_lw = torch.tensor((roll, pitch, yaw), device=self.device)
+        com_pose_w = torch.tensor((roll, pitch, yaw), device=self.device)
+        com_pose_bw = com_pose_w
 
         # Retrieve the robot linear and angular velocity in base frame of shape(6)
         com_vel_b = (robot.data.root_vel_b).squeeze(0)
@@ -836,35 +844,40 @@ class SamplingOptimizer():
 
         # Retrieve the feet position in local world frame of shape(num_legs, 3)
         p_w = feet_pos_w #shape(4,3) - foot position in lw
-        p_hip_w_rot = p_w - hip_position_w #foot position in horzontal frame (shape(4,3)-shape(1,3) -> shape(4,3))
-        p_hip = math_utils.quat_apply_yaw(quat=robot.data.root_quat_w, vec=p_hip_w_rot) # Foot position in hip centered (horizontal) frame shape(4,3)
-        p_hip = p_hip.flatten(0,1) # shape(12) TODO, check that it's reshaped correctly
+        # p_hip_w_rot = p_w - hip_position_w #foot position in horzontal frame (shape(4,3)-shape(1,3) -> shape(4,3))
+        # p_hip = math_utils.quat_apply_yaw(quat=robot.data.root_quat_w, vec=p_hip_w_rot) # Foot position in hip centered (horizontal) frame shape(4,3)
+        # p_hip = p_hip.flatten(0,1) # shape(12) TODO, check that it's reshaped correctly
         # p_lw = p_lw.flatten(0,1) # shape(12) TODO, check that it's reshaped correctly
+        p_bw = p_w - com_pos_w.unsqueeze(0) # shape(4,3)-shape(1,3) -> shape(4,3)
 
         # Prepare the state (at time t)
         initial_state = torch.cat((
-            com_pos_h,     # Position in horizontal frame (Centered at CoM thus (0,0,h)), height tracking is proprioceptive -> would be done with the feet
+            com_pos_bw,     # Position in horizontal frame (Centered at CoM thus (0,0,h)), height tracking is proprioceptive -> would be done with the feet
             com_vel_b[:3], # Linear Velocity in base frame               
-            com_pose_lw,   # Orientation as euler_angle (roll, pitch, yaw) in world frame
+            com_pose_bw,   # Orientation as euler_angle (roll, pitch, yaw) in world frame
             com_vel_b[3:], # Angular velocity as (roll, pitch, yaw)      
-            p_hip,         # Foot position centered at the hip ~(0,0,-h)
+            p_bw,         # Foot position centered at the hip ~(0,0,-h)
         )) # of shape(24) -> 3 + 3 + 3 + 3 + (4*3)
 
 
         # ----- Step 2 : Retrieve the robot's reference along the integration horizon
 
         # The reference position is tracked only for the height
+        com_pos_ref_bw = com_pos_bw # shape(3)
+        com_pos_ref_bw[2] = self.height_ref - (com_pos_w[2] - height_mean_foot_w) # shape(1)TODO transform this into a sequence !!!!
+
         com_pos_ref_lw = torch.tensor((0,0,self.height_ref), device=self.device).unsqueeze(1).expand(3,self.sampling_horizon) # TODO should COM_heigt=0 and feet_h=-height_ref or com_height=height_ref  and feet_h=0 ??
         # The speed reference is tracked for x_b, y_b and yaw   # shape(6, time_horizon)
         speed_command = (env.command_manager.get_command("base_velocity")).squeeze(0) # shape(3)
         com_vel_ref_b = torch.tensor((speed_command[0], speed_command[1], 0, 0, 0, speed_command[2]), device=self.device).unsqueeze(1).expand(6, self.sampling_horizon) 
 
         # The pose reference is (0,0) for roll and pitch, but the yaw must be integrated along the horizon
-        com_pose_ref_lw = torch.zeros_like(com_pos_ref_lw) # shape(3, time_horizon)
-        com_pose_ref_lw[2] =  com_pose_lw[2] + (torch.arange(self.sampling_horizon, device=env.device) * (self.dt * speed_command[2])) # shape(time_horizon)
+        com_pose_ref_w = torch.zeros_like(com_pos_ref_lw) # shape(3, time_horizon)
+        com_pose_ref_w[2] =  com_pose_w[2] + (torch.arange(self.sampling_horizon, device=env.device) * (self.dt * speed_command[2])) # shape(time_horizon)
+        com_pose_ref_bw = com_pose_ref_w
 
         # Defining the foot position sequence is tricky.. Since we only have number of predicted step < time_horizon
-        p_ref_lw = torch.zeros((4,3, self.sampling_horizon), device=env.device) #TODO Define this !
+        p_ref_bw = torch.zeros((4,3, self.sampling_horizon), device=env.device) #TODO Define this !
 
         # Compute the gravity compensation GRF along the horizon : of shape (num_samples, num_legs, 3, time_horizon)
         number_of_leg_in_contact_samples = (torch.sum(c_samples, dim=1)).clamp(min=1) # Compute the number of leg in contact, clamp by minimum 1 to avoid division by zero. shape(num_samples, time_horizon)
@@ -873,11 +886,11 @@ class SamplingOptimizer():
         
         # Prepare the reference sequence (at time t, t+dt, etc.)
         reference_seq_state = torch.cat((
-            com_pos_ref_lw,    # Position reference                                                     of shape( 3, time_horizon)
+            com_pos_ref_bw,    # Position reference                                                     of shape( 3, time_horizon)
             com_vel_ref_b[:3], # Linear Velocity reference                                              of shape( 3, time_horizon)
-            com_pose_ref_lw,   # Orientation reference as euler_angle                                   of shape( 3, time_horizon)
+            com_pose_ref_bw,   # Orientation reference as euler_angle                                   of shape( 3, time_horizon)
             com_vel_ref_b[3:], # Angular velocity reference                                             of shape( 3, time_horizon)
-            p_ref_lw,          # Foot position reference (xy plane in horizontal plane, hip centered)   of shape(12, time_horizon)
+            p_ref_bw,          # Foot position reference (xy plane in horizontal plane, hip centered)   of shape(12, time_horizon)
         )).permute(1,0) # of shape(time_horizon, 24) -> 3 + 3 + 3 + 3 + (4*3)
 
         reference_seq_input_samples = torch.cat((
