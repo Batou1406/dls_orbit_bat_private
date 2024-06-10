@@ -109,7 +109,7 @@ class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
         self.rewards.track_lin_vel_xy_exp.weight         = 1.5
         self.rewards.track_soft_vel_xy_exp               = None
         self.rewards.track_ang_vel_z_exp.weight          = 0.75
-        self.rewards.track_robot_height_exp              = 0.2
+        self.rewards.track_robot_height_exp.weight       = 0.2
 
         # -- Additionnal penalties : Need a negative weight
         self.rewards.penalty_lin_vel_z_l2.weight         = -2.0
