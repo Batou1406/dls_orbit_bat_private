@@ -119,7 +119,7 @@ class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
         self.rewards.penalty_action_rate_l2              = None
         self.rewards.undesired_contacts                  = None
         self.rewards.flat_orientation_l2.weight          = -1.0
-        self.rewards.dof_pos_limits                      = None
+        self.rewards.dof_pos_limits.weight               = -3.0
         self.rewards.penalty_friction                    = None
         self.rewards.penalty_stance_foot_vel             = None
         self.rewards.penalty_CoT.weight                  = -0.04
