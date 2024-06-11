@@ -137,6 +137,7 @@ class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
 
         # -- Additionnal Reward : Need a positive weight
         self.rewards.reward_is_alive                     = None #0.25
+        self.rewards.penalty_failed                      = None
 
 
         """ ----- terminations ----- """

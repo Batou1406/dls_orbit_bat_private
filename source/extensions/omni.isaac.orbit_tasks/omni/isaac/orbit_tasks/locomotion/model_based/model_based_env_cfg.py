@@ -338,6 +338,7 @@ class RewardsCfg:
 
     # -- Additionnal Reward : Need a positive weight
     reward_is_alive        = RewTerm(func=mdp.is_alive, weight=0.25)
+    penalty_failed         = RewTerm(func=mdp.is_terminated, weight=1.0)
 
 
 @configclass

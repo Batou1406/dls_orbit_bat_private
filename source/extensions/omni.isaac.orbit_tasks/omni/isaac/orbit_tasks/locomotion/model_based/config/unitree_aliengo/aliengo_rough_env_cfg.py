@@ -14,10 +14,15 @@ from omni.isaac.orbit_tasks.locomotion.model_based.model_based_env_cfg import Lo
 from omni.isaac.orbit_assets.unitree import UNITREE_ALIENGO_CFG, UNITREE_GO2_CFG, UNITREE_ALIENGO_TORQUE_CONTROL_CFG, UNITREE_ALIENGO_SELF_COLLISION_TORQUE_CONTROL_CFG  # isort: skip
 from omni.isaac.orbit_assets.anymal import ANYMAL_C_CFG  # isort: skip
 
+from omni.isaac.orbit.terrains import TerrainImporterUniformDifficulty
 
 @configclass
 class UnitreeAliengoRoughEnvCfg(LocomotionModelBasedEnvCfg):
     def __post_init__(self):
+
+        # --- Change the standard curriculum, must be done before super().__post_init__()
+        self.scene.terrain.class_type = TerrainImporterUniformDifficulty
+
         # post init of parent
         super().__post_init__()
 
@@ -34,9 +39,9 @@ class UnitreeAliengoRoughEnvCfg(LocomotionModelBasedEnvCfg):
 
 
         """ ----- Commands ----- """
-        self.commands.base_velocity.ranges.for_vel_b = (-1.0, 1.0)
-        self.commands.base_velocity.ranges.lat_vel_b = (-1.0, 1.0)
-        self.commands.base_velocity.ranges.ang_vel_b = (-1.0, 1.0)
+        self.commands.base_velocity.ranges.for_vel_b = (-0.8, 0.8)
+        self.commands.base_velocity.ranges.lat_vel_b = (-0.8, 0.8)
+        self.commands.base_velocity.ranges.ang_vel_b = (-0.8, 0.8)
         self.commands.base_velocity.ranges.initial_heading_err = (-math.pi, math.pi)
 
 
@@ -71,7 +76,8 @@ class UnitreeAliengoRoughEnvCfg(LocomotionModelBasedEnvCfg):
                  'External Torque'  : True,
                  'External Force'   : True,
                  'Random joint pos' : True,
-                 'Push Robot'       : True}
+                 'Push Robot'       : True,
+                 'Friction'         : True,}
 
         # --- startup
         if Event['Base Mass'] : 
@@ -98,6 +104,10 @@ class UnitreeAliengoRoughEnvCfg(LocomotionModelBasedEnvCfg):
 
         if Event["Random joint pos"] :
             self.events.reset_robot_joints.params["position_range"] = (0.8, 1.2)                                        # default was (1.0, 1.0)
+
+        if Event["Friction"]:
+            self.events.physics_material.params["static_friction_range"]  = (0.6, 0.8)                                  # default was 0.8
+            self.events.physics_material.params["dynamic_friction_range"] = (0.4, 0.6)                                  # default was 0.6
         
         # --- Interval
         if not Event['Push Robot'] :
@@ -137,6 +147,7 @@ class UnitreeAliengoRoughEnvCfg(LocomotionModelBasedEnvCfg):
 
         # -- Additionnal Reward : Need a positive weight
         self.rewards.reward_is_alive.weight              = 0.1 #None
+        self.rewards.penalty_failed                      = None
 
 
         """ ----- terminations ----- """
