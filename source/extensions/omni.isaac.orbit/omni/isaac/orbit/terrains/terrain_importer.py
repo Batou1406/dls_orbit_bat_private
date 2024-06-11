@@ -401,7 +401,8 @@ class TerrainImporterUniformDifficulty(TerrainImporter):
         proportion = (torch.rand_like(self.difficulty[env_ids], dtype=torch.float) > 0.75)
 
         # Generate sampled law
-        uniform = torch.floor(torch.rand_like(self.terrain_levels[env_ids], dtype=torch.float) * (0.999 + self.difficulty[env_ids])).to(torch.int)
+        # uniform = torch.floor(torch.rand_like(self.terrain_levels[env_ids], dtype=torch.float) * (0.999 + self.difficulty[env_ids])).to(torch.int)
+        uniform = torch.round(torch.rand_like(self.terrain_levels[env_ids], dtype=torch.float) * (self.difficulty[env_ids])).to(torch.int)
         maximum = self.difficulty[env_ids]*torch.ones_like(self.terrain_levels[env_ids])
 
         # Sample 75% of the terrain with uniform law between [0,difficulty], and 25% of the terrain with difficulty

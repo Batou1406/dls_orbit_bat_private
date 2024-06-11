@@ -114,11 +114,7 @@ class RigidObject(AssetBase):
         if env_ids is None:
             env_ids = slice(None)
         # reset external wrench
-        try: self._external_force_b[env_ids] = 0.0
-        except:
-            print('ALOOOOOOOOOOOOOOOOOOOOOOOO')
-            print(env_ids)
-            breakpoint()
+        self._external_force_b[env_ids] = 0.0
         self._external_torque_b[env_ids] = 0.0
         # reset last body vel
         self._last_body_vel_w[env_ids] = 0.0
