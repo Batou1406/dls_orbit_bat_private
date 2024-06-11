@@ -413,9 +413,10 @@ class ModelBaseAction(ActionTerm):
             # breakpoint() 
             self.p_lw[torch.nonzero(torch.isinf(self.p_lw))] = 0
             
+        height_map = torch.zeros(17,11)
 
         # Optimize the latent variable with the model base controller
-        self.p_star_lw, self.F_star_lw, self.c_star, self.pt_star_lw, self.full_pt_lw = self.controller.optimize_latent_variable(f=self.f, d=self.d, p_lw=self.p_lw, F_lw=self.F_lw, env=self._env)
+        self.p_star_lw, self.F_star_lw, self.c_star, self.pt_star_lw, self.full_pt_lw = self.controller.optimize_latent_variable(f=self.f, d=self.d, p_lw=self.p_lw, F_lw=self.F_lw, env=self._env, height_map=height_map)
 
         # Reset the inner loop counter
         self.inner_loop = 0      
@@ -858,29 +859,29 @@ class ModelBaseAction(ActionTerm):
         if verbose_loop>=400:
             verbose_loop=0
             print()
-            # print('Contact sequence : ', c0_star[0,...].flatten())
-            # print('  Leg  frequency : ', self.f[0,:])
-            # print('   duty   cycle  : ', self.d[0,...].flatten())
+            print('Contact sequence : ', c0_star[0,...].flatten())
+            print('  Leg  frequency : ', self.f[0,:])
+            print('   duty   cycle  : ', self.d[0,...].flatten())
             # print('terrain dificulty: ', torch.mean(self._env.scene.terrain.terrain_levels.float()))
             # print('terrain dificulty: ', self._env.scene.terrain.terrain_levels.float()[:4])
-            print('speed difficulty : ', self._env.command_manager.get_term("base_velocity").difficulty)
-            print('speed command    : ', self._env.command_manager.get_command("base_velocity")[:,0])
-            print('Actual Speed     : ', self._asset.data.root_lin_vel_b[:,0])
-            # print('Touch-down pos   : ', self.p_lw[0,0,:,0])
+            # print('speed difficulty : ', self._env.command_manager.get_term("base_velocity").difficulty)
+            # print('speed command    : ', self._env.command_manager.get_command("base_velocity")[:,0])
+            # print('Actual Speed     : ', self._asset.data.root_lin_vel_b[:,0])
+            print('Touch-down pos   : ', self.p_lw[0,0,:,0])
             # print(' Foot  position  : ', p_lw[0,...])
             # print(' Robot position  : ', self._asset.data.root_pos_w[0,...])
             # print('Foot traj shape  : ', self.pt_star_lw.shape)
             # print('Foot traj : ', self.pt_star_lw[0,0,:3,:])
-            # print('Foot Force :', self.F_star_lw[0,:,:])
+            print('Foot Force :', self.F_star_lw[0,:,:])
             # print('\nZ lin vel : ', self._asset.data.root_lin_vel_b[0, 2])
             # print(self._env.reward_manager.find_terms('track_lin_vel_xy_exp'))
-            try : 
+            # try : 
                 # print('Penalty Lin vel z  : ',self._env.reward_manager._episode_sums["penalty_lin_vel_z_l2"][0])
                 # print('Track ang vel z    : ',self._env.reward_manager._episode_sums["track_ang_vel_z_exp"][0])
                 # print('Penalty frequency  : ',self._env.reward_manager._episode_sums["penalty_frequency_variation"][0])
-                print('Track soft exp    : ',self._env.reward_manager._episode_sums["track_soft_vel_xy_exp"][0:4])
-                print('Track exp         : ',self._env.reward_manager._episode_sums["track_lin_vel_xy_exp"][0:4])
-            except : pass
+                # print('Track soft exp    : ',self._env.reward_manager._episode_sums["track_soft_vel_xy_exp"][0:4])
+                # print('Track exp         : ',self._env.reward_manager._episode_sums["track_lin_vel_xy_exp"][0:4])
+            # except : pass
 
             if (self.F_lw != self.F_star_lw).any():
                 assert ValueError('F value don\'t match...')

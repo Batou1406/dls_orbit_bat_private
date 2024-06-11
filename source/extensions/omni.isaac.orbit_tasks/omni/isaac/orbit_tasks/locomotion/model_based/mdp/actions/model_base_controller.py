@@ -231,7 +231,7 @@ class samplingController(modelBaseController):
 
 
 # ----------------------------------- Outer Loop ------------------------------
-    def optimize_latent_variable(self, f: torch.Tensor, d: torch.Tensor, p_lw: torch.Tensor, F_lw: torch.Tensor, env: RLTaskEnv) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    def optimize_latent_variable(self, f: torch.Tensor, d: torch.Tensor, p_lw: torch.Tensor, F_lw: torch.Tensor, env: RLTaskEnv, height_map:torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """ Given the latent variable z=[f,d,p,F], return the optimized latent variable p*, F*, c*, pt*
         Note :
             The variable are in the 'local' world frame _wl. This notation is introduced to avoid confusion with the 'global' world frame, where all the batches coexists.
@@ -242,6 +242,7 @@ class samplingController(modelBaseController):
             - p_lw (trch.Tensor): Prior foot touch down seq. in _lw     of shape (batch_size, num_legs, 3, number_predict_step)
             - F_lw (trch.Tensor): Prior Ground Reac. Forces (GRF) seq.  of shape (batch_size, num_legs, 3, time_horizon)
                                   In local world frame
+            - height_map (Tnsor): Height map arround the robot          of shape(x, y)
 
         Returns:
             - p*_lw (tch.Tensor): Optimized foot touch down seq. in _lw of shape (batch_size, num_legs, 3, number_predict_step)
@@ -254,8 +255,9 @@ class samplingController(modelBaseController):
         F_lw = F_lw.expand(1,4,3,5)
         p_lw = p_lw.expand(1,4,3,5)
 
-        f_star, d_star, F_star_lw, p_star_lw = self.samplingOptimizer.optimize_latent_variable(env=env, f=f, d=d, p_lw=p_lw, F_lw=F_lw, phase=self.phase, c_prev=self.c_prev)
+        f_star, d_star, F_star_lw, p_star_lw = self.samplingOptimizer.optimize_latent_variable(env=env, f=f, d=d, p_lw=p_lw, F_lw=F_lw, phase=self.phase, c_prev=self.c_prev, height_map=height_map)
         # f_star, d_star, F_star_lw, p_star_lw = f, d, F_lw, p_lw
+        # breakpoint() TODO Fix d
 
         # Compute the contact sequence and update the phase
         c_star, self.phase = self.gait_generator(f=f_star, d=d_star, phase=self.phase, time_horizon=self._time_horizon, dt=self._dt_out)
@@ -734,7 +736,7 @@ class SamplingOptimizer():
         self.R = self.R.at[23,23].set(0.001) #foot_force_z_RR
 
 
-    def optimize_latent_variable(self, env: RLTaskEnv, f:torch.Tensor, d:torch.Tensor, p_lw:torch.Tensor, F_lw:torch.Tensor, phase:torch.Tensor, c_prev:torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    def optimize_latent_variable(self, env: RLTaskEnv, f:torch.Tensor, d:torch.Tensor, p_lw:torch.Tensor, F_lw:torch.Tensor, phase:torch.Tensor, c_prev:torch.Tensor, height_map) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """ Given latent variable f,d,F,p, returns f*,d*,F*,p*, optimized with a sampling optimization 
         
         Args :
@@ -744,6 +746,7 @@ class SamplingOptimizer():
             F_lw   (Tensor): ground Reaction Forces       of shape(batch_size, num_leg, 3, F_param)
             phase  (Tensor): Current feet phase           of shape(batch_size, num_leg)
             c_prev (Tensor): Contact sequence determined at previous iteration of shape (batch_size, num_leg)
+            height_map (Tr): Height map arround the robot of shape(x, y)
 
         Returns :
             f_star    (Tensor): Leg frequency                of shape(batch_size, num_leg)
@@ -752,8 +755,8 @@ class SamplingOptimizer():
             F_star_lw (Tensor): ground Reaction Forces       of shape(batch_size, num_leg, 3, F_param)
         """
 
-        # --- Step 1 : Generate the samples
-        f_samples, d_samples, p_lw_samples, F_lw_samples = self.generate_samples(f=f, d=d, p_lw=p_lw, F_lw=F_lw)
+        # --- Step 1 : Generate the samples and bound them to valid input
+        f_samples, d_samples, p_lw_samples, F_lw_samples = self.generate_samples(f=f, d=d, p_lw=p_lw, F_lw=F_lw, height_map=height_map)
 
         # --- Step 2 : Given f and d samples -> generate the contact sequence for the samples
         c_samples, new_phase = self.gait_generator(f_samples=f_samples, d_samples=d_samples, phase=phase.squeeze(0), time_horizon=self.sampling_horizon, dt=self.dt)
@@ -763,8 +766,6 @@ class SamplingOptimizer():
         action_seq_c_samples_jax, action_p_lw_samples_jax, action_F_lw_samples_jax = self.prepare_variable_for_compute_rollout(env=env, c_samples=c_samples, p_lw_samples=p_lw_samples, F_lw_samples=F_lw_samples, feet_in_contact=c_prev[0,])
 
         # --- Step 3 : Compute the rollouts to find the rollout cost : can't used named argument with VMAP...
-        # cost_samples_jax = self.jit_parallel_compute_rollout(initial_state_jax=initial_state_jax, reference_seq_state_jax=reference_seq_state_jax, reference_seq_input_jax=reference_seq_input_samples_jax,
-        #                                                      action_seq_c_jax=action_seq_c_samples_jax, action_p_lw_jax=action_p_lw_samples_jax, action_F_lw_jax=action_F_lw_samples_jax)
         cost_samples_jax = self.jit_parallel_compute_rollout(initial_state_jax, reference_seq_state_jax, reference_seq_input_samples_jax,
                                                              action_seq_c_samples_jax, action_p_lw_samples_jax, action_F_lw_samples_jax)
         
@@ -773,6 +774,11 @@ class SamplingOptimizer():
 
         # --- Step 4 : Convert the optimal value back to torch.Tensor
         f_star, d_star, p_star_lw, F_star_lw = self.retrieve_z_from_action_seq(best_index, f_samples, d_samples, p_lw_samples, F_lw_samples)
+
+        print()
+        print(p_lw)
+        print(p_star_lw)
+        breakpoint()
 
         return f_star, d_star, p_star_lw, F_star_lw
 
@@ -818,9 +824,9 @@ class SamplingOptimizer():
         # ----- Step 1 : Retrieve the initial state
         # Retrieve the robot position in local world frame of shape(3)
         # com_pos_lw = (robot.data.root_pos_w - env.scene.env_origins).squeeze(0)
-        com_pos_w = (robot.data.root_pos_w).squeeze(0)
-        com_pos_b = torch.zeros_like(com_pos_w)
-        com_pos_bw = com_pos_b
+        com_pos_w = (robot.data.root_pos_w).squeeze(0) # shape(3)
+        com_pos_b = torch.zeros_like(com_pos_w)        # shape(3)
+        com_pos_bw = com_pos_b                         # shape(3)
 
         # Robot height is proprioceptive : need to compute it
         # feet_pos_lw = (robot.data.body_pos_w[:, foot_idx,:]).squeeze(0) - env.scene.env_origins # ((4,3) - (1,3)) -> shape(4,3) - retrieve position
@@ -829,7 +835,7 @@ class SamplingOptimizer():
         com_pos_height_h = com_pos_w[2] - height_mean_foot_w # shape(1)
 
         # Compute the robot CoM position into the horiontal frame -> (0,0, proprioceptive height)
-        com_pos_h = torch.cat((com_pos_b[0], com_pos_b[0], com_pos_height_h), dim=0)
+        com_pos_h = torch.stack((com_pos_b[0], com_pos_b[1], com_pos_height_h), dim=0)
 
         # Retrieve the robot orientation in lw as euler angle ZXY of shape(3)
         roll, pitch, yaw = math_utils.euler_xyz_from_quat(robot.data.root_quat_w) # TODO Check the angles !
@@ -849,6 +855,7 @@ class SamplingOptimizer():
         # p_hip = p_hip.flatten(0,1) # shape(12) TODO, check that it's reshaped correctly
         # p_lw = p_lw.flatten(0,1) # shape(12) TODO, check that it's reshaped correctly
         p_bw = p_w - com_pos_w.unsqueeze(0) # shape(4,3)-shape(1,3) -> shape(4,3)
+        p_bw = p_bw.flatten(0,1) # shape(12) TODO, check that it's reshaped correctly
 
         # Prepare the state (at time t)
         initial_state = torch.cat((
@@ -866,6 +873,8 @@ class SamplingOptimizer():
         com_pos_ref_bw = com_pos_bw # shape(3)
         com_pos_ref_bw[2] = self.height_ref - (com_pos_w[2] - height_mean_foot_w) # shape(1)TODO transform this into a sequence !!!!
 
+        com_pos_ref_bw = com_pos_ref_bw.unsqueeze(1).expand(3, self.sampling_horizon) # TODO Verify this !
+
         com_pos_ref_lw = torch.tensor((0,0,self.height_ref), device=self.device).unsqueeze(1).expand(3,self.sampling_horizon) # TODO should COM_heigt=0 and feet_h=-height_ref or com_height=height_ref  and feet_h=0 ??
         # The speed reference is tracked for x_b, y_b and yaw   # shape(6, time_horizon)
         speed_command = (env.command_manager.get_command("base_velocity")).squeeze(0) # shape(3)
@@ -874,10 +883,11 @@ class SamplingOptimizer():
         # The pose reference is (0,0) for roll and pitch, but the yaw must be integrated along the horizon
         com_pose_ref_w = torch.zeros_like(com_pos_ref_lw) # shape(3, time_horizon)
         com_pose_ref_w[2] =  com_pose_w[2] + (torch.arange(self.sampling_horizon, device=env.device) * (self.dt * speed_command[2])) # shape(time_horizon)
-        com_pose_ref_bw = com_pose_ref_w
+        com_pose_ref_bw = com_pose_ref_w # shape(3, time_horizon)
 
         # Defining the foot position sequence is tricky.. Since we only have number of predicted step < time_horizon
-        p_ref_bw = torch.zeros((4,3, self.sampling_horizon), device=env.device) #TODO Define this !
+        p_ref_bw = torch.zeros((4,3, self.sampling_horizon), device=env.device) # # shape(4, 3, sampling_horizon) TODO Define this !
+        p_ref_bw = p_ref_bw.flatten(0,1) # shape(12, sampling_horizon) TODO, check that it's reshaped correctly
 
         # Compute the gravity compensation GRF along the horizon : of shape (num_samples, num_legs, 3, time_horizon)
         number_of_leg_in_contact_samples = (torch.sum(c_samples, dim=1)).clamp(min=1) # Compute the number of leg in contact, clamp by minimum 1 to avoid division by zero. shape(num_samples, time_horizon)
@@ -971,7 +981,7 @@ class SamplingOptimizer():
         return best_action_seq, best_index
 
 
-    def generate_samples(self, f:torch.Tensor, d:torch.Tensor, p_lw:torch.Tensor, F_lw:torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    def generate_samples(self, f:torch.Tensor, d:torch.Tensor, p_lw:torch.Tensor, F_lw:torch.Tensor, height_map:torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """ Given action (f,d,p,F), generate action sequence samples (f_samples, d_samples, p_samples, F_samples)
         If multiple action sequence are provided (because several policies are blended together), generate samples
         from these polices with equal proportions. TODO
@@ -981,6 +991,7 @@ class SamplingOptimizer():
             d    (Tensor): Leg duty cycle               of shape(batch_size, num_leg)
             p_lw (Tensor): Foot touch down position     of shape(batch_size, num_leg, 3, p_param)
             F_lw (Tensor): ground Reaction Forces       of shape(batch_size, num_leg, 3, F_param)
+            height_map   (torch.Tensor): Height map arround the robot        of shape(x, y)
             
         Returns :
             f_samples    (Tensor) : Leg frequency samples               of shape(num_samples, num_leg)
@@ -993,6 +1004,9 @@ class SamplingOptimizer():
         d_samples = self.normal_sampling(num_samples=self.num_samples, mean=d[0])
         p_lw_samples = self.normal_sampling(num_samples=self.num_samples, mean=p_lw[0])
         F_lw_samples = self.normal_sampling(num_samples=self.num_samples, mean=F_lw[0])
+
+        # Clamp the input to valid range and make sure p[2] is on the ground
+        f_samples, d_samples, p_lw_samples, F_lw_samples = self.enforce_valid_input(f_samples=f_samples, d_samples=d_samples, p_lw_samples=p_lw_samples, F_lw_samples=F_lw_samples, height_map=height_map)
 
         return f_samples, d_samples, p_lw_samples, F_lw_samples
 
@@ -1277,6 +1291,7 @@ class SamplingOptimizer():
                 F_x_RL, F_y_RL, F_z_RL, \
                 F_x_RR, F_y_RR, F_z_RR
 
+
     def enforce_force_constraints_new(self, F_lw: jnp.array, c: jnp.array) -> jnp.array:
         """ Given raw GRFs in local world frame and the contact sequence, return the GRF clamped by the friction cone
         and set to zero if not in contact
@@ -1314,6 +1329,47 @@ class SamplingOptimizer():
 
         return F_lw_constrained
         
+
+    def enforce_valid_input(self, f_samples: torch.Tensor, d_samples: torch.Tensor, p_lw_samples: torch.Tensor, F_lw_samples: torch.Tensor, height_map: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """ Enforce the input f, d, p_lw, F_lw to valid ranges. Ie. clip
+            - f to [0,3] [Hz]
+            - d to [0,1]
+            /!\ NOT CLAMPED /!\ - p_lw to (p_x=[-0.24,+0.36], p_y=[-0.20,+0.20],[]) because not in the right frame
+            - F_lw -> F_lw_z to [0, +inf]
+        Moreover, ensure, p_z on the ground
+
+        Args
+            f_samples    (torch.Tensor): Leg frequency samples               of shape(num_samples, num_leg)
+            d_samples    (torch.Tensor): Leg duty cycle samples              of shape(num_samples, num_leg)
+            p_lw_samples (torch.Tensor): Foot touch down position samples    of shape(num_samples, num_leg, 3, p_param)
+            F_lw_samples (torch.Tensor): Ground Reaction forces samples      of shape(num_samples, 3, F_param)
+            height_map   (torch.Tensor): Height map arround the robot        of shape(x, y)
+
+        Return
+            f_samples    (torch.Tensor): Clipped Leg frequency samples               of shape(num_samples, num_leg)
+            d_samples    (torch.Tensor): Clipped Leg duty cycle samples              of shape(num_samples, num_leg)
+            p_lw_samples (torch.Tensor): Clipped Foot touch down position samples    of shape(num_samples, num_leg, 3, p_param)
+            F_lw_samples (torch.Tensor): Clipped Ground Reaction forces samples      of shape(num_samples, 3, F_param)
+        """
+        
+        # Clip f
+        f_samples = f_samples.clamp(min=0, max=3)
+
+        # Clip d
+        d_samples = d_samples.clamp(min=0, max=1)
+
+        # Clip p
+        # p_lw_samples[:,0] = p_lw_samples[:,0].clamp(min=-0.24,max=+0.36)
+        # p_lw_samples[:,1] = p_lw_samples[:,1].clamp(min=-0.20,max=+0.20)
+
+        # Clip F
+        F_lw_samples = F_lw_samples.clamp(min=0)
+
+        # Ensure p on the ground TODO Implement
+        p_lw_samples[:,2] = -0.4*torch.ones_like(p_lw_samples[:,2])
+
+        return f_samples, d_samples, p_lw_samples, F_lw_samples
+
 
 if __name__ == "__main__":
     print('alo')
