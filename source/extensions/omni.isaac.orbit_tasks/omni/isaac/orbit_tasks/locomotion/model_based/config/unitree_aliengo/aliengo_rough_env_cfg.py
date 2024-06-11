@@ -146,7 +146,7 @@ class UnitreeAliengoRoughEnvCfg(LocomotionModelBasedEnvCfg):
         self.rewards.penatly_force_variation.weight      = 2.5e-5 #1e-4
 
         # -- Additionnal Reward : Need a positive weight
-        self.rewards.reward_is_alive.weight              = 0.1 #None
+        self.rewards.reward_is_alive.weight              = 0.25 #None
         self.rewards.penalty_failed                      = None
 
 
