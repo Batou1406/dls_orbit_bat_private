@@ -21,7 +21,7 @@ class UnitreeAliengoRoughEnvCfg(LocomotionModelBasedEnvCfg):
     def __post_init__(self):
 
         # --- Change the standard curriculum, must be done before super().__post_init__()
-        # self.scene.terrain.class_type = TerrainImporterUniformDifficulty
+        self.scene.terrain.class_type = TerrainImporterUniformDifficulty
 
         # post init of parent
         super().__post_init__()
