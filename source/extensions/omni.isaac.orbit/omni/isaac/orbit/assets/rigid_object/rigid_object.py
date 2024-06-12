@@ -114,8 +114,14 @@ class RigidObject(AssetBase):
         if env_ids is None:
             env_ids = slice(None)
         # reset external wrench
+
+        if type(env_ids) == torch.Tensor :
+            print('alo')
+            env_ids_cpu = env_ids.cpu() 
+
         try : self._external_force_b[env_ids] = 0.0
-        except : breakpoint()
+        except :
+            breakpoint()
         self._external_torque_b[env_ids] = 0.0
         # reset last body vel
         self._last_body_vel_w[env_ids] = 0.0
