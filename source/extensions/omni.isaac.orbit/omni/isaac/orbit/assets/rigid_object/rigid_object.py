@@ -118,6 +118,8 @@ class RigidObject(AssetBase):
         if type(env_ids) == torch.Tensor :
             print('alo')
             env_ids_cpu = env_ids.cpu() 
+        else:
+            print('not alo')
 
         try : self._external_force_b[env_ids] = 0.0
         except :
