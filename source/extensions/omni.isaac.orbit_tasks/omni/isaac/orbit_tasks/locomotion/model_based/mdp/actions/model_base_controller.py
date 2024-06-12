@@ -258,6 +258,8 @@ class samplingController(modelBaseController):
         d2=d # to be able to call d in the debugger
         f_star, d_star, p_star_lw, F_star_lw = self.samplingOptimizer.optimize_latent_variable(env=env, f=f, d=d, p_lw=p_lw, F_lw=F_lw, phase=self.phase, c_prev=self.c_prev, height_map=height_map)
         # f_star, d_star, F_star_lw, p_star_lw = f, d, F_lw, p_lw
+        # p_star_lw = p_lw
+        # f_star, d_star = f, d
 
         # Compute the contact sequence and update the phase
         c_star, self.phase = self.gait_generator(f=f_star, d=d_star, phase=self.phase, time_horizon=self._time_horizon, dt=self._dt_out)
@@ -655,7 +657,7 @@ class SamplingOptimizer():
         self.time_horizon = 5
         self.num_predict_step = 3
 
-        self.num_samples = 10000
+        self.num_samples = 50000
 
         self.F_param = self.time_horizon
         self.p_param = self.time_horizon
@@ -778,6 +780,173 @@ class SamplingOptimizer():
         return f_star, d_star, p_star_lw, F_star_lw
 
 
+    def prepare_variable_for_compute_rollout_old(self, env: RLTaskEnv, c_samples:torch.Tensor, p_lw_samples:torch.Tensor, F_lw_samples:torch.Tensor, feet_in_contact:torch.Tensor) -> tuple[jnp.array, jnp.array, jnp.array, jnp.array, jnp.array, jnp.array]:
+        """ Helper function to modify the embedded state, reference and action to be used with the 'compute_rollout' function
+
+        Note :
+            Initial state and reference can be retrieved only with the environment
+            _w   : World frame
+            _lw  : World frame centered at the environment center -> local world frame
+            _b   : Base frame 
+            _h   : Horizontal frame -> Base frame position for xy, world frame for z, roll, pitch, base frame for yaw
+            _bw  : Base/world frame -> Base frame position, world frame rotation
+
+        Args :
+            env (RLTaskEnv): Environment manager to retrieve all necessary simulation variable
+            c_samples       (t.bool): Foot contact sequence sample                                                      of shape(num_samples, num_legs, time_horizon)
+            p_lw_samples    (Tensor): Foot touch down position                                                          of shape(num_samples, num_leg, 3, p_param)
+            F_lw_samples    (Tensor): ground Reaction Forces                                                            of shape(num_samples, num_leg, 3, F_param)
+            feet_in_contact (Tensor): Feet in contact, determined by prevous solution                                   of shape(num_legs)
+
+        
+        Return :
+            initial_state_jax               (jnp.array): Current state of the robot (CoM pos-vel, foot pos)             of shape(state_dim)
+            reference_seq_state_jax         (jnp.array): Reference state sequence along the prediction horizon          of shape(time_horizon, state_dim)
+            reference_seq_input_samples_jax (jnp.array): Reference GRF sequence samples along the prediction horizon    of shape(num_samples, time_horizon, input_dim)
+            action_seq_c_samples_jax        (jnp.array): contact sequence samples along the prediction horizon          of shape(num_samples, time_horizon, num_legs)
+            action_p_lw_samples_jax         (jnp.array): Foot touch down position parameters samples                    of shape(num_samples, num_legs, 3*p_param)
+            action_F_lw_samples_jax         (jnp.array): GRF parameters samples                                         of shape(num_samples, num_legs, 3*F_param)
+        """
+        # Check that a single robot was provided
+        if env.num_envs > 1:
+            assert ValueError('More than a single environment was provided to the sampling controller')
+
+        # Retrieve robot from the scene : specify type to enable type hinting
+        robot: Articulation = env.scene["robot"]
+
+        # Retrieve indexes
+        foot_idx = robot.find_bodies(".*foot")[0]
+        hip_idx  = robot.find_bodies(".*thigh")[0]
+
+        # ----- Step 1 : Retrieve the initial state
+        # Retrieve the robot position in local world frame of shape(3)
+        com_pos_lw = (robot.data.root_pos_w - env.scene.env_origins).squeeze(0)
+        com_pos_lw[2] = robot.data.root_pos_w[:,2] - (torch.sum(((robot.data.body_pos_w[:, foot_idx,:]).squeeze(0))[:,2] * feet_in_contact)) / (torch.sum(feet_in_contact))
+        com_pos_w = (robot.data.root_pos_w).squeeze(0) # shape(3)
+        com_pos_b = torch.zeros_like(com_pos_w)        # shape(3)
+        com_pos_bw = com_pos_b                         # shape(3)
+
+        # Robot height is proprioceptive : need to compute it
+        # feet_pos_lw = (robot.data.body_pos_w[:, foot_idx,:]).squeeze(0) - env.scene.env_origins # ((4,3) - (1,3)) -> shape(4,3) - retrieve position
+        feet_pos_w = (robot.data.body_pos_w[:, foot_idx,:]).squeeze(0) # ((4,3) - (1,3)) -> shape(4,3) - retrieve position
+        height_mean_foot_w = (torch.sum(feet_pos_w[:,2] * feet_in_contact)) / (torch.sum(feet_in_contact)) #shape(1)
+        com_pos_height_h = com_pos_w[2] - height_mean_foot_w # shape(1)
+
+        # Compute the robot CoM position into the horiontal frame -> (0,0, proprioceptive height)
+        com_pos_h = torch.stack((com_pos_b[0], com_pos_b[1], com_pos_height_h), dim=0)
+
+        # Retrieve the robot orientation in lw as euler angle ZXY of shape(3)
+        roll, pitch, yaw = math_utils.euler_xyz_from_quat(robot.data.root_quat_w) # TODO Check the angles !
+        com_pose_w = torch.tensor((roll, pitch, yaw), device=self.device)
+        com_pose_lw = com_pose_w
+        com_pose_bw = com_pose_w
+
+        # Retrieve the robot linear and angular velocity in base frame of shape(6)
+        com_vel_b = (robot.data.root_vel_b).squeeze(0)
+
+        # Retrieve the hip position in horizontal frame (used to compute feet in hip centered frame)
+        hip_position_w = robot.data.body_pos_w[:, hip_idx, :]
+
+        # Retrieve the feet position in local world frame of shape(num_legs, 3)
+        p_w = feet_pos_w #shape(4,3) - foot position in lw
+        p_lw = p_w - env.scene.env_origins
+        # p_hip_w_rot = p_w - hip_position_w #foot position in horzontal frame (shape(4,3)-shape(1,3) -> shape(4,3))
+        # p_hip = math_utils.quat_apply_yaw(quat=robot.data.root_quat_w, vec=p_hip_w_rot) # Foot position in hip centered (horizontal) frame shape(4,3)
+        # p_hip = p_hip.flatten(0,1) # shape(12) TODO, check that it's reshaped correctly
+        p_lw = p_lw.flatten(0,1) # shape(12) TODO, check that it's reshaped correctly
+        p_bw = p_w - com_pos_w.unsqueeze(0) # shape(4,3)-shape(1,3) -> shape(4,3)
+        p_bw = p_bw.flatten(0,1) # shape(12) TODO, check that it's reshaped correctly
+
+        # Prepare the state (at time t)
+        initial_state_old = torch.cat((
+            com_pos_bw,     # Position in horizontal frame (Centered at CoM thus (0,0,h)), height tracking is proprioceptive -> would be done with the feet
+            com_vel_b[:3], # Linear Velocity in base frame               
+            com_pose_bw,   # Orientation as euler_angle (roll, pitch, yaw) in world frame
+            com_vel_b[3:], # Angular velocity as (roll, pitch, yaw)      
+            p_bw,         # Foot position centered at the hip ~(0,0,-h)
+        )) # of shape(24) -> 3 + 3 + 3 + 3 + (4*3)
+        initial_state = torch.cat((
+            com_pos_lw,     # Position in horizontal frame (Centered at CoM thus (0,0,h)), height tracking is proprioceptive -> would be done with the feet
+            com_vel_b[:3], # Linear Velocity in base frame               
+            com_pose_lw,   # Orientation as euler_angle (roll, pitch, yaw) in world frame
+            com_vel_b[3:], # Angular velocity as (roll, pitch, yaw)      
+            p_lw,         # Foot position centered at the hip ~(0,0,-h)
+        )) # of shape(24) -> 3 + 3 + 3 + 3 + (4*3)
+
+
+        # ----- Step 2 : Retrieve the robot's reference along the integration horizon
+
+        # The reference position is tracked only for the height
+        com_pos_ref_bw = com_pos_bw # shape(3)
+        com_pos_ref_bw[2] = self.height_ref - (com_pos_w[2] - height_mean_foot_w) # shape(1)TODO transform this into a sequence !!!!
+
+        com_pos_ref_bw = com_pos_ref_bw.unsqueeze(1).expand(3, self.sampling_horizon) # TODO Verify this !
+
+        com_pos_ref_lw = torch.tensor((0,0,self.height_ref), device=self.device).unsqueeze(1).expand(3,self.sampling_horizon) # TODO should COM_heigt=0 and feet_h=-height_ref or com_height=height_ref  and feet_h=0 ??
+        # The speed reference is tracked for x_b, y_b and yaw   # shape(6, time_horizon)
+        speed_command = (env.command_manager.get_command("base_velocity")).squeeze(0) # shape(3)
+        com_vel_ref_b = torch.tensor((speed_command[0], speed_command[1], 0, 0, 0, speed_command[2]), device=self.device).unsqueeze(1).expand(6, self.sampling_horizon) 
+
+        # The pose reference is (0,0) for roll and pitch, but the yaw must be integrated along the horizon
+        com_pose_ref_w = torch.zeros_like(com_pos_ref_lw) # shape(3, time_horizon)
+        com_pose_ref_w[2] =  com_pose_w[2] + (torch.arange(self.sampling_horizon, device=env.device) * (self.dt * speed_command[2])) # shape(time_horizon)
+        com_pose_ref_bw = com_pose_ref_w # shape(3, time_horizon)
+        com_pose_ref_lw = com_pose_ref_w # shape(3, time_horizon)
+
+        # Defining the foot position sequence is tricky.. Since we only have number of predicted step < time_horizon
+        p_ref_bw = torch.zeros((4,3, self.sampling_horizon), device=env.device) # # shape(4, 3, sampling_horizon) TODO Define this !
+        p_ref_bw = p_ref_bw.flatten(0,1) # shape(12, sampling_horizon) TODO, check that it's reshaped correctly
+        p_ref_lw = p_ref_bw
+
+        # Compute the gravity compensation GRF along the horizon : of shape (num_samples, num_legs, 3, time_horizon)
+        number_of_leg_in_contact_samples = (torch.sum(c_samples, dim=1)).clamp(min=1) # Compute the number of leg in contact, clamp by minimum 1 to avoid division by zero. shape(num_samples, time_horizon)
+        gravity_compensation_F_samples = torch.zeros((self.num_samples, self.num_legs, 3, self.sampling_horizon), device=self.device) # shape (num_samples, num_legs, 3, time_horizon)
+        gravity_compensation_F_samples[:,:,2,:] = ((self.robot_model.mass * 9.81) / number_of_leg_in_contact_samples).unsqueeze(1) # shape (num_samples, 1, time_horizon)
+        
+        # Prepare the reference sequence (at time t, t+dt, etc.)
+        reference_seq_state_old = torch.cat((
+            com_pos_ref_bw,    # Position reference                                                     of shape( 3, time_horizon)
+            com_vel_ref_b[:3], # Linear Velocity reference                                              of shape( 3, time_horizon)
+            com_pose_ref_bw,   # Orientation reference as euler_angle                                   of shape( 3, time_horizon)
+            com_vel_ref_b[3:], # Angular velocity reference                                             of shape( 3, time_horizon)
+            p_ref_bw,          # Foot position reference (xy plane in horizontal plane, hip centered)   of shape(12, time_horizon)
+        )).permute(1,0) # of shape(time_horizon, 24) -> 3 + 3 + 3 + 3 + (4*3)
+
+        reference_seq_state = torch.cat((
+            com_pos_ref_lw,    # Position reference                                                     of shape( 3, time_horizon)
+            com_vel_ref_b[:3], # Linear Velocity reference                                              of shape( 3, time_horizon)
+            com_pose_ref_lw,   # Orientation reference as euler_angle                                   of shape( 3, time_horizon)
+            com_vel_ref_b[3:], # Angular velocity reference                                             of shape( 3, time_horizon)
+            p_ref_lw,          # Foot position reference (xy plane in horizontal plane, hip centered)   of shape(12, time_horizon)
+        )).permute(1,0) # of shape(time_horizon, 24) -> 3 + 3 + 3 + 3 + (4*3)
+
+        reference_seq_input_samples = torch.cat((
+            gravity_compensation_F_samples.flatten(1,2), #                                              of shape(num_samples, num_legs*3, time_horizon)
+        )).permute(0,2,1) # of shape(num_samples, time_horizon, num_legs*3)
+
+
+        # ----- Step 3 : Retrieve the actions and prepare them with the correct method
+
+        # TODO One could prepare the action here (discrete, spline, etc.)
+
+        action_seq_c_samples = c_samples.permute(0,2,1).int() # Contact sequence samples         of shape(num_samples, time_horizon, num_legs) (converted to int for jax conversion)
+        action_p_lw_samples  = p_lw_samples.flatten(2,3)      # Foot touch down position samples of shape(num_samples, num_legs, 3*p_param)
+        action_F_lw_samples  = F_lw_samples.flatten(2,3)      # Ground Reaction Forces           of shape(num_samples, num_legs, 3*F_param)
+
+
+
+        # ----- Step 4 : Convert torch tensor to jax.array
+        initial_state_jax               = torch_to_jax(initial_state)                          # of shape(state_dim)
+        reference_seq_state_jax         = torch_to_jax(reference_seq_state)                    # of shape(time_horizon, state_dim)
+        reference_seq_input_samples_jax = torch_to_jax(reference_seq_input_samples)            # of shape(num_samples, time_horizon, input_dim)
+        action_seq_c_samples_jax        = torch_to_jax(action_seq_c_samples)                   # of shape(num_samples, time_horizon, num_legs)
+        action_p_lw_samples_jax         = torch_to_jax(action_p_lw_samples)                    # of shape(num_samples, num_legs, 3*p_param)
+        action_F_lw_samples_jax         = torch_to_jax(action_F_lw_samples)                    # of shape(num_samples, num_legs, 3*F_param)
+
+
+        return initial_state_jax, reference_seq_state_jax, reference_seq_input_samples_jax, action_seq_c_samples_jax, action_p_lw_samples_jax, action_F_lw_samples_jax
+
+
     def prepare_variable_for_compute_rollout(self, env: RLTaskEnv, c_samples:torch.Tensor, p_lw_samples:torch.Tensor, F_lw_samples:torch.Tensor, feet_in_contact:torch.Tensor) -> tuple[jnp.array, jnp.array, jnp.array, jnp.array, jnp.array, jnp.array]:
         """ Helper function to modify the embedded state, reference and action to be used with the 'compute_rollout' function
 
@@ -818,71 +987,60 @@ class SamplingOptimizer():
 
         # ----- Step 1 : Retrieve the initial state
         # Retrieve the robot position in local world frame of shape(3)
-        # com_pos_lw = (robot.data.root_pos_w - env.scene.env_origins).squeeze(0)
-        com_pos_w = (robot.data.root_pos_w).squeeze(0) # shape(3)
-        com_pos_b = torch.zeros_like(com_pos_w)        # shape(3)
-        com_pos_bw = com_pos_b                         # shape(3)
-
-        # Robot height is proprioceptive : need to compute it
-        # feet_pos_lw = (robot.data.body_pos_w[:, foot_idx,:]).squeeze(0) - env.scene.env_origins # ((4,3) - (1,3)) -> shape(4,3) - retrieve position
-        feet_pos_w = (robot.data.body_pos_w[:, foot_idx,:]).squeeze(0) # ((4,3) - (1,3)) -> shape(4,3) - retrieve position
-        height_mean_foot_w = (torch.sum(feet_pos_w[:,2] * feet_in_contact)) / (torch.sum(feet_in_contact)) #shape(1)
-        com_pos_height_h = com_pos_w[2] - height_mean_foot_w # shape(1)
-
-        # Compute the robot CoM position into the horiontal frame -> (0,0, proprioceptive height)
-        com_pos_h = torch.stack((com_pos_b[0], com_pos_b[1], com_pos_height_h), dim=0)
+        com_pos_lw = (robot.data.root_pos_w - env.scene.env_origins).squeeze(0) # shape(3)
+        com_pos_lw[2] = robot.data.root_pos_w[:,2] - (torch.sum(((robot.data.body_pos_w[:, foot_idx,:]).squeeze(0))[:,2] * feet_in_contact)) / (torch.sum(feet_in_contact)) # height is proprioceptive
 
         # Retrieve the robot orientation in lw as euler angle ZXY of shape(3)
         roll, pitch, yaw = math_utils.euler_xyz_from_quat(robot.data.root_quat_w) # TODO Check the angles !
         com_pose_w = torch.tensor((roll, pitch, yaw), device=self.device)
-        com_pose_bw = com_pose_w
+        com_pose_lw = com_pose_w
 
         # Retrieve the robot linear and angular velocity in base frame of shape(6)
-        com_vel_b = (robot.data.root_vel_b).squeeze(0)
+        com_ang_vel_b = (robot.data.root_ang_vel_b).squeeze(0)
+        com_lin_vel_w = (robot.data.root_lin_vel_w).squeeze(0)
 
         # Retrieve the hip position in horizontal frame (used to compute feet in hip centered frame)
         hip_position_w = robot.data.body_pos_w[:, hip_idx, :]
 
         # Retrieve the feet position in local world frame of shape(num_legs, 3)
-        p_w = feet_pos_w #shape(4,3) - foot position in lw
-        # p_hip_w_rot = p_w - hip_position_w #foot position in horzontal frame (shape(4,3)-shape(1,3) -> shape(4,3))
-        # p_hip = math_utils.quat_apply_yaw(quat=robot.data.root_quat_w, vec=p_hip_w_rot) # Foot position in hip centered (horizontal) frame shape(4,3)
-        # p_hip = p_hip.flatten(0,1) # shape(12) TODO, check that it's reshaped correctly
-        # p_lw = p_lw.flatten(0,1) # shape(12) TODO, check that it's reshaped correctly
-        p_bw = p_w - com_pos_w.unsqueeze(0) # shape(4,3)-shape(1,3) -> shape(4,3)
-        p_bw = p_bw.flatten(0,1) # shape(12) TODO, check that it's reshaped correctly
+        p_w = (robot.data.body_pos_w[:, foot_idx,:]).squeeze(0) #shape(4,3) - foot position in lw
+        p_lw = p_w - env.scene.env_origins
 
         # Prepare the state (at time t)
         initial_state = torch.cat((
-            com_pos_bw,     # Position in horizontal frame (Centered at CoM thus (0,0,h)), height tracking is proprioceptive -> would be done with the feet
-            com_vel_b[:3], # Linear Velocity in base frame               
-            com_pose_bw,   # Orientation as euler_angle (roll, pitch, yaw) in world frame
-            com_vel_b[3:], # Angular velocity as (roll, pitch, yaw)      
-            p_bw,         # Foot position centered at the hip ~(0,0,-h)
+            com_pos_lw,    # CoM position in horizontal in local world frame, height is proprioceptive
+            com_lin_vel_w, # Linear Velocity in world frame               
+            com_pose_lw,   # Orientation as euler_angle (roll, pitch, yaw) in world frame
+            com_ang_vel_b, # Angular velocity as (roll, pitch, yaw) in base frame -> would be converted to euler rate in the centroidal model     
+            p_lw,          # Foot position in local world frame
         )) # of shape(24) -> 3 + 3 + 3 + 3 + (4*3)
 
 
         # ----- Step 2 : Retrieve the robot's reference along the integration horizon
+        # Retrieve the speed command : (lin_vel_x_b, lin_vel_y_b, ang_vel_yaw_b)
+        speed_command_b = (env.command_manager.get_command("base_velocity")).squeeze(0) # shape(3)
 
-        # The reference position is tracked only for the height
-        com_pos_ref_bw = com_pos_bw # shape(3)
-        com_pos_ref_bw[2] = self.height_ref - (com_pos_w[2] - height_mean_foot_w) # shape(1)TODO transform this into a sequence !!!!
+        # CoM reference position : tracked only for the height -> xy can be anything eg 0
+        com_pos_ref_seq_lw = torch.tensor((0,0,self.height_ref), device=self.device).unsqueeze(1).expand(3,self.sampling_horizon) # TODO should COM_heigt=0 and feet_h=-height_ref or com_height=height_ref  and feet_h=0 ??
 
-        com_pos_ref_bw = com_pos_ref_bw.unsqueeze(1).expand(3, self.sampling_horizon) # TODO Verify this !
+        # The pose reference is (0,0) for roll and pitch, but the yaw must be integrated along the horizon (in world frame)
+        com_pose_ref_w = torch.zeros_like(com_pos_ref_seq_lw) # shape(3, time_horizon)
+        com_pose_ref_w[2] =  com_pose_w[2] + (torch.arange(self.sampling_horizon, device=env.device) * (self.dt * speed_command_b[2])) # shape(time_horizon)
+        com_pose_ref_lw = com_pose_ref_w # shape(3, time_horizon)
 
-        com_pos_ref_lw = torch.tensor((0,0,self.height_ref), device=self.device).unsqueeze(1).expand(3,self.sampling_horizon) # TODO should COM_heigt=0 and feet_h=-height_ref or com_height=height_ref  and feet_h=0 ??
-        # The speed reference is tracked for x_b, y_b and yaw   # shape(6, time_horizon)
-        speed_command = (env.command_manager.get_command("base_velocity")).squeeze(0) # shape(3)
-        com_vel_ref_b = torch.tensor((speed_command[0], speed_command[1], 0, 0, 0, speed_command[2]), device=self.device).unsqueeze(1).expand(6, self.sampling_horizon) 
 
-        # The pose reference is (0,0) for roll and pitch, but the yaw must be integrated along the horizon
-        com_pose_ref_w = torch.zeros_like(com_pos_ref_lw) # shape(3, time_horizon)
-        com_pose_ref_w[2] =  com_pose_w[2] + (torch.arange(self.sampling_horizon, device=env.device) * (self.dt * speed_command[2])) # shape(time_horizon)
-        com_pose_ref_bw = com_pose_ref_w # shape(3, time_horizon)
+        # The speed reference is tracked for x_b, y_b and yaw -> must be converted accordingly  # shape(3, time_horizon)
+        com_lin_vel_ref_seq_w = torch.zeros_like(com_pos_ref_seq_lw)
+        com_ang_vel_ref_seq_b = torch.zeros_like(com_pos_ref_seq_lw)
+
+        com_lin_vel_ref_seq_w[0] = speed_command_b[0]*torch.cos(com_pose_ref_w[2]) - speed_command_b[1]*torch.sin(com_pose_ref_w[2]) # shape(t_h*t_h - t_h*t_h) -> t_h
+        com_lin_vel_ref_seq_w[1] = speed_command_b[0]*torch.sin(com_pose_ref_w[2]) + speed_command_b[1]*torch.cos(com_pose_ref_w[2]) # shape(t_h*t_h - t_h*t_h) -> t_h
+
+        com_ang_vel_ref_seq_b[2] = speed_command_b[2]
 
         # Defining the foot position sequence is tricky.. Since we only have number of predicted step < time_horizon
-        p_ref_bw = torch.zeros((4,3, self.sampling_horizon), device=env.device) # # shape(4, 3, sampling_horizon) TODO Define this !
-        p_ref_bw = p_ref_bw.flatten(0,1) # shape(12, sampling_horizon) TODO, check that it's reshaped correctly
+        p_ref_seq_lw = torch.zeros((4,3, self.sampling_horizon), device=env.device) # # shape(4, 3, sampling_horizon) TODO Define this !
+        p_ref_seq_lw = p_ref_seq_lw.flatten(0,1) # shape(12, sampling_horizon) TODO, check that it's reshaped correctly
 
         # Compute the gravity compensation GRF along the horizon : of shape (num_samples, num_legs, 3, time_horizon)
         number_of_leg_in_contact_samples = (torch.sum(c_samples, dim=1)).clamp(min=1) # Compute the number of leg in contact, clamp by minimum 1 to avoid division by zero. shape(num_samples, time_horizon)
@@ -891,11 +1049,11 @@ class SamplingOptimizer():
         
         # Prepare the reference sequence (at time t, t+dt, etc.)
         reference_seq_state = torch.cat((
-            com_pos_ref_bw,    # Position reference                                                     of shape( 3, time_horizon)
-            com_vel_ref_b[:3], # Linear Velocity reference                                              of shape( 3, time_horizon)
-            com_pose_ref_bw,   # Orientation reference as euler_angle                                   of shape( 3, time_horizon)
-            com_vel_ref_b[3:], # Angular velocity reference                                             of shape( 3, time_horizon)
-            p_ref_bw,          # Foot position reference (xy plane in horizontal plane, hip centered)   of shape(12, time_horizon)
+            com_pos_ref_seq_lw,    # Position reference                                                     of shape( 3, time_horizon)
+            com_lin_vel_ref_seq_w, # Linear Velocity reference                                              of shape( 3, time_horizon)
+            com_pose_ref_lw,       # Orientation reference as euler_angle                                   of shape( 3, time_horizon)
+            com_ang_vel_ref_seq_b, # Angular velocity reference                                             of shape( 3, time_horizon)
+            p_ref_seq_lw,          # Foot position reference (xy plane in horizontal plane, hip centered)   of shape(12, time_horizon)
         )).permute(1,0) # of shape(time_horizon, 24) -> 3 + 3 + 3 + 3 + (4*3)
 
         reference_seq_input_samples = torch.cat((
@@ -995,10 +1153,15 @@ class SamplingOptimizer():
             F_lw_samples (Tensor) : Ground Reaction forces samples      of shape(num_samples, 3, F_param)
         """
 
-        f_samples = self.normal_sampling(num_samples=self.num_samples, mean=f[0])
-        d_samples = self.normal_sampling(num_samples=self.num_samples, mean=d[0])
-        p_lw_samples = self.normal_sampling(num_samples=self.num_samples, mean=p_lw[0])
-        F_lw_samples = self.normal_sampling(num_samples=self.num_samples, mean=F_lw[0])
+        # f_samples = self.normal_sampling(num_samples=self.num_samples, mean=f[0], var=torch.tensor((0.05), device=self.device))
+        # d_samples = self.normal_sampling(num_samples=self.num_samples, mean=d[0], var=torch.tensor((0.02), device=self.device))
+        # p_lw_samples = self.normal_sampling(num_samples=self.num_samples, mean=p_lw[0], var=torch.tensor((0.01), device=self.device))
+        # F_lw_samples = self.normal_sampling(num_samples=self.num_samples, mean=F_lw[0], var=torch.tensor((1.0), device=self.device))
+
+        f_samples = self.normal_sampling(num_samples=self.num_samples, mean=f[0], var=torch.tensor((0.0), device=self.device))
+        d_samples = self.normal_sampling(num_samples=self.num_samples, mean=d[0], var=torch.tensor((0.0), device=self.device))
+        p_lw_samples = self.normal_sampling(num_samples=self.num_samples, mean=p_lw[0], var=torch.tensor((0.0), device=self.device))
+        F_lw_samples = self.normal_sampling(num_samples=self.num_samples, mean=F_lw[0], var=torch.tensor((0.0), device=self.device))
 
         # Clamp the input to valid range and make sure p[2] is on the ground
         f_samples, d_samples, p_lw_samples, F_lw_samples = self.enforce_valid_input(f_samples=f_samples, d_samples=d_samples, p_lw_samples=p_lw_samples, F_lw_samples=F_lw_samples, height_map=height_map)
@@ -1349,9 +1512,11 @@ class SamplingOptimizer():
         
         # Clip f
         f_samples = f_samples.clamp(min=0, max=3)
+        # f_samples = torch.zeros_like(f_samples)
 
         # Clip d
         d_samples = d_samples.clamp(min=0, max=1)
+        # d_samples = torch.ones_like(d_samples)
 
         # Clip p
         # p_lw_samples[:,0] = p_lw_samples[:,0].clamp(min=-0.24,max=+0.36)
