@@ -255,9 +255,9 @@ class samplingController(modelBaseController):
         F_lw = F_lw.expand(1,4,3,5)
         p_lw = p_lw.expand(1,4,3,5)
 
-        f_star, d_star, F_star_lw, p_star_lw = self.samplingOptimizer.optimize_latent_variable(env=env, f=f, d=d, p_lw=p_lw, F_lw=F_lw, phase=self.phase, c_prev=self.c_prev, height_map=height_map)
+        d2=d # to be able to call d in the debugger
+        f_star, d_star, p_star_lw, F_star_lw = self.samplingOptimizer.optimize_latent_variable(env=env, f=f, d=d, p_lw=p_lw, F_lw=F_lw, phase=self.phase, c_prev=self.c_prev, height_map=height_map)
         # f_star, d_star, F_star_lw, p_star_lw = f, d, F_lw, p_lw
-        # breakpoint() TODO Fix d
 
         # Compute the contact sequence and update the phase
         c_star, self.phase = self.gait_generator(f=f_star, d=d_star, phase=self.phase, time_horizon=self._time_horizon, dt=self._dt_out)
@@ -774,11 +774,6 @@ class SamplingOptimizer():
 
         # --- Step 4 : Convert the optimal value back to torch.Tensor
         f_star, d_star, p_star_lw, F_star_lw = self.retrieve_z_from_action_seq(best_index, f_samples, d_samples, p_lw_samples, F_lw_samples)
-
-        print()
-        print(p_lw)
-        print(p_star_lw)
-        breakpoint()
 
         return f_star, d_star, p_star_lw, F_star_lw
 
@@ -1366,7 +1361,7 @@ class SamplingOptimizer():
         F_lw_samples = F_lw_samples.clamp(min=0)
 
         # Ensure p on the ground TODO Implement
-        p_lw_samples[:,2] = -0.4*torch.ones_like(p_lw_samples[:,2])
+        p_lw_samples[:,:,2,:] = -0.4*torch.ones_like(p_lw_samples[:,:,2,:])
 
         return f_samples, d_samples, p_lw_samples, F_lw_samples
 
