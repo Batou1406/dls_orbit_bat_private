@@ -17,6 +17,8 @@ from omni.isaac.orbit_assets.anymal import ANYMAL_C_CFG  # isort: skip
 from omni.isaac.orbit.terrains.config.climb import STAIRS_TERRAINS_CFG
 from omni.isaac.orbit.terrains import TerrainImporterUniformDifficulty
 
+from omni.isaac.orbit.managers import CurriculumTermCfg as CurrTerm
+import omni.isaac.orbit_tasks.locomotion.model_based.mdp as mdp
 
 @configclass
 class UnitreeAliengoClimbEnvCfg(LocomotionModelBasedEnvCfg):
@@ -25,6 +27,8 @@ class UnitreeAliengoClimbEnvCfg(LocomotionModelBasedEnvCfg):
         # --- Select the Climb terrain -> Must be done before super().__post_init__() otherwise it won't load the terrain properly
         self.scene.terrain.terrain_generator = STAIRS_TERRAINS_CFG
         self.scene.terrain.class_type = TerrainImporterUniformDifficulty
+
+        self.curriculum.terrain_levels = CurrTerm(func=mdp.climb_terrain_curriculum)
 
         # post init of parent
         super().__post_init__()
