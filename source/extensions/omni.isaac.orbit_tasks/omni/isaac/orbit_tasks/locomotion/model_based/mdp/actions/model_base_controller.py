@@ -983,7 +983,6 @@ class SamplingOptimizer():
 
         # Retrieve indexes
         foot_idx = robot.find_bodies(".*foot")[0]
-        hip_idx  = robot.find_bodies(".*thigh")[0]
 
         # ----- Step 1 : Retrieve the initial state
         # Retrieve the robot position in local world frame of shape(3)
@@ -999,12 +998,10 @@ class SamplingOptimizer():
         com_ang_vel_b = (robot.data.root_ang_vel_b).squeeze(0)
         com_lin_vel_w = (robot.data.root_lin_vel_w).squeeze(0)
 
-        # Retrieve the hip position in horizontal frame (used to compute feet in hip centered frame)
-        hip_position_w = robot.data.body_pos_w[:, hip_idx, :]
-
-        # Retrieve the feet position in local world frame of shape(num_legs, 3)
-        p_w = (robot.data.body_pos_w[:, foot_idx,:]).squeeze(0) #shape(4,3) - foot position in lw
-        p_lw = p_w - env.scene.env_origins
+        # Retrieve the feet position in local world frame of shape(num_legs*3)
+        p_w = (robot.data.body_pos_w[:, foot_idx,:]).squeeze(0) # shape(4,3) - foot position in w
+        p_lw = p_w - env.scene.env_origins                      # shape(4,3) - foot position in lw
+        p_lw = p_lw.flatten(0,1)                                # shape(12)  - foot position in lw
 
         # Prepare the state (at time t)
         initial_state = torch.cat((
@@ -1021,26 +1018,25 @@ class SamplingOptimizer():
         speed_command_b = (env.command_manager.get_command("base_velocity")).squeeze(0) # shape(3)
 
         # CoM reference position : tracked only for the height -> xy can be anything eg 0
-        com_pos_ref_seq_lw = torch.tensor((0,0,self.height_ref), device=self.device).unsqueeze(1).expand(3,self.sampling_horizon) # TODO should COM_heigt=0 and feet_h=-height_ref or com_height=height_ref  and feet_h=0 ??
+        com_pos_ref_seq_lw = torch.tensor((0,0,self.height_ref), device=self.device).unsqueeze(1).expand(3,self.sampling_horizon)
 
         # The pose reference is (0,0) for roll and pitch, but the yaw must be integrated along the horizon (in world frame)
         com_pose_ref_w = torch.zeros_like(com_pos_ref_seq_lw) # shape(3, time_horizon)
         com_pose_ref_w[2] =  com_pose_w[2] + (torch.arange(self.sampling_horizon, device=env.device) * (self.dt * speed_command_b[2])) # shape(time_horizon)
         com_pose_ref_lw = com_pose_ref_w # shape(3, time_horizon)
 
-
         # The speed reference is tracked for x_b, y_b and yaw -> must be converted accordingly  # shape(3, time_horizon)
         com_lin_vel_ref_seq_w = torch.zeros_like(com_pos_ref_seq_lw)
         com_ang_vel_ref_seq_b = torch.zeros_like(com_pos_ref_seq_lw)
 
-        com_lin_vel_ref_seq_w[0] = speed_command_b[0]*torch.cos(com_pose_ref_w[2]) - speed_command_b[1]*torch.sin(com_pose_ref_w[2]) # shape(t_h*t_h - t_h*t_h) -> t_h
+        com_lin_vel_ref_seq_w[0] = speed_command_b[0]*torch.cos(com_pose_ref_w[2]) - speed_command_b[1]*torch.sin(com_pose_ref_w[2]) # shape(t_h*t_h - t_h*t_h) -> t_h #TODO Check that the rotation is correct
         com_lin_vel_ref_seq_w[1] = speed_command_b[0]*torch.sin(com_pose_ref_w[2]) + speed_command_b[1]*torch.cos(com_pose_ref_w[2]) # shape(t_h*t_h - t_h*t_h) -> t_h
 
         com_ang_vel_ref_seq_b[2] = speed_command_b[2]
 
         # Defining the foot position sequence is tricky.. Since we only have number of predicted step < time_horizon
-        p_ref_seq_lw = torch.zeros((4,3, self.sampling_horizon), device=env.device) # # shape(4, 3, sampling_horizon) TODO Define this !
-        p_ref_seq_lw = p_ref_seq_lw.flatten(0,1) # shape(12, sampling_horizon) TODO, check that it's reshaped correctly
+        p_ref_seq_lw = torch.zeros((4,3, self.sampling_horizon), device=env.device) # shape(4, 3, sampling_horizon) TODO Define this !
+        p_ref_seq_lw = p_ref_seq_lw.flatten(0,1)                                    # shape(12, sampling_horizon)
 
         # Compute the gravity compensation GRF along the horizon : of shape (num_samples, num_legs, 3, time_horizon)
         number_of_leg_in_contact_samples = (torch.sum(c_samples, dim=1)).clamp(min=1) # Compute the number of leg in contact, clamp by minimum 1 to avoid division by zero. shape(num_samples, time_horizon)
