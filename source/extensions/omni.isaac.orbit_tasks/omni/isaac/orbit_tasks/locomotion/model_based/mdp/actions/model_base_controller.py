@@ -251,15 +251,13 @@ class samplingController(modelBaseController):
             - pt*_lw (th.Tensor): Optimized foot swing traj.     in _lw of shape (batch_size, num_legs, 9, decimation)  (9 = pos, vel, acc)
         """
 
-        # Call the optimizer
-        # F_lw = F_lw.expand(1,4,3,5)
-        # p_lw = p_lw.expand(1,4,3,5)
+        F_lw = F_lw.expand(1,4,3,5)
+        p_lw = p_lw.expand(1,4,3,5)
 
-        d2=d # to be able to call d in the debugger
-        # f_star, d_star, p_star_lw, F_star_lw = self.samplingOptimizer.optimize_latent_variable(env=env, f=f, d=d, p_lw=p_lw, F_lw=F_lw, phase=self.phase, c_prev=self.c_prev, height_map=height_map)
-        f_star, d_star, F_star_lw, p_star_lw = f, d, F_lw, p_lw
-        # p_star_lw = p_lw
-        # f_star, d_star = f, d
+        # Call the optimizer
+        f_star, d_star, p_star_lw, F_star_lw = self.samplingOptimizer.optimize_latent_variable(env=env, f=f, d=d, p_lw=p_lw, F_lw=F_lw, phase=self.phase, c_prev=self.c_prev, height_map=height_map)
+        # f_star, d_star, F_star_lw, p_star_lw = f, d, F_lw, p_lw
+
 
         # Compute the contact sequence and update the phase
         c_star, self.phase = self.gait_generator(f=f_star, d=d_star, phase=self.phase, time_horizon=self._time_horizon, dt=self._dt_out)
@@ -657,7 +655,7 @@ class SamplingOptimizer():
         self.time_horizon = 5
         self.num_predict_step = 3
 
-        self.num_samples = 1
+        self.num_samples = 5000 # set to 1 for fake sampling and taking directly the RL output
 
         self.F_param = self.time_horizon
         self.p_param = self.time_horizon
@@ -1127,6 +1125,8 @@ class SamplingOptimizer():
         best_cost = cost_samples.take(best_index)
         best_action_seq = action_seq_samples[best_index]
 
+        best_cost = jnp.int32(0)
+
         return best_action_seq, best_index
 
 
@@ -1159,6 +1159,11 @@ class SamplingOptimizer():
 
         # Clamp the input to valid range and make sure p[2] is on the ground
         f_samples, d_samples, p_lw_samples, F_lw_samples = self.enforce_valid_input(f_samples=f_samples, d_samples=d_samples, p_lw_samples=p_lw_samples, F_lw_samples=F_lw_samples, height_map=height_map)
+
+        f_samples[0,:] = f[0,:]
+        d_samples[0,:] = d[0,:]
+        p_lw_samples[0,:,:,:] = p_lw[0,:,:,:]
+        F_lw_samples[0,:,:,:] = F_lw[0,:,:,:]
 
         return f_samples, d_samples, p_lw_samples, F_lw_samples
 
@@ -1318,7 +1323,7 @@ class SamplingOptimizer():
             input_error = input[12:] - reference_seq_input_jax[n] 
             input_cost  = input_error.T @ self.R @ input_error
 
-            step_cost = state_cost + input_cost
+            step_cost = state_cost #+ input_cost
 
             return (cost + step_cost, state_next)
 
