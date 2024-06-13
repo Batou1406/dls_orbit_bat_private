@@ -3,6 +3,8 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
+# ./orbit.sh -p source/standalone/workflows/supervised_learning/datalogger.py --task Isaac-Model-Based-Base-Aliengo-v0  --num_envs 64 --load_run test --checkpoint model_14999.pt --dataset_name mcQueenFour
+
 """Script to generate a dataset for supervised learning with RL agent from RSL-RL."""
 
 from __future__ import annotations
