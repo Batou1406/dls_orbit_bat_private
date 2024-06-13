@@ -20,10 +20,10 @@ parser = argparse.ArgumentParser(description="Train an RL agent with RSL-RL.")
 parser.add_argument("--cpu", action="store_true",   default=False,                                  help="Use CPU pipeline.")
 parser.add_argument("--disable_fabric", action="store_true", default=False,                         help="Disable fabric and use USD I/O operations.")
 parser.add_argument("--num_envs", type=int,         default=8,                                      help="Number of environments to simulate.")
-parser.add_argument("--task", type=str,             default='Isaac-Model-Based-Speed-Aliengo-v0',   help="Name of the task.")
+parser.add_argument("--task", type=str,             default='Isaac-Model-Based-Base-Aliengo-v0',    help="Name of the task.")
 parser.add_argument("--seed", type=int,             default=None,                                   help="Seed used for the environment")
-parser.add_argument("--controller_name", type=str,  default='aliengo_model_based_speed',            help="Name of the controller")
-parser.add_argument("--model_name", type=str,       default='mcQueenNine/model1',                   help="Name of the model to load (in /model/controller/)")
+parser.add_argument("--controller_name", type=str,  default='aliengo_model_based_base',             help="Name of the controller")
+parser.add_argument("--model_name", type=str,       default='baseTaskMultActGood1/model1',          help="Name of the model to load (in /model/controller/)")
 
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
@@ -84,8 +84,12 @@ def main():
             # agent stepping
             actions = policy(obs)
 
+            # # Select only actions at next step
+            # actions = actions.view(-1, env.num_actions, buffer_size)
+
             # Select only actions at next step
-            actions = actions.view(-1, env.num_actions, buffer_size)
+            actions = actions.view(-1, buffer_size, env.num_actions) # reshape /!\ buffer_size comes before num_actions otherwise it don't work /!\
+            actions = actions[:,0,:] # select first action
 
             # env stepping
             obs, _, _, _ = env.step(actions)
