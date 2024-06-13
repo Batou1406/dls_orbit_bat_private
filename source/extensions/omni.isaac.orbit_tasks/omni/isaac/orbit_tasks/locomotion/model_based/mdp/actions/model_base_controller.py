@@ -252,12 +252,12 @@ class samplingController(modelBaseController):
         """
 
         # Call the optimizer
-        F_lw = F_lw.expand(1,4,3,5)
-        p_lw = p_lw.expand(1,4,3,5)
+        # F_lw = F_lw.expand(1,4,3,5)
+        # p_lw = p_lw.expand(1,4,3,5)
 
         d2=d # to be able to call d in the debugger
-        f_star, d_star, p_star_lw, F_star_lw = self.samplingOptimizer.optimize_latent_variable(env=env, f=f, d=d, p_lw=p_lw, F_lw=F_lw, phase=self.phase, c_prev=self.c_prev, height_map=height_map)
-        # f_star, d_star, F_star_lw, p_star_lw = f, d, F_lw, p_lw
+        # f_star, d_star, p_star_lw, F_star_lw = self.samplingOptimizer.optimize_latent_variable(env=env, f=f, d=d, p_lw=p_lw, F_lw=F_lw, phase=self.phase, c_prev=self.c_prev, height_map=height_map)
+        f_star, d_star, F_star_lw, p_star_lw = f, d, F_lw, p_lw
         # p_star_lw = p_lw
         # f_star, d_star = f, d
 
