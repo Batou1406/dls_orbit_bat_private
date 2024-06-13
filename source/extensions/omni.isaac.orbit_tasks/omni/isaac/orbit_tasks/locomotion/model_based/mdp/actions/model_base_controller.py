@@ -657,7 +657,7 @@ class SamplingOptimizer():
         self.time_horizon = 5
         self.num_predict_step = 3
 
-        self.num_samples = 50000
+        self.num_samples = 1
 
         self.F_param = self.time_horizon
         self.p_param = self.time_horizon
@@ -1149,15 +1149,13 @@ class SamplingOptimizer():
             F_lw_samples (Tensor) : Ground Reaction forces samples      of shape(num_samples, 3, F_param)
         """
 
-        # f_samples = self.normal_sampling(num_samples=self.num_samples, mean=f[0], var=torch.tensor((0.05), device=self.device))
-        # d_samples = self.normal_sampling(num_samples=self.num_samples, mean=d[0], var=torch.tensor((0.02), device=self.device))
-        # p_lw_samples = self.normal_sampling(num_samples=self.num_samples, mean=p_lw[0], var=torch.tensor((0.01), device=self.device))
-        # F_lw_samples = self.normal_sampling(num_samples=self.num_samples, mean=F_lw[0], var=torch.tensor((1.0), device=self.device))
+        if self.num_samples == 1:
+            return f, d, p_lw, F_lw
 
-        f_samples = self.normal_sampling(num_samples=self.num_samples, mean=f[0], var=torch.tensor((0.0), device=self.device))
-        d_samples = self.normal_sampling(num_samples=self.num_samples, mean=d[0], var=torch.tensor((0.0), device=self.device))
-        p_lw_samples = self.normal_sampling(num_samples=self.num_samples, mean=p_lw[0], var=torch.tensor((0.0), device=self.device))
-        F_lw_samples = self.normal_sampling(num_samples=self.num_samples, mean=F_lw[0], var=torch.tensor((0.0), device=self.device))
+        f_samples = self.normal_sampling(num_samples=self.num_samples, mean=f[0], var=torch.tensor((0.05), device=self.device))
+        d_samples = self.normal_sampling(num_samples=self.num_samples, mean=d[0], var=torch.tensor((0.02), device=self.device))
+        p_lw_samples = self.normal_sampling(num_samples=self.num_samples, mean=p_lw[0], var=torch.tensor((0.01), device=self.device))
+        F_lw_samples = self.normal_sampling(num_samples=self.num_samples, mean=F_lw[0], var=torch.tensor((1.0), device=self.device))
 
         # Clamp the input to valid range and make sure p[2] is on the ground
         f_samples, d_samples, p_lw_samples, F_lw_samples = self.enforce_valid_input(f_samples=f_samples, d_samples=d_samples, p_lw_samples=p_lw_samples, F_lw_samples=F_lw_samples, height_map=height_map)
