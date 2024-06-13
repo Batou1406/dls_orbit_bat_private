@@ -159,5 +159,7 @@ class UnitreeAliengoClimbEnvCfg(LocomotionModelBasedEnvCfg):
 
 
         """ ----- terminations ----- """
+        # Augment the limit angle before reset
+        self.terminations.bad_orientation.params['limit_angle'] = 70*(3.14/180)
 
  
