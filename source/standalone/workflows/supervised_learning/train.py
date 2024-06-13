@@ -65,8 +65,8 @@ def main():
     # Training settings : load from arg parser
     parser = argparse.ArgumentParser(description='Supervised Learning for model base RL controller')
     parser.add_argument('--verbose', type=str, default=True,                    help='Verbose parameter to print training loss')
-    parser.add_argument('--load-experiement', type=str, default='aliengo_model_based_speed')
-    parser.add_argument('--load-dataset', type=str, default='mcQueenNine')
+    parser.add_argument('--load-experiement', type=str, default='aliengo_model_based_base')
+    parser.add_argument('--load-dataset', type=str, default='baseTaskMultActGood1')
     parser.add_argument('--batch-size', type=int, default=64, metavar='N',      help='input batch size for training (default: 64)')
     parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N', help='input batch size for testing (default: 1000)')
     parser.add_argument('--epochs', type=int, default=15, metavar='N',          help='number of epochs to train (default: 14)')
@@ -105,14 +105,20 @@ def main():
         print('\nTesting done with same dataset as training...\n')
         test_dataset  = ObservationActionDataset('dataset/' + args.load_experiement + '/' + args.load_dataset + '/training_data.pt')
 
+    print('\nLoaded dataset : ',args.load_dataset)
+    print('In : ', 'dataset/' + args.load_experiement + '/' + args.load_dataset + '/training_data.pt')
+
     # Set dataset loader
     train_loader = DataLoader(train_dataset,**train_kwargs)
     test_loader = DataLoader(test_dataset, **test_kwargs)
 
     # Retrieve input and output size
     input_size = train_dataset.observations.shape[-1]
-    output_size = train_dataset.actions.shape[-1]     
-    print('Input Size : ',train_dataset.observations.shape, ' - Output_size : ',train_dataset.actions.shape,'\n')
+    output_size = train_dataset.actions.shape[-1]    
+
+    print('\nDatapoints  : ', train_dataset.observations.shape[0]) 
+    print('Input  size : ',input_size)
+    print('Output Size : ',output_size,'\n')
 
     # Define Model criteria : model, optimizer and loss criterion and scheduler
     model           = Model(input_size, output_size).to(device)
@@ -140,3 +146,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+    print('Everything went well, closing\n')
