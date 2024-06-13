@@ -370,6 +370,10 @@ class ModelBaseAction(ActionTerm):
         # Increment d from d_dot
         # d_rl = self.d + d_dot.clamp(-0.05,0.05) # TODO this must be normalize also !!
 
+        if not torch.distributions.constraints.real.check(actions).all() :
+            print('Problem with NaN in actions')
+            breakpoint()
+
         # Normalize the actions
         self.f, self.d, self.F_norm, self.p_norm = self.normalize_actions(f=self.f_raw, d=self.d_raw, F=self.F_raw, p=self.p_raw)
 
@@ -401,11 +405,6 @@ class ModelBaseAction(ActionTerm):
 
         # Transform GRF into local world frame
         self.F_lw = self.rotate_GRF_from_rl_frame_to_lw(F_norm=self.F_norm) #self.F_norm_clipped
-
-        # Check if there is a problem with foot touch down position -> NaN value
-        if not torch.distributions.constraints.real.check(self.p_lw).all() :
-            print('Problem with NaN in foot touch down position')
-            breakpoint()
 
         # Todo Fix this ! Why is there infinite value as the network output
         if torch.isinf(self.p_lw).any():
