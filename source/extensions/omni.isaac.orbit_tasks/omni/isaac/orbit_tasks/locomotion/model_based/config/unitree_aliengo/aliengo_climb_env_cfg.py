@@ -43,8 +43,8 @@ class UnitreeAliengoClimbEnvCfg(LocomotionModelBasedEnvCfg):
         # --- Select the prime path of the height sensor
         self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/base"                                               # Unnecessary : already default 
 
-        # # --- Select the Climb terrain
-        # self.scene.terrain.terrain_generator = STAIRS_TERRAINS_CFG
+
+        self.episode_length_s=20
 
 
         """ ----- Commands ----- """
