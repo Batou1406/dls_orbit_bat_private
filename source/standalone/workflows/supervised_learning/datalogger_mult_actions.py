@@ -20,7 +20,7 @@ parser = argparse.ArgumentParser(description="Train an RL agent with RSL-RL.")
 parser.add_argument("--cpu", action="store_true", default=False, help="Use CPU pipeline.")
 parser.add_argument("--disable_fabric", action="store_true", default=False, help="Disable fabric and use USD I/O operations.")
 parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
-parser.add_argument("--num_step", type=int, default=3000, help="Number of simulation step : the number of datapoints would be : num_step*num_envs")
+parser.add_argument("--num_step", type=int, default=500, help="Number of simulation step : the number of datapoints would be : num_step*num_envs")
 parser.add_argument("--task", type=str, default=None, help="Name of the task.")
 parser.add_argument("--seed", type=int, default=None, help="Seed used for the environment")
 parser.add_argument("--dataset_name", type=str, default=None, help="Folder where to log the generated dataset (in /dataset/task/)")
@@ -106,13 +106,23 @@ def main():
 
     # reset environment
     obs, _ = env.get_observations()
+    actions = policy(obs) #just to get the shape for printing
+
+    print('\nobservation shape:', obs.shape[-1])
+    print('     action shape:', actions.shape[-1],'\n')
 
     # simulate environment
     while simulation_app.is_running() and len(observations_list) < (num_samples + buffer_size):
 
+        # Printing
         if len(observations_list) % 100 == 0:
-            print('Progression %.2f%%, Iteration : %d, Time remaining : %ds' % (100*float(len(observations_list)) / num_samples, len(observations_list), (time.time()-t)*((num_samples - len(observations_list))//100)))
+            progress = 100 * float(len(observations_list)) / num_samples
+            iteration = len(observations_list)
+            time_remaining = (time.time() - t) * ((num_samples - len(observations_list)) / 100)
+            print(f'\rProgression {progress:6.2f}%, Iteration: {iteration:6d}, Time remaining: {time_remaining:6.0f}s', end='\n')
+            print('\033[F', end='')
             t = time.time()
+
         # run everything in inference mode
         with torch.inference_mode():
             # agent stepping
@@ -133,9 +143,6 @@ def main():
             observations_list.append(buffer_obs[0].cpu())                                  # shape(batch_size, obs_dim)
             actions_list.append(torch.stack(buffer_act).permute(1,0,2).flatten(1,2).cpu()) # shape(buffer_size, batch_size, act_dim) -> (batch_size, buffer_size*act_dim) 
 
-            # print('obs list shape : ',observations_list[-1].shape)
-            # print('act list shape : ',actions_list[-1].shape)
-
             # Remove the oldest observation and action
             buffer_obs.pop(0)
             buffer_act.pop(0)
@@ -146,8 +153,8 @@ def main():
     observations_tensor = torch.cat(observations_list).view(-1, obs.shape[-1])              # shape(len_list*num_envs, obs_dim)
     actions_tensor      = torch.cat(actions_list).view(-1, buffer_size*actions.shape[-1])   # shape(len_list*num_envs, buffer_size*act_dim)
 
-    print('actions_tensor shape ', actions_tensor.shape)
-    print('observations_tensor shape ', observations_tensor.shape)
+    print('\n\n\nobservations_tensor shape ', observations_tensor.shape[-1])
+    print('   actions_tensor   shape ', actions_tensor.shape[-1])
 
     # Save the Generated dataset
     data = {
@@ -155,6 +162,12 @@ def main():
         'actions': actions_tensor
     }
     torch.save(data, f'{logging_directory}/{file_prefix}.pt') 
+
+    print('\nData succesfully saved as ', file_prefix)
+    print('Saved at :',f'{logging_directory}/{file_prefix}.pt')
+    print('\nDataset of ',observations_tensor.shape[0],'datapoints')
+    print('Input  size :', observations_tensor.shape[-1])
+    print('Output size :', actions_tensor.shape[-1],'\n')
 
     # close the simulator
     env.close()
@@ -172,5 +185,8 @@ if __name__ == "__main__":
             
     # run the main function
     main()
+
+    print('Everything went well, closing\n')
+
     # close sim app
     simulation_app.close()

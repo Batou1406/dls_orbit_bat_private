@@ -97,7 +97,7 @@ def main():
     actions_list = []
 
     file_prefix = 'training_data'
-    num_samples = 500
+    num_samples = 1000
 
     # reset environment
     obs, _ = env.get_observations()
