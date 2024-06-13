@@ -371,7 +371,7 @@ class ModelBaseAction(ActionTerm):
         # d_rl = self.d + d_dot.clamp(-0.05,0.05) # TODO this must be normalize also !!
 
         if not torch.distributions.constraints.real.check(actions).all() :
-            print('Problem with NaN in actions')
+            print('Problem with NaN in actions -> this problem come from the observations')
             breakpoint()
 
         # Normalize the actions

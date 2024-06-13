@@ -19,14 +19,17 @@ import cli_args  # isort: skip
 parser = argparse.ArgumentParser(description="Train an RL agent with RSL-RL.")
 parser.add_argument("--cpu", action="store_true", default=False, help="Use CPU pipeline.")
 parser.add_argument("--disable_fabric", action="store_true", default=False, help="Disable fabric and use USD I/O operations.")
-parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
-parser.add_argument("--num_step", type=int, default=500, help="Number of simulation step : the number of datapoints would be : num_step*num_envs")
-parser.add_argument("--task", type=str, default=None, help="Name of the task.")
-parser.add_argument("--seed", type=int, default=None, help="Seed used for the environment")
+parser.add_argument("--num_envs",     type=int, default=None, help="Number of environments to simulate.")
+parser.add_argument("--num_step",     type=int, default=1000, help="Number of simulation step : the number of datapoints would be : num_step*num_envs")
+parser.add_argument("--task",         type=str, default=None, help="Name of the task.")
+parser.add_argument("--seed",         type=int, default=None, help="Seed used for the environment")
 parser.add_argument("--dataset_name", type=str, default=None, help="Folder where to log the generated dataset (in /dataset/task/)")
+parser.add_argument("--buffer_size",  type=int, default=5,    help="Number of prediction steps")
+parser.add_argument("--testing_flag", action="store_true",default=False,help="Flag to generate testing data, default is training data")
 
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
+
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
@@ -99,9 +102,13 @@ def main():
     buffer_obs = []
     buffer_act = []
 
+    # Set the data to be testing or training data
     file_prefix = 'training_data'
+    if args_cli.testing_flag:
+        file_prefix = 'testing_data'
+
     num_samples = args_cli.num_step
-    buffer_size = 5
+    buffer_size =  args_cli.buffer_size
     t = time.time()
 
     # reset environment
@@ -109,7 +116,8 @@ def main():
     actions = policy(obs) #just to get the shape for printing
 
     print('\nobservation shape:', obs.shape[-1])
-    print('     action shape:', actions.shape[-1],'\n')
+    print('     action shape:', actions.shape[-1])
+    print('   Buffer   size :', buffer_size,'\n')
 
     # simulate environment
     while simulation_app.is_running() and len(observations_list) < (num_samples + buffer_size):

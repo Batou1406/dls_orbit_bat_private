@@ -50,6 +50,16 @@ from omni.isaac.orbit_tasks.utils.wrappers.rsl_rl import RslRlVecEnvWrapper
 
 from train import Model
 
+def infer_input_output_sizes(state_dict):
+    # Find the first layer's weight (input size)
+    first_layer_key = next(iter(state_dict.keys()))
+    input_size = state_dict[first_layer_key].shape[1]
+    
+    # Find the last layer's weight (output size)
+    last_layer_key = list(state_dict.keys())[-2]  # Assuming the last layer is a Linear layer with weights and biases
+    output_size = state_dict[last_layer_key].shape[0]
+    
+    return input_size, output_size
 
 """ --- Main --- """
 def main():
@@ -62,17 +72,32 @@ def main():
     env = gym.make(args_cli.task, cfg=env_cfg)
 
     # wrap around environment for rsl-rl -> usefull to get the properties and method 
-    env = RslRlVecEnvWrapper(env)
+    env = RslRlVecEnvWrapper(env) 
 
-    # Retrieve the Model parameters
-    buffer_size = 5
-    input_size = env.num_obs  
-    output_size = buffer_size*env.num_actions  
-
+    # Construct the model path
     model_path = 'model/' + args_cli.controller_name + '/' + args_cli.model_name + '.pt'
+
+    # Load the state dictionary and retrieve input and output size from the network
+    model_as_state_dict = torch.load(model_path)
+    input_size, output_size = infer_input_output_sizes(model_as_state_dict)
+
+    # Load the model
     policy = Model(input_size, output_size)
     policy.load_state_dict(torch.load(model_path))
     policy = policy.to(env.device)
+
+    # From model output and env actions, retrieve the buffer size
+    buffer_size = output_size // env.num_actions 
+
+    # Print
+    print('\nModel : ',args_cli.model_name)
+    print('Task  : ',args_cli.controller_name)
+    print('Path  : ', model_path,'\n')
+    print('Model Input  size :',input_size)
+    print('Model Output size :',output_size)
+    print('   Buffer    size :',buffer_size)
+    print(' Env  Action size :',env.num_actions)
+    print(' Env   Obs   size :',env.num_obs,'\n')
 
     # reset environment
     obs, _ = env.get_observations()
@@ -84,15 +109,14 @@ def main():
             # agent stepping
             actions = policy(obs)
 
-            # # Select only actions at next step
-            # actions = actions.view(-1, env.num_actions, buffer_size)
+            # Reshape the actions correctly : shape(num_envs, buffer_size, actions_size)
+            actions = actions.view(env.num_envs, buffer_size, env.num_actions)
 
             # Select only actions at next step
-            actions = actions.view(-1, buffer_size, env.num_actions) # reshape /!\ buffer_size comes before num_actions otherwise it don't work /!\
-            actions = actions[:,0,:] # select first action
+            actions = actions[:,0,:] 
 
             # env stepping
-            obs, _, _, _ = env.step(actions)
+            obs, _, _, _ = env.step(actions) 
 
     # close the simulator
     env.close()

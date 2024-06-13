@@ -1,3 +1,6 @@
+
+import matplotlib.pyplot as plt
+
 import os
 import torch
 import argparse
@@ -33,19 +36,23 @@ class Model(nn.Module):
 """ --- Training and Testing Function --- """
 def train(args, model, device, train_loader, optimizer, epoch, criterion):
     model.train()
+    train_loss = 0
     for batch_idx, (data, target) in enumerate(train_loader):
         data, target = data.to(device), target.to(device)
         optimizer.zero_grad()
         output = model(data)
         loss = criterion(output, target)
         loss.backward()
+        train_loss += loss.item()
         optimizer.step()
         if (batch_idx % args.log_interval == 0) and args.verbose:
-            print('Train Epoch: {} [{}/{} ({:.0f}%)] Loss: {:.6f}'.format(
+            print('Train Epoch: {} [{}/{} ({:.0f}%)] batch cum. Loss: {:.6f}'.format(
                 epoch, batch_idx * len(data), len(train_loader.dataset),
                 100. * batch_idx /  len(train_loader), loss.item()), end='\r', flush=True)
             if args.dry_run:
                 break
+    train_loss_avg = train_loss / len(train_loader.dataset)
+    return train_loss_avg
 
 def test(model, device, test_loader, criterion):
     model.eval()
@@ -57,8 +64,8 @@ def test(model, device, test_loader, criterion):
             test_loss += criterion(output, target).item() # sum up batch loss
 
 
-    test_loss /= len(test_loader.dataset)
-    return test_loss
+    test_loss_avg = test_loss / len(test_loader.dataset)
+    return test_loss_avg
 
 """ --- Main --- """
 def main():
@@ -77,7 +84,7 @@ def main():
     parser.add_argument('--seed', type=int, default=1, metavar='S',             help='random seed (default: 1)')
     parser.add_argument('--log-interval', type=int, default=10, metavar='N',    help='how many batches to wait before logging training status')
     parser.add_argument('--save-model', action='store_true', default=True,      help='For Saving the current Model')
-    parser.add_argument('--model-name', action='store_true', default='model1',  help='Name For Saving the current Model')
+    parser.add_argument('--model-name', type=str, default='model1',             help='Name For Saving the current Model')
     args = parser.parse_args()
     use_cuda = not args.no_cuda and torch.cuda.is_available()
 
@@ -116,8 +123,9 @@ def main():
     input_size = train_dataset.observations.shape[-1]
     output_size = train_dataset.actions.shape[-1]    
 
-    print('\nDatapoints  : ', train_dataset.observations.shape[0]) 
-    print('Input  size : ',input_size)
+    print('\nTraining Datapoints  : ', train_dataset.observations.shape[0]) 
+    print('Testing  Datapoints  : ', train_dataset.observations.shape[0]) 
+    print('\nInput  size : ',input_size)
     print('Output Size : ',output_size,'\n')
 
     # Define Model criteria : model, optimizer and loss criterion and scheduler
@@ -127,10 +135,15 @@ def main():
     test_criterion  = nn.MSELoss() 
     scheduler       = StepLR(optimizer, step_size=1, gamma=args.gamma)
 
+    train_loss_list = []
+    test_loss_list = []
+
     # train and evaluate the model
     for epoch in range(1, args.epochs + 1):
-        train(args, model, device, train_loader, optimizer, epoch, train_criterion)
+        train_loss = train(args, model, device, train_loader, optimizer, epoch, train_criterion)
         test_loss = test(model, device, test_loader, test_criterion)
+        train_loss_list.append(train_loss)
+        test_loss_list.append(test_loss)
         print('\nTest Epoch: {} - Test set: Average loss: {:.4f}\n'.format(epoch, test_loss))
         scheduler.step()
 
@@ -142,6 +155,14 @@ def main():
             os.makedirs(logging_directory)
         torch.save(model.state_dict(),logging_directory + '/' + args.model_name + '.pt')
         print('\nModel saved as : ',logging_directory + '/' + args.model_name + '.pt\n')
+
+    # Plots the results
+    plt.plot(test_loss_list)
+    # plt.plot(train_loss_list)
+    plt.title('Loss on Testing Dataset')
+    plt.xlabel('Iterations')
+    plt.ylabel('Loss')
+    plt.show()
 
 
 if __name__ == '__main__':
