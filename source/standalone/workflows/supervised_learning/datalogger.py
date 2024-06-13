@@ -97,13 +97,21 @@ def main():
     actions_list = []
 
     file_prefix = 'training_data'
-    num_samples = 1000
+    num_samples = 500
 
     # reset environment
     obs, _ = env.get_observations()
+    actions = policy(obs) #just to get the shape for printing
+
+    print('\nobservation shape:', obs.shape)
+    print('     action shape:', actions.shape,'\n')
 
     # simulate environment
     while simulation_app.is_running() and len(observations_list) < num_samples:
+
+        if len(observations_list)%100 == 0:
+            print('Iteration :',len(observations_list),'out of', num_samples)
+
         # run everything in inference mode
         with torch.inference_mode():
             # agent stepping
@@ -112,16 +120,11 @@ def main():
             # env stepping
             obs, _, _, _ = env.step(actions)
 
-            print('\nobservation shape:', obs.shape)
-            print('     action shape:', actions.shape)
-
             # Datalogging for Dataset generation
             observations_list.append(obs.cpu())
             actions_list.append(actions.cpu())
 
     # Concatenate all observations and actions
-    # observations_tensor = torch.stack(observations_list)                      # shape(len_list, num_envs, obs_dim)
-    # actions_tensor      = torch.stack(actions_list)                           # shape(len_list, num_envs, act_dim)
     observations_tensor = torch.cat(observations_list).view(-1, obs.shape[-1])  # shape(len_list*num_envs, obs_dim)
     actions_tensor      = torch.cat(actions_list).view(-1, actions.shape[-1])   # shape(len_list*num_envs, act_dim)
 
@@ -131,6 +134,12 @@ def main():
         'actions': actions_tensor
     }
     torch.save(data, f'{logging_directory}/{file_prefix}.pt') 
+
+    print('\nData succesfully saved as ', file_prefix)
+    print('Saved at :',f'{logging_directory}/{file_prefix}.pt')
+    print('Dataset of ',args_cli.num_envs*num_samples,'datapoints')
+    print('Input  size :', observations_tensor.shape[-1])
+    print('Output size :', actions_tensor.shape[-1],'\n')
 
     # close the simulator
     env.close()
@@ -148,5 +157,9 @@ if __name__ == "__main__":
             
     # run the main function
     main()
+
+    print('Everything went well, closing')
     # close sim app
     simulation_app.close()
+
+    
