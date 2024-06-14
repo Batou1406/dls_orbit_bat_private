@@ -647,6 +647,7 @@ class samplingController(modelBaseController):
 
 
 # ---------------------------------- Optimizer --------------------------------
+fake = False
 class SamplingOptimizer():
     """ TODO """
     def __init__(self):
@@ -669,8 +670,8 @@ class SamplingOptimizer():
 
         self.sampling_horizon = self.time_horizon
 
-        self.state_dim = 24
-        self.input_dim = 12
+        self.state_dim = 24 # CoM_pos(3) + lin_vel(3) + CoM_pose(3) + ang_vel(3) + foot_pos(12) 
+        self.input_dim = 12 # GRF(12) (foot touch down pos is state and an input)
 
         self.dtype_general = 'float32'
 
@@ -694,46 +695,45 @@ class SamplingOptimizer():
 
         # State weight matrix (JAX)
         self.Q = jnp.identity(self.state_dim, dtype=self.dtype_general)*0
-        self.Q = self.Q.at[0,0].set(0.0)
-        self.Q = self.Q.at[1,1].set(0.0)
-        self.Q = self.Q.at[2,2].set(111500) #com_z
-        self.Q = self.Q.at[3,3].set(5000) #com_vel_x
-        self.Q = self.Q.at[4,4].set(5000) #com_vel_y
-        self.Q = self.Q.at[5,5].set(200) #com_vel_z
-        self.Q = self.Q.at[6,6].set(11200) #base_angle_roll
-        self.Q = self.Q.at[7,7].set(11200) #base_angle_pitch
-        self.Q = self.Q.at[8,8].set(0.0) #base_angle_yaw
-        self.Q = self.Q.at[9,9].set(20) #base_angle_rates_x
-        self.Q = self.Q.at[10,10].set(20) #base_angle_rates_y
-        self.Q = self.Q.at[11,11].set(600) #base_angle_rates_z
+        self.Q = self.Q.at[0,0].set(0.0)        #com_x
+        self.Q = self.Q.at[1,1].set(0.0)        #com_y
+        self.Q = self.Q.at[2,2].set(111500)     #com_z
+        self.Q = self.Q.at[3,3].set(5000)       #com_vel_x
+        self.Q = self.Q.at[4,4].set(5000)       #com_vel_y
+        self.Q = self.Q.at[5,5].set(200)        #com_vel_z
+        self.Q = self.Q.at[6,6].set(11200)      #base_angle_roll
+        self.Q = self.Q.at[7,7].set(11200)      #base_angle_pitch
+        self.Q = self.Q.at[8,8].set(0.0)        #base_angle_yaw
+        self.Q = self.Q.at[9,9].set(20)         #base_angle_rates_x
+        self.Q = self.Q.at[10,10].set(20)       #base_angle_rates_y
+        self.Q = self.Q.at[11,11].set(600)      #base_angle_rates_z
+        self.Q = self.Q.at[12,12].set(0.0)      #foot_pos_x_FL
+        self.Q = self.Q.at[13,13].set(0.0)      #foot_pos_y_FL
+        self.Q = self.Q.at[14,14].set(0.0)      #foot_pos_z_FL
+        self.Q = self.Q.at[15,15].set(0.0)      #foot_pos_x_FR
+        self.Q = self.Q.at[16,16].set(0.0)      #foot_pos_y_FR
+        self.Q = self.Q.at[17,17].set(0.0)      #foot_pos_z_FR
+        self.Q = self.Q.at[18,18].set(0.0)      #foot_pos_x_RL
+        self.Q = self.Q.at[19,19].set(0.0)      #foot_pos_y_RL
+        self.Q = self.Q.at[20,20].set(0.0)      #foot_pos_z_RL
+        self.Q = self.Q.at[21,21].set(0.0)      #foot_pos_x_RR
+        self.Q = self.Q.at[22,22].set(0.0)      #foot_pos_y_RR
+        self.Q = self.Q.at[23,23].set(0.0)      #foot_pos_z_RR
 
         # Input weight matrix (JAX)
-        self.R = jnp.identity(self.input_dim, dtype=self.dtype_general)
-        self.R = self.R.at[0,0].set(0.0) #foot_pos_x_FL
-        self.R = self.R.at[1,1].set(0.0) #foot_pos_y_FL
-        self.R = self.R.at[2,2].set(0.0) #foot_pos_z_FL
-        self.R = self.R.at[3,3].set(0.0) #foot_pos_x_FR
-        self.R = self.R.at[4,4].set(0.0) #foot_pos_y_FR
-        self.R = self.R.at[5,5].set(0.0) #foot_pos_z_FR
-        self.R = self.R.at[6,6].set(0.0) #foot_pos_x_RL
-        self.R = self.R.at[7,7].set(0.0) #foot_pos_y_RL
-        self.R = self.R.at[8,8].set(0.0) #foot_pos_z_RL
-        self.R = self.R.at[9,9].set(0.0) #foot_pos_x_RR
-        self.R = self.R.at[10,10].set(0.0) #foot_pos_y_RR
-        self.R = self.R.at[11,11].set(0.0) #foot_pos_z_RR
-
-        self.R = self.R.at[12,12].set(0.1) #foot_force_x_FL
-        self.R = self.R.at[13,13].set(0.1) #foot_force_y_FL
-        self.R = self.R.at[14,14].set(0.001) #foot_force_z_FL
-        self.R = self.R.at[15,15].set(0.1) #foot_force_x_FR
-        self.R = self.R.at[16,16].set(0.1) #foot_force_y_FR
-        self.R = self.R.at[17,17].set(0.001) #foot_force_z_FR
-        self.R = self.R.at[18,18].set(0.1) #foot_force_x_RL
-        self.R = self.R.at[19,19].set(0.1) #foot_force_y_RL
-        self.R = self.R.at[20,20].set(0.001) #foot_force_z_RL
-        self.R = self.R.at[21,21].set(0.1) #foot_force_x_RR
-        self.R = self.R.at[22,22].set(0.1) #foot_force_y_RR
-        self.R = self.R.at[23,23].set(0.001) #foot_force_z_RR
+        self.R = jnp.identity(self.input_dim, dtype=self.dtype_general)*0
+        self.R = self.R.at[0,0].set(0.1)        #foot_force_x_FL
+        self.R = self.R.at[1,1].set(0.1)        #foot_force_y_FL
+        self.R = self.R.at[2,2].set(0.001)      #foot_force_z_FL
+        self.R = self.R.at[3,3].set(0.1)        #foot_force_x_FR
+        self.R = self.R.at[4,4].set(0.1)        #foot_force_y_FR
+        self.R = self.R.at[5,5].set(0.001)      #foot_force_z_FR
+        self.R = self.R.at[6,6].set(0.1)        #foot_force_x_RL
+        self.R = self.R.at[7,7].set(0.1)        #foot_force_y_RL
+        self.R = self.R.at[8,8].set(0.001)      #foot_force_z_RL
+        self.R = self.R.at[9,9].set(0.1)        #foot_force_x_RR
+        self.R = self.R.at[10,10].set(0.1)      #foot_force_y_RR
+        self.R = self.R.at[11,11].set(0.001)    #foot_force_z_RR
 
 
     def optimize_latent_variable(self, env: RLTaskEnv, f:torch.Tensor, d:torch.Tensor, p_lw:torch.Tensor, F_lw:torch.Tensor, phase:torch.Tensor, c_prev:torch.Tensor, height_map) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -1035,6 +1035,7 @@ class SamplingOptimizer():
         # Defining the foot position sequence is tricky.. Since we only have number of predicted step < time_horizon
         p_ref_seq_lw = torch.zeros((4,3, self.sampling_horizon), device=env.device) # shape(4, 3, sampling_horizon) TODO Define this !
         p_ref_seq_lw = p_ref_seq_lw.flatten(0,1)                                    # shape(12, sampling_horizon)
+        p_ref_seq_lw = p_lw.unsqueeze(-1).expand(12,self.sampling_horizon)          # shape(12, sampling_horizon) -> quick fix
 
         # Compute the gravity compensation GRF along the horizon : of shape (num_samples, num_legs, 3, time_horizon)
         number_of_leg_in_contact_samples = (torch.sum(c_samples, dim=1)).clamp(min=1) # Compute the number of leg in contact, clamp by minimum 1 to avoid division by zero. shape(num_samples, time_horizon)
@@ -1051,7 +1052,7 @@ class SamplingOptimizer():
         )).permute(1,0) # of shape(time_horizon, 24) -> 3 + 3 + 3 + 3 + (4*3)
 
         reference_seq_input_samples = torch.cat((
-            gravity_compensation_F_samples.flatten(1,2), #                                              of shape(num_samples, num_legs*3, time_horizon)
+            gravity_compensation_F_samples.flatten(1,2), # Gravity compensation                             of shape(num_samples, num_legs*3, time_horizon)
         )).permute(0,2,1) # of shape(num_samples, time_horizon, num_legs*3)
 
 
@@ -1100,6 +1101,9 @@ class SamplingOptimizer():
         p_star_lw = p_lw_samples[best_index.item()].unsqueeze(0)
         F_star_lw = F_lw_samples[best_index.item()].unsqueeze(0)
 
+        # Since Foot touch down position aren't optimized yet, get the nominal one # TODO Change this
+        p_star_lw = p_lw_samples[0].unsqueeze(0)
+
         return f_star, d_star, p_star_lw, F_star_lw
 
 
@@ -1125,7 +1129,7 @@ class SamplingOptimizer():
         best_cost = cost_samples.take(best_index)
         best_action_seq = action_seq_samples[best_index]
 
-        best_cost = jnp.int32(0)
+        if fake : best_index = jnp.int32(0)
 
         return best_action_seq, best_index
 
@@ -1156,10 +1160,18 @@ class SamplingOptimizer():
         d_samples = self.normal_sampling(num_samples=self.num_samples, mean=d[0], var=torch.tensor((0.02), device=self.device))
         p_lw_samples = self.normal_sampling(num_samples=self.num_samples, mean=p_lw[0], var=torch.tensor((0.01), device=self.device))
         F_lw_samples = self.normal_sampling(num_samples=self.num_samples, mean=F_lw[0], var=torch.tensor((1.0), device=self.device))
+        # f_samples = self.normal_sampling(num_samples=self.num_samples, mean=f[0], var=torch.tensor((0.0000001), device=self.device))
+        # d_samples = self.normal_sampling(num_samples=self.num_samples, mean=d[0], var=torch.tensor((0.0000001), device=self.device))
+        # p_lw_samples = self.normal_sampling(num_samples=self.num_samples, mean=p_lw[0], var=torch.tensor((0.0000001), device=self.device))
+        # F_lw_samples = self.normal_sampling(num_samples=self.num_samples, mean=F_lw[0], var=torch.tensor((0.0000001), device=self.device))
 
         # Clamp the input to valid range and make sure p[2] is on the ground
         f_samples, d_samples, p_lw_samples, F_lw_samples = self.enforce_valid_input(f_samples=f_samples, d_samples=d_samples, p_lw_samples=p_lw_samples, F_lw_samples=F_lw_samples, height_map=height_map)
 
+        # Set the foot height to the nominal foot height # TODO change
+        p_lw_samples[:,:,2,:] = p_lw[0,:,2,:]
+
+        # Put the orignal actions as the first samples
         f_samples[0,:] = f[0,:]
         d_samples[0,:] = d[0,:]
         p_lw_samples[0,:,:,:] = p_lw[0,:,:,:]
@@ -1258,7 +1270,7 @@ class SamplingOptimizer():
             # Embed current contact into variable for the centroidal model
             current_contact = jnp.array([
                 action_seq_c_jax[n]
-            ], dtype=self.dtype_general)[0] # shape(4) (returns shape (1,4) -> thus the [0])
+            ], dtype=self.dtype_general)[0] # shape(4) (returns shape (1,4) -> thus the [0]) # type: ignore
 
             # --- Step 2 : Retrieve the input given the interpolation parameters
             step = n # TODO : do this properly
@@ -1270,44 +1282,57 @@ class SamplingOptimizer():
             F_lw_x_RL, F_lw_y_RL, F_lw_z_RL = self.interpolation_F(action_F_lw_jax[2], step, horizon)
             F_lw_x_RR, F_lw_y_RR, F_lw_z_RR = self.interpolation_F(action_F_lw_jax[3], step, horizon)
 
-            # Apply F_lw only if in contact
-            F_lw_x_FL = F_lw_x_FL * current_contact[0]
-            F_lw_y_FL = F_lw_y_FL * current_contact[0]
-            F_lw_z_FL = F_lw_z_FL * current_contact[0]
-            
-            F_lw_x_FR = F_lw_x_FR * current_contact[1]
-            F_lw_y_FR = F_lw_y_FR * current_contact[1]
-            F_lw_z_FR = F_lw_z_FR * current_contact[1]
-
-            F_lw_x_RL = F_lw_x_RL * current_contact[2]
-            F_lw_y_RL = F_lw_y_RL * current_contact[2]
-            F_lw_z_RL = F_lw_z_RL * current_contact[2]
-
-            F_lw_x_RR = F_lw_x_RR * current_contact[3]
-            F_lw_y_RR = F_lw_y_RR * current_contact[3]
-            F_lw_z_RR = F_lw_z_RR * current_contact[3]
-
-            # Enforce force constraints
-            F_lw_x_FL, F_lw_y_FL, F_lw_z_FL, \
-            F_lw_x_FR, F_lw_y_FR, F_lw_z_FR, \
-            F_lw_x_RL, F_lw_y_RL, F_lw_z_RL, \
-            F_lw_x_RR, F_lw_y_RR, F_lw_z_RR = self.enforce_force_constraints(F_lw_x_FL, F_lw_y_FL, F_lw_z_FL,
-                                                                    F_lw_x_FR, F_lw_y_FR, F_lw_z_FR,
-                                                                    F_lw_x_RL, F_lw_y_RL, F_lw_z_RL,
-                                                                    F_lw_x_RR, F_lw_y_RR, F_lw_z_RR)
-
-            # Embed input into variable for the centroidal model
-            input = jnp.array([
-                jnp.float32(0), jnp.float32(0), jnp.float32(0), # action_p_lw_jax TODO : implement this 
-                jnp.float32(0), jnp.float32(0), jnp.float32(0),
-                jnp.float32(0), jnp.float32(0), jnp.float32(0),
-                jnp.float32(0), jnp.float32(0), jnp.float32(0),
+            F_lw = jnp.array([
                 F_lw_x_FL, F_lw_y_FL, F_lw_z_FL, # foot position fl
                 F_lw_x_FR, F_lw_y_FR, F_lw_z_FR, # foot position fr
                 F_lw_x_RL, F_lw_y_RL, F_lw_z_RL, # foot position rl
                 F_lw_x_RR, F_lw_y_RR, F_lw_z_RR, # foot position rr
             ], dtype=self.dtype_general)
 
+            F_lw = self.enforce_force_constraints_new(F=F_lw, c=current_contact)
+
+            # Apply F_lw only if in contact
+            # F_lw_x_FL = F_lw_x_FL * current_contact[0]
+            # F_lw_y_FL = F_lw_y_FL * current_contact[0]
+            # F_lw_z_FL = F_lw_z_FL * current_contact[0]
+            
+            # F_lw_x_FR = F_lw_x_FR * current_contact[1]
+            # F_lw_y_FR = F_lw_y_FR * current_contact[1]
+            # F_lw_z_FR = F_lw_z_FR * current_contact[1]
+
+            # F_lw_x_RL = F_lw_x_RL * current_contact[2]
+            # F_lw_y_RL = F_lw_y_RL * current_contact[2]
+            # F_lw_z_RL = F_lw_z_RL * current_contact[2]
+
+            # F_lw_x_RR = F_lw_x_RR * current_contact[3]
+            # F_lw_y_RR = F_lw_y_RR * current_contact[3]
+            # F_lw_z_RR = F_lw_z_RR * current_contact[3]
+
+            # Enforce force constraints
+            # F_lw_x_FL, F_lw_y_FL, F_lw_z_FL, \
+            # F_lw_x_FR, F_lw_y_FR, F_lw_z_FR, \
+            # F_lw_x_RL, F_lw_y_RL, F_lw_z_RL, \
+            # F_lw_x_RR, F_lw_y_RR, F_lw_z_RR = self.enforce_force_constraints(F_lw_x_FL, F_lw_y_FL, F_lw_z_FL,
+            #                                                         F_lw_x_FR, F_lw_y_FR, F_lw_z_FR,
+            #                                                         F_lw_x_RL, F_lw_y_RL, F_lw_z_RL,
+            #                                                         F_lw_x_RR, F_lw_y_RR, F_lw_z_RR)
+
+            # Embed input into variable for the centroidal model
+            # input = jnp.array([
+            #     jnp.float32(0), jnp.float32(0), jnp.float32(0), # action_p_lw_jax TODO : implement this 
+            #     jnp.float32(0), jnp.float32(0), jnp.float32(0),
+            #     jnp.float32(0), jnp.float32(0), jnp.float32(0),
+            #     jnp.float32(0), jnp.float32(0), jnp.float32(0),
+            #     F_lw_x_FL, F_lw_y_FL, F_lw_z_FL, # foot position fl
+            #     F_lw_x_FR, F_lw_y_FR, F_lw_z_FR, # foot position fr
+            #     F_lw_x_RL, F_lw_y_RL, F_lw_z_RL, # foot position rl
+            #     F_lw_x_RR, F_lw_y_RR, F_lw_z_RR, # foot position rr
+            # ], dtype=self.dtype_general)
+
+            input = jnp.concatenate([
+                jnp.zeros(12, dtype=jnp.float32),
+                F_lw
+            ])
 
             # --- Step 2 : Integrate the dynamics with the centroidal model
             state_next = self.robot_model.integrate_jax(state, input, current_contact)
@@ -1320,15 +1345,15 @@ class SamplingOptimizer():
             state_cost  = state_error.T @ self.Q @ state_error
 
             # Compute the input cost
-            input_error = input[12:] - reference_seq_input_jax[n] 
+            input_error = input[12:] - reference_seq_input_jax[n] # Input error computed only for GRF. Foot touch down pos is a state and an input, error is computed with the states
             input_cost  = input_error.T @ self.R @ input_error
 
-            step_cost = state_cost #+ input_cost
+            step_cost = state_cost + input_cost
 
             return (cost + step_cost, state_next)
 
         # Prepare the inital variable
-        initial_cost  = jnp.float32(0.0)
+        initial_cost  = jnp.float32(0.0) # type: ignore
         carry = (initial_cost, initial_state_jax)
 
         # Iterate the model over the time horizon and retrieve the cost
@@ -1392,7 +1417,7 @@ class SamplingOptimizer():
             parameters (jnp.array): The action of shape(TODO)
         """
 
-        # return parameters[step:step+3]
+        # return parameters[step:step+3] # Does not support dynamic indexing...
         return parameters[:3]
 
 
@@ -1449,7 +1474,7 @@ class SamplingOptimizer():
                 F_x_RR, F_y_RR, F_z_RR
 
 
-    def enforce_force_constraints_new(self, F_lw: jnp.array, c: jnp.array) -> jnp.array:
+    def enforce_force_constraints_newalo(self, F_lw: jnp.array, c: jnp.array) -> jnp.array:
         """ Given raw GRFs in local world frame and the contact sequence, return the GRF clamped by the friction cone
         and set to zero if not in contact
         
@@ -1485,6 +1510,47 @@ class SamplingOptimizer():
         F_lw_constrained = F_y_lw_clamped * c 
 
         return F_lw_constrained
+    
+    def enforce_force_constraints_new(self, F: jnp.array, c: jnp.array) -> jnp.array:
+        """ Given raw GRFs in local world frame and the contact sequence, return the GRF clamped by the friction cone
+        and set to zero if not in contact
+        
+        Args :
+            F (jnp.array): Ground Reaction forces samples                    of shape(num_legs*3)
+            c    (jnp.array): contact sequence samples                       of shape(num_legs)
+            
+        Return
+            F_lw (jnp.array): Clamped ground reaction forces                 of shape(num_legs*3)"""
+
+        # --- Step 1 : Enforce the friction cone constraints
+        # Retrieve Force component
+        F_x = F[0::3]  # x components: elements 0, 3, 6, 9   shape(num_legs)
+        F_y = F[1::3]  # y components: elements 1, 4, 7, 10  shape(num_legs)
+        F_z = F[2::3]  # z components: elements 2, 5, 8, 11  shape(num_legs)
+
+        # Compute the maximum Force in the xz plane
+        F_xy_max = self.mu * F_z            # shape(num_legs)
+
+        # Compute the actual force in the xy plane
+        F_xy = jnp.sqrt(F_x**2 + F_y**2)    # shape(num_legs)
+
+        # Compute the angle in the xy plane of the Force
+        alpha = jnp.arccos(F_x / F_xy)      # shape(num_legs)
+
+        # Apply the constraint in the xy plane
+        F_xy_clamped = jnp.minimum(F_xy, F_xy_max)  # shape(num_legs)
+
+        # Project these clamped forces in the xy plane back as x,y component
+        F_x_clamped = F_xy_clamped*jnp.cos(alpha)   # shape(num_legs)
+        F_y_clamped = F_xy_clamped*jnp.sin(alpha)   # shape(num_legs)
+
+        # Finally reconstruct the vector
+        F_clamped = jnp.ravel(jnp.column_stack([F_x_clamped, F_y_clamped, F_z])) # To reconstruct with the right indexing
+
+        # --- Step 2 : Set force to zero for feet not in contact
+        F_constrained = F_clamped * c.repeat(3)     # shape(num_legs*3)
+
+        return F_constrained
         
 
     def enforce_valid_input(self, f_samples: torch.Tensor, d_samples: torch.Tensor, p_lw_samples: torch.Tensor, F_lw_samples: torch.Tensor, height_map: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -1525,10 +1591,6 @@ class SamplingOptimizer():
         F_lw_samples = F_lw_samples.clamp(min=0)
 
         # Ensure p on the ground TODO Implement
-        p_lw_samples[:,:,2,:] = -0.4*torch.ones_like(p_lw_samples[:,:,2,:])
+        p_lw_samples[:,:,2,:] = 0.0*torch.ones_like(p_lw_samples[:,:,2,:])
 
         return f_samples, d_samples, p_lw_samples, F_lw_samples
-
-
-if __name__ == "__main__":
-    print('alo')
