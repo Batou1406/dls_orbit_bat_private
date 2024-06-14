@@ -133,9 +133,9 @@ class ActionsCfg:
     model_base_variable = mdp.ModelBaseActionCfg(
         asset_name="robot",
         joint_names=[".*"], 
-        prevision_horizon=1, 
-        number_predict_step=1, 
-        controller=mdp.samplingController,
+        # controller=mdp.samplingController,
+        # optimizerCfg=mdp.ModelBaseActionCfg.OptimizerCfg()
+        controller=mdp.modelBaseController,
         )
     
     # joint_pos = mdp.JointPositionActionCfg(asset_name="robot", joint_names=[".*"], scale=0.5, use_default_offset=True)
