@@ -1268,71 +1268,24 @@ class SamplingOptimizer():
             cost, state = carry 
 
             # Embed current contact into variable for the centroidal model
-            current_contact = jnp.array([
-                action_seq_c_jax[n]
-            ], dtype=self.dtype_general)[0] # shape(4) (returns shape (1,4) -> thus the [0]) # type: ignore
+            current_contact = jnp.array([action_seq_c_jax[n]], dtype=self.dtype_general)[0] # shape(4) (returns shape (1,4) -> thus the [0]) # type: ignore
 
             # --- Step 2 : Retrieve the input given the interpolation parameters
             step = n # TODO : do this properly
             horizon = self.sampling_horizon # TODO : do this properly
 
             # Compute the GRFs given the interpolation parameter and the point in the curve
-            F_lw_x_FL, F_lw_y_FL, F_lw_z_FL = self.interpolation_F(action_F_lw_jax[0], step, horizon) # TODO Single spline for now : Implement multiple spline function
-            F_lw_x_FR, F_lw_y_FR, F_lw_z_FR = self.interpolation_F(action_F_lw_jax[1], step, horizon)
-            F_lw_x_RL, F_lw_y_RL, F_lw_z_RL = self.interpolation_F(action_F_lw_jax[2], step, horizon)
-            F_lw_x_RR, F_lw_y_RR, F_lw_z_RR = self.interpolation_F(action_F_lw_jax[3], step, horizon)
+            F_lw = self.interpolation_F(parameters=action_F_lw_jax, step=step, horizon=horizon)
 
-            F_lw = jnp.array([
-                F_lw_x_FL, F_lw_y_FL, F_lw_z_FL, # foot position fl
-                F_lw_x_FR, F_lw_y_FR, F_lw_z_FR, # foot position fr
-                F_lw_x_RL, F_lw_y_RL, F_lw_z_RL, # foot position rl
-                F_lw_x_RR, F_lw_y_RR, F_lw_z_RR, # foot position rr
-            ], dtype=self.dtype_general)
-
-            F_lw = self.enforce_force_constraints_new(F=F_lw, c=current_contact)
-
-            # Apply F_lw only if in contact
-            # F_lw_x_FL = F_lw_x_FL * current_contact[0]
-            # F_lw_y_FL = F_lw_y_FL * current_contact[0]
-            # F_lw_z_FL = F_lw_z_FL * current_contact[0]
-            
-            # F_lw_x_FR = F_lw_x_FR * current_contact[1]
-            # F_lw_y_FR = F_lw_y_FR * current_contact[1]
-            # F_lw_z_FR = F_lw_z_FR * current_contact[1]
-
-            # F_lw_x_RL = F_lw_x_RL * current_contact[2]
-            # F_lw_y_RL = F_lw_y_RL * current_contact[2]
-            # F_lw_z_RL = F_lw_z_RL * current_contact[2]
-
-            # F_lw_x_RR = F_lw_x_RR * current_contact[3]
-            # F_lw_y_RR = F_lw_y_RR * current_contact[3]
-            # F_lw_z_RR = F_lw_z_RR * current_contact[3]
-
-            # Enforce force constraints
-            # F_lw_x_FL, F_lw_y_FL, F_lw_z_FL, \
-            # F_lw_x_FR, F_lw_y_FR, F_lw_z_FR, \
-            # F_lw_x_RL, F_lw_y_RL, F_lw_z_RL, \
-            # F_lw_x_RR, F_lw_y_RR, F_lw_z_RR = self.enforce_force_constraints(F_lw_x_FL, F_lw_y_FL, F_lw_z_FL,
-            #                                                         F_lw_x_FR, F_lw_y_FR, F_lw_z_FR,
-            #                                                         F_lw_x_RL, F_lw_y_RL, F_lw_z_RL,
-            #                                                         F_lw_x_RR, F_lw_y_RR, F_lw_z_RR)
+            # Apply Force constraints : Friction cone constraints and Force set to zero if foot not in contact
+            F_lw = self.enforce_force_constraints(F=F_lw, c=current_contact)    # TODO Single spline for now : Implement multiple spline function
 
             # Embed input into variable for the centroidal model
-            # input = jnp.array([
-            #     jnp.float32(0), jnp.float32(0), jnp.float32(0), # action_p_lw_jax TODO : implement this 
-            #     jnp.float32(0), jnp.float32(0), jnp.float32(0),
-            #     jnp.float32(0), jnp.float32(0), jnp.float32(0),
-            #     jnp.float32(0), jnp.float32(0), jnp.float32(0),
-            #     F_lw_x_FL, F_lw_y_FL, F_lw_z_FL, # foot position fl
-            #     F_lw_x_FR, F_lw_y_FR, F_lw_z_FR, # foot position fr
-            #     F_lw_x_RL, F_lw_y_RL, F_lw_z_RL, # foot position rl
-            #     F_lw_x_RR, F_lw_y_RR, F_lw_z_RR, # foot position rr
-            # ], dtype=self.dtype_general)
-
             input = jnp.concatenate([
-                jnp.zeros(12, dtype=jnp.float32),
+                jnp.zeros(12, dtype=jnp.float32), # action_p_lw_jax TODO : implement this 
                 F_lw
             ])
+
 
             # --- Step 2 : Integrate the dynamics with the centroidal model
             state_next = self.robot_model.integrate_jax(state, input, current_contact)
@@ -1406,112 +1359,23 @@ class SamplingOptimizer():
 
     def compute_discrete(self, parameters, step, horizon):
         """ If actions are discrete actions, no interpolation are required.
-        This function simply return the action
+        This function simply return the action at the right time step
 
         Args :
-            parameters (jnp.array): The action of shape(3*time_horizon)
+            parameters (jnp.array): The action of shape(num_legs, 3*time_horizon)
             step             (int): The current step index along horizon
             horizon          (int): Not used : here for compatibility
 
         Returns :
-            parameters (jnp.array): The action of shape(TODO)
+            parameters (jnp.array): The action of shape(num_legs*3)
         """
 
-        # return parameters[step:step+3] # Does not support dynamic indexing...
-        return parameters[:3]
+        param = (parameters.reshape((self.num_legs, 3, self.sampling_horizon)))[:,:,step].flatten()
 
+        return param
 
-    def enforce_force_constraints(self, F_x_FL, F_y_FL, F_z_FL,
-                                        F_x_FR, F_y_FR, F_z_FR,
-                                        F_x_RL, F_y_RL, F_z_RL,
-                                        F_x_RR, F_y_RR, F_z_RR):
-       
-        # Enforce push-only of the ground!
-
-        F_z_FL = jnp.where(F_z_FL > self.F_z_min, F_z_FL, self.F_z_min)
-        F_z_FR = jnp.where(F_z_FR > self.F_z_min, F_z_FR, self.F_z_min)
-        F_z_RL = jnp.where(F_z_RL > self.F_z_min, F_z_RL, self.F_z_min)
-        F_z_RR = jnp.where(F_z_RR > self.F_z_min, F_z_RR, self.F_z_min)
-
-        # Enforce maximum force per leg!
-        F_z_FL = jnp.where(F_z_FL<self.F_z_max, F_z_FL, self.F_z_max)
-        F_z_FR = jnp.where(F_z_FR<self.F_z_max, F_z_FR, self.F_z_max)
-        F_z_RL = jnp.where(F_z_RL<self.F_z_max, F_z_RL, self.F_z_max)
-        F_z_RR = jnp.where(F_z_RR<self.F_z_max, F_z_RR, self.F_z_max)
-        
-
-
-        # Enforce friction cone
-        #( F_{\text{min}} \leq F_z \leq F_{\text{max}} )
-        # ( -\mu F_{\text{z}} \leq F_x \leq \mu F_{\text{z}} )
-        # ( -\mu F_{\text{z}} \leq F_y \leq \mu F_{\text{z}} )
-        
-        # TODO REDO this ! This is wrong ! This is not the friction cone but the friction pyramide 
-        F_x_FL = jnp.where(F_x_FL > -self.mu*F_z_FL, F_x_FL, -self.mu*F_z_FL)
-        F_x_FL = jnp.where(F_x_FL <  self.mu*F_z_FL, F_x_FL,  self.mu*F_z_FL)
-        F_y_FL = jnp.where(F_y_FL > -self.mu*F_z_FL, F_y_FL, -self.mu*F_z_FL)
-        F_y_FL = jnp.where(F_y_FL <  self.mu*F_z_FL, F_y_FL,  self.mu*F_z_FL)
-
-        F_x_FR = jnp.where(F_x_FR > -self.mu*F_z_FR, F_x_FR, -self.mu*F_z_FR)
-        F_x_FR = jnp.where(F_x_FR <  self.mu*F_z_FR, F_x_FR,  self.mu*F_z_FR)
-        F_y_FR = jnp.where(F_y_FR > -self.mu*F_z_FR, F_y_FR, -self.mu*F_z_FR)
-        F_y_FR = jnp.where(F_y_FR <  self.mu*F_z_FR, F_y_FR,  self.mu*F_z_FR)
-
-        F_x_RL = jnp.where(F_x_RL > -self.mu*F_z_RL, F_x_RL, -self.mu*F_z_RL)
-        F_x_RL = jnp.where(F_x_RL <  self.mu*F_z_RL, F_x_RL,  self.mu*F_z_RL)
-        F_y_RL = jnp.where(F_y_RL > -self.mu*F_z_RL, F_y_RL, -self.mu*F_z_RL)
-        F_y_RL = jnp.where(F_y_RL <  self.mu*F_z_RL, F_y_RL,  self.mu*F_z_RL)
-
-        F_x_RR = jnp.where(F_x_RR > -self.mu*F_z_RR, F_x_RR, -self.mu*F_z_RR)
-        F_x_RR = jnp.where(F_x_RR <  self.mu*F_z_RR, F_x_RR,  self.mu*F_z_RR)
-        F_y_RR = jnp.where(F_y_RR > -self.mu*F_z_RR, F_y_RR, -self.mu*F_z_RR)
-        F_y_RR = jnp.where(F_y_RR <  self.mu*F_z_RR, F_y_RR,  self.mu*F_z_RR)
-
-        
-        return  F_x_FL, F_y_FL, F_z_FL, \
-                F_x_FR, F_y_FR, F_z_FR, \
-                F_x_RL, F_y_RL, F_z_RL, \
-                F_x_RR, F_y_RR, F_z_RR
-
-
-    def enforce_force_constraints_newalo(self, F_lw: jnp.array, c: jnp.array) -> jnp.array:
-        """ Given raw GRFs in local world frame and the contact sequence, return the GRF clamped by the friction cone
-        and set to zero if not in contact
-        
-        Args :
-            F_lw (jnp.array): Ground Reaction forces samples in lw frame     of shape(num_legs*3)
-            c    (jnp.array): contact sequence samples                       of shape(num_legs)
-            
-        Return
-            F_lw (jnp.array): Clamped ground reaction forces                 of shape(num_legs*3)"""
-
-        # --- Step 1 : Enforce the friction cone constraints
-        # Compute the maximum Force in the xz plane
-        F_xy_lw_max = self.mu * F_z
-
-        # Compute the actual force in the xy plane
-        F_xy_lw = norm(F_lw[:2])
-
-        # Compute the angle in the xy plane of the Force
-        alpha = acos(F_lw[0]/F_xy_lw)
-
-        # Apply the constraint in the xy plane
-        F_xy_lw_clamped = min(F_xy_lw, F_xy_lw_max)
-
-        # Project these clamped forces in the xy plane back as x,y component
-        F_x_lw_clamped = F_xy_lw_clamped*cos(alpha)
-        F_y_lw_clamped = F_xy_lw_clamped*sin(alpha)
-
-        # Finally reconstruct the vector
-        F_lw_clamped = (F_x_lw_clamped, F_y_lw_clamped, F_lw[2])
-
-
-        # --- Step 2 : Set force to zero for feet not in contact
-        F_lw_constrained = F_y_lw_clamped * c 
-
-        return F_lw_constrained
     
-    def enforce_force_constraints_new(self, F: jnp.array, c: jnp.array) -> jnp.array:
+    def enforce_force_constraints(self, F: jnp.array, c: jnp.array) -> jnp.array:
         """ Given raw GRFs in local world frame and the contact sequence, return the GRF clamped by the friction cone
         and set to zero if not in contact
         
