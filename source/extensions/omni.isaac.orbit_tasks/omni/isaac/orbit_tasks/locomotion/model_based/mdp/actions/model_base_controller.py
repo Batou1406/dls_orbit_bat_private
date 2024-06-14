@@ -679,6 +679,10 @@ class SamplingOptimizer():
         if interpolation_F_method=='cubic spline' : self.interpolation_F=self.compute_cubic_spline
         if interpolation_F_method=='discrete'     : self.interpolation_F=self.compute_discrete
 
+        interpolation_p_method = 'discrete' # 'discrete', 'cubic spline'
+        if interpolation_p_method=='cubic spline' : self.interpolation_p=self.compute_cubic_spline
+        if interpolation_p_method=='discrete'     : self.interpolation_p=self.compute_discrete
+
         # Initialize the robot model
         self.robot_model = Centroidal_Model_JAX(self.dt,self.device_jax)
 
@@ -1268,7 +1272,8 @@ class SamplingOptimizer():
             cost, state = carry 
 
             # Embed current contact into variable for the centroidal model
-            current_contact = jnp.array([action_seq_c_jax[n]], dtype=self.dtype_general)[0] # shape(4) (returns shape (1,4) -> thus the [0]) # type: ignore
+            current_contact = action_seq_c_jax[n]
+
 
             # --- Step 2 : Retrieve the input given the interpolation parameters
             step = n # TODO : do this properly
@@ -1277,21 +1282,24 @@ class SamplingOptimizer():
             # Compute the GRFs given the interpolation parameter and the point in the curve
             F_lw = self.interpolation_F(parameters=action_F_lw_jax, step=step, horizon=horizon)
 
+            # Compute the foot touch down position given the interpolation parameter and the point in the curve
+            p_lw = self.interpolation_p(parameters=action_p_lw_jax, step=step, horizon=horizon)
+
             # Apply Force constraints : Friction cone constraints and Force set to zero if foot not in contact
             F_lw = self.enforce_force_constraints(F=F_lw, c=current_contact)    # TODO Single spline for now : Implement multiple spline function
 
             # Embed input into variable for the centroidal model
             input = jnp.concatenate([
-                jnp.zeros(12, dtype=jnp.float32), # action_p_lw_jax TODO : implement this 
+                p_lw,
                 F_lw
             ])
 
 
-            # --- Step 2 : Integrate the dynamics with the centroidal model
+            # --- Step 3 : Integrate the dynamics with the centroidal model
             state_next = self.robot_model.integrate_jax(state, input, current_contact)
 
 
-            # --- Step 3 : Compute the cost
+            # --- Step 4 : Compute the cost
 
             # Compute the state cost
             state_error = state_next - reference_seq_state_jax[n]
