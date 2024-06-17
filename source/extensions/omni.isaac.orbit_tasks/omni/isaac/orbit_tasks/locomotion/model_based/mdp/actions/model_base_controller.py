@@ -322,7 +322,7 @@ class modelBaseController(baseController):
         Returns:
             - pt_lw (tch.Tensor): Desired Swing Leg traj. in _lw frame  of shape(batch_size, num_legs, 9, decimation)   (9 = xyz_pos, xzy_vel, xyz_acc)
         """
-        # Step 1. Compute the phase trajectory : shape (batch_size, num_legs, decimation)
+        # --- Step 1. Compute the phase trajectory : shape (batch_size, num_legs, decimation)
         # ie. retrieve the actual leg phase -> and compute the trajectory (phase evolution) for the next outer loop period (ie. for decimation inner loop iteration) 
 
         # swing phase in [0,1] (leg is in swing when phase = [d, 1] -> scale to have swing_phase in [0,1]), shape(batch_size, num_legs)
@@ -336,7 +336,7 @@ class modelBaseController(baseController):
         swing_phase_traj = (swing_phase.unsqueeze(-1)) + ((0+torch.arange(self._decimation, device=self._device).unsqueeze(0).unsqueeze(0)) * delta_phase.unsqueeze(-1))
 
 
-        # Step 2. Retrieve the three interpolation points : p0, p1, p2 (lift-off, middle point, touch down)
+        # --- Step 2. Retrieve the three interpolation points : p0, p1, p2 (lift-off, middle point, touch down)
 
         # Retrieve p0 : update p0 with latest foot position when in contact, don't update when in swing
         # p0 shape (batch_size, num_legs, 3)
@@ -354,7 +354,8 @@ class modelBaseController(baseController):
         # p1_lw = torch.cat((p1_lw, self.step_height*torch.ones_like(p1_lw[:,:,:1]) + self.FOOT_OFFSET), dim=2) # Append a third dimension z : defined as step_height
         p1_lw = torch.cat((p1_lw, self.step_height*torch.ones_like(p1_lw[:,:,:1]) + (torch.max(self.p0_lw[:,:,2], p2_lw[:,:,2])).unsqueeze(-1)), dim=2) # Append a third dimension z : defined as step_height + max(lift_off_height,touch_down_height)
 
-        # Step 3. Compute the parameters for the interpolation (control points)
+
+        # --- Step 3. Compute the parameters for the interpolation (control points)
         # Compute the a,b,c,d polynimial coefficient for the cubic interpolation S(x) = a*x^3 + b*x^2 + c*x + d, x in [0,1]
 
         # If swing_time < swing period/2 -> S_0(t) (ie. first interpolation), otherwise -> S_1(t - delta_t/2) (ie. second interpolation)
@@ -370,14 +371,14 @@ class modelBaseController(baseController):
         cp4 = (p1_lw.unsqueeze(-1) * is_S0)                                                 + (p2_lw.unsqueeze(-1) * ~is_S0)
 
 
-        # Step 4. Prepare parameters to compute interpolation trajectory in one operation -> matrix multiplication
+        # --- Step 4. Prepare parameters to compute interpolation trajectory in one operation -> matrix multiplication
         # Prepare swing phase traj to be multplied by cp_x : shape(batch_size, num_leg, decimation) -> (batch_size, num_leg, 1, decimation) (unsqueezed(2) but is_S0 is already unsqueezed (ie in the right shape))
         # swing phase may be > 1 if we reach the end of the traj, thus we clamp it to 1. 
         # Moreover, S0 and S1 takes values in [0,1], thus swing phase need to be double (and modulo 1) to be corrected
         phase_traj = (2 * swing_phase_traj.unsqueeze(2) - 1*(~is_S0)).clamp(0,1) # ie. double_swing_phase_traj
 
 
-        # Step 5. Compute the interpolation trajectory
+        # --- Step 5. Compute the interpolation trajectory
         # shape (batch_size, num_legs, 3, decimation)
         desired_foot_pos_traj_lw = cp1*(1 - phase_traj)**3 + 3*cp2*(phase_traj)*(1 - phase_traj)**2 + 3*cp3*((phase_traj)**2)*(1 - phase_traj) + cp4*(phase_traj)**3
         desired_foot_vel_traj_lw = 3*(cp2 - cp1)*(1 - phase_traj)**2 + 6*(cp3 - cp2)*(1 - phase_traj)*(phase_traj) + 3*(cp4 - cp3)*(phase_traj)**2
@@ -385,19 +386,6 @@ class modelBaseController(baseController):
 
         # shape (batch_size, num_legs, 9, decimation) (9 = xyz_pos, xzy_vel, xyz_acc)
         pt_lw = torch.cat((desired_foot_pos_traj_lw, desired_foot_vel_traj_lw, desired_foot_acc_traj_lw), dim=2)
-
-        # There are some NaN in the trajectory -> Replace them with zeros
-        if not real.check(pt_lw).all() :
-            print('Problem with NaN')
-            NaN_index = torch.nonzero(~real.check(pt_lw)) # shape (number of nan, 4) (4 = batch + legs + 9 + decimation)
-
-            # Check if there is faulty value for a leg in swing, we're only interested in the first two index of NaN index. 
-            if not (in_contact[NaN_index[:,0], NaN_index[:,1],:].all()) :
-                breakpoint()
-                raise ValueError('A NaN was found on a trajectory for a swing leg, thus there is a problem with the math')
-            
-            # Else, this is not a problem since the swing torque for a leg in stance should not be applied, thus one can simple filter the faulty values out.
-            pt_lw[~real.check(pt_lw)] = 0
 
         
         # --- Compute the full trajectory for plotting and debugging purposes ---

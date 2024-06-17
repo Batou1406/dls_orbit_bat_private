@@ -72,30 +72,24 @@ def penalize_large_leg_duty_cycle_L1(env: RLTaskEnv, action_name: str, bound: tu
     return penalty
 
 
-def penalize_large_steps_L1(env: RLTaskEnv, action_name: str, bound_x: tuple[float, float], bound_y: tuple[float, float], bound_z: tuple[float, float]) -> torch.Tensor:
+def penalize_large_steps_L1(env: RLTaskEnv, action_name: str, bound_x: tuple[float, float], bound_y: tuple[float, float]) -> torch.Tensor:
     """ Penalize steps that are outside boundaries, penalty in ]-inf, 0]
     Penalize linearly with steps size violation
 
     Args :
         - bound_x (float, float): Boundary in which the step size in x direction isn't penalize
         - bound_y (float, float): Boundary in which the step size in y direction isn't penalize
-        - bound_z (float, float): Boundary in which the step size in z direction isn't penalize
 
     Returns :
         - penalty (torch.Tensor): penalty term in ]-inf, 0] for leg step size outside bound of shape(batch_size)
     """
-    # Shape (batch_size, num_legs, 3, number_predict step) -> (batch_size, num_legs, 3)
+    # Shape (batch_size, num_legs, 3, number_predict step) -> (batch_size, num_legs, 2)
     p:torch.Tensor = env.action_manager.get_term(action_name).p_norm[...,0]
 
     penalty_x = -torch.sum(torch.abs(p[:,:,0]-p[:,:,0].clamp(bound_x[0], bound_x[1])), dim=1)
     penalty_y = -torch.sum(torch.abs(p[:,:,1]-p[:,:,1].clamp(bound_y[0], bound_y[1])), dim=1)
-    penalty_z = 0
 
-    # if we optimize also for the step height, p is 3 dimensional (x,y,z)
-    if env.action_manager.get_term(action_name).cfg.optimize_step_height :
-        penalty_z = -torch.sum(torch.abs(p[:,:,2]-p[:,:,2].clamp(bound_z[0], bound_z[1])), dim=1)
-
-    penalty = penalty_x + penalty_y + penalty_z
+    penalty = penalty_x + penalty_y
     return penalty
 
 

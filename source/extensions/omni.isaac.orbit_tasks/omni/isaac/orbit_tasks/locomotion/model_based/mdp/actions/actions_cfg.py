@@ -33,8 +33,6 @@ class ModelBaseActionCfg(ActionTermCfg):
     joint_names: list[str] = MISSING
     """List of joint names or regex expressions that the action will be mapped to."""
 
-    optimize_step_height: bool = False
-
     height_scan_available: bool = True
 
     controller: type[model_base_controller.modelBaseController] = MISSING
@@ -107,6 +105,48 @@ class ModelBaseActionCfg(ActionTermCfg):
         """ Number of tile in the y dir. of the grid """
 
 
+    @configclass
+    class ActionNormalizationCfg:
+        """  Set of parameters for scaling and shifting raw action
+
+        Raw actions are distributed (initially) with mean=0 and std=1 
+        """
+
+        # Frequency f : mean=(std_n+std_p)/2, std=(std_p-std_n)/2     : clipped to (min, max)
+        std_p_f = 1.7        # [Hz]
+        std_n_f = 1.3        # [Hz]
+        max_f = 3            # [Hz]
+        min_f = 0            # [Hz]
+
+        # Duty Cycle d : mean=(std_n+std_p)/2, std=(std_p-std_n)/2     : clipped to (min, max)
+        std_p_d = 0.63       # [2pi Rad]
+        std_n_d = 0.57       # [2pi Rad]
+        max_d = 1.0          # [2pi Rad]
+        min_d = 0.0          # [2pi Rad]
+
+        # Foot touch down position : mean=(std_n+std_p)/2, std=(std_p-std_n)/2     : clipped to (min, max)
+        std_p_x_p = +0.03    # [m]
+        std_n_x_p = -0.01    # [m] 
+        std_p_y_p = +0.01    # [m]
+        std_n_y_p = -0.01    # [m]
+        max_x_p = +0.36      # [m]
+        min_x_p = -0.24      # [m]
+        max_y_p = +0.20      # [m]
+        min_y_p = -0.20      # [m]
+
+        # Ground Reaction Forces : clipped to (min, max), not clipped if set to None
+        std_xy_F = (10 / 2)  # [N]
+        max_xy_F = None      # [N]
+        min_xy_F = None      # [N]
+
+        mean_z_F = (200 / 2) # [N] : 200/2 ~= 20[kg_aliengo] * 9.81 [m/s²] / 2 [leg in contact]
+        std_z_F = mean_z_F/5   # [N]
+        max_z_F = None       # [N]
+        min_z_F = 0          # [N]
+
+
+    actionNormalizationCfg = ActionNormalizationCfg()
+    """ Hyperparameter for normalizing raw actions (shift and scale) """
 
 
 
