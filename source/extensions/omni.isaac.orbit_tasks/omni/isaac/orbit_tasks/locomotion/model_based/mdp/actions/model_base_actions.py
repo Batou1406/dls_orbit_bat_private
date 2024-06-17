@@ -177,7 +177,6 @@ class ModelBaseAction(ActionTerm):
         else : 
             self._F_param = 1
             self._p_param = 1
-
   
         # resolve the joints over which the action term is applied
         self._joint_ids, self._joint_names = self._asset.find_joints(self.cfg.joint_names)  # joint_ids = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
@@ -187,9 +186,6 @@ class ModelBaseAction(ActionTerm):
             f"Resolved joint names for the action term {self.__class__.__name__}:"
             f" {self._joint_names} [{self._joint_ids}]"
         )
-        # Avoid indexing across all joints for efficiency #TODO Is it still usefull
-        # if self._num_joints == self._asset.num_joints:
-        #     self._joint_ids = slice(None)
 
         # Retrieve series of information usefull for computation and generalisation
         # Feet Index in body, list [13, 14, 15, 16]
@@ -343,14 +339,6 @@ class ModelBaseAction(ActionTerm):
         self.p_norm_prev = self.p_norm
         self.F_norm_prev = self.F_norm
 
-        print('f_raw shape',self.f_raw.shape)
-        print('d_raw shape',self.d_raw.shape)
-        print('p_raw shape',self.p_raw.shape)
-        print('F_raw shape',self.F_raw.shape)
-
-        print('actions shape',actions.shape)
-        print()
-
         # reconstruct the latent variable from the RL poliy actions
         self.f_raw = (self._processed_actions[:, 0                                    : self.f_len                                       ]).reshape_as(self.f_raw)
         self.d_raw = (self._processed_actions[:, self.f_len                           : self.f_len + self.d_len                          ]).reshape_as(self.d_raw)
@@ -431,10 +419,10 @@ class ModelBaseAction(ActionTerm):
         # Use model controller to compute the torques from the latent variable
         # Transform the shape from (batch_size, num_legs, num_joints_per_leg) to (batch_size, num_joints) # Permute and reshape to have the joint in right order [0,4,8][1,5,...] to [0,1,2,...]
         self.u = (self.controller.compute_control_output(F0_star_lw=F0_star_lw, c0_star=c0_star, pt_i_star_lw=pt_i_star_lw, p_lw=p_lw, p_dot_lw=p_dot_lw, q_dot=q_dot,
-                                                          jacobian_lw=jacobian_lw, jacobian_dot_lw=jacobian_dot_lw, mass_matrix=mass_matrix, h=h)).permute(0,2,1).reshape(self.num_envs,self._num_joints)
+                                                         jacobian_lw=jacobian_lw, jacobian_dot_lw=jacobian_dot_lw, mass_matrix=mass_matrix, h=h)).permute(0,2,1).reshape(self.num_envs,self._num_joints)
 
         # Apply the computed torques
-        self._asset.set_joint_effort_target(self.u)#, joint_ids=self._joint_ids) # Do use joint_ids to speed up the process     
+        self._asset.set_joint_effort_target(self.u)#, joint_ids=self._joint_ids) # Don't use joint_ids to speed up the process     
 
         # Debug
         if verbose_mb:

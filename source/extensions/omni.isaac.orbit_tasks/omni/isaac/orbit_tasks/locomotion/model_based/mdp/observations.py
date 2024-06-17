@@ -48,10 +48,10 @@ def last_model_base_action(env: BaseEnv, action_name: str | None = None) -> torc
 
     modelBaseAction: ModelBaseAction = env.action_manager.get_term(action_name)
 
-    f_star = modelBaseAction.f_star
-    d_star = modelBaseAction.d_star
-    c_star = modelBaseAction.c_star
-    p_star_lw = modelBaseAction.p_star_lw  #need to flatten
-    F_star_lw = modelBaseAction.F_star_lw
+    f_star = modelBaseAction.f_star         # shape(batch_size, num_legs)
+    d_star = modelBaseAction.d_star         # shape(batch_size, num_legs)
+    c_star = modelBaseAction.c_star[:,:,0]  # shape(batch_size, num_legs)
+    p_star_lw = modelBaseAction.p_star_lw   # shape(batch_size, num_legs, 3) 
+    F_star_lw = modelBaseAction.F_star_lw   # shape(batch_size, num_legs, 3)
 
     return torch.concatenate([f_star, d_star, c_star, p_star_lw, F_star_lw])
