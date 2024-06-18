@@ -250,7 +250,8 @@ class ModelBaseAction(ActionTerm):
         # Intermediary variable - Hip variable for p centering
         self._hip_idx = self._asset.find_bodies(".*thigh")[0]
         self.hip0_pos_lw = torch.zeros(self.num_envs, self._num_legs, 3, device=self.device)
-        self.hip0_yaw_quat_lw =torch.zeros(self.num_envs, self._num_legs, 4, device=self.device)
+        self.hip0_yaw_quat_lw = torch.zeros(self.num_envs, self._num_legs, 4, device=self.device)
+        self.hip0_yaw_quat_lw[:,:,0] = 1 # initialize correctly the quaternion to avoid NaN in first operation
 
         # Variable for intermediary computaion
         self.jacobian_prev_lw = self.get_reset_jacobian() # Jacobian is translation independant thus jacobian_w = jacobian_lw
@@ -310,7 +311,7 @@ class ModelBaseAction(ActionTerm):
         after inverse_normalisation(inverse_transformation(optimization(transformation(normalisation(raw_actions))))) 
         Dimension is always 4+4+8+12 = (batch_size, 28) """
 
-        f, d, p_h, F_h = self.inverse_transformation(f=self.f_star, d=self.f_star, p_lw=self.p_star_lw[:,:,:,0].unsqueeze(-1), F_lw=self.F_star_lw[:,:,:,0].unsqueeze(-1))
+        f, d, p_h, F_h = self.inverse_transformation(f=self.f_star, d=self.d_star, p_lw=self.p_star_lw[:,:,:,0].unsqueeze(-1), F_lw=self.F_star_lw[:,:,:,0].unsqueeze(-1))
         f_raw, d_raw, p_raw, F_raw = self. inverse_normalization(f=f, d=d, p=p_h, F=F_h)
         return  torch.cat((f_raw.flatten(1,-1), d_raw.flatten(1,-1), p_raw.flatten(1,-1), F_raw.flatten(1,-1)),dim=1)
 
@@ -819,8 +820,8 @@ class ModelBaseAction(ActionTerm):
 
 
         # --- p : From local world frame, transform into hip centered frame (xy), with world roll and pitch and base yaw (horizontal frame orientation)
-        p_h = torch.zeros_like(self.p_raw)
 
+        # Retrieve the world orientation wrt to the hip (ie. base frame orientation some timestep in the past)
         hip0_yaw_w_in_b = math_utils.quat_conjugate(self.hip0_yaw_quat_lw[:,0,:])
         hip1_yaw_w_in_b = math_utils.quat_conjugate(self.hip0_yaw_quat_lw[:,1,:])
         hip2_yaw_w_in_b = math_utils.quat_conjugate(self.hip0_yaw_quat_lw[:,2,:])
