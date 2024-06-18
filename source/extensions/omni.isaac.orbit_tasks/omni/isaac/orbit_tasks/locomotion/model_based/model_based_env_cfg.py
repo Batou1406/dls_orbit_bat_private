@@ -134,7 +134,7 @@ class ActionsCfg:
         asset_name="robot",
         joint_names=[".*"], 
         controller=mdp.samplingController,
-        optimizerCfg=mdp.ModelBaseActionCfg.OptimizerCfg()
+        optimizerCfg=mdp.ModelBaseActionCfg.OptimizerCfg(),
         # controller=mdp.modelBaseController,
         )
     

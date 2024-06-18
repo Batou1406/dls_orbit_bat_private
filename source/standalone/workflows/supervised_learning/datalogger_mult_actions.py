@@ -3,6 +3,8 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
+# ./orbit.sh -p source/standalone/workflows/supervised_learning/datalogger_mult_actions.py --task Isaac-Model-Based-Base-Aliengo-v0  --num_envs 256 --load_run test --checkpoint model_14999.pt --dataset_name baseTask15Act25HzGood1 --buffer_size 15 --seed 456
+
 """Script to generate a dataset for supervised learning with RL agent from RSL-RL. 
 The action space consists of multiple actions of the original environment"""
 
@@ -19,14 +21,17 @@ import cli_args  # isort: skip
 parser = argparse.ArgumentParser(description="Train an RL agent with RSL-RL.")
 parser.add_argument("--cpu", action="store_true", default=False, help="Use CPU pipeline.")
 parser.add_argument("--disable_fabric", action="store_true", default=False, help="Disable fabric and use USD I/O operations.")
-parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
-parser.add_argument("--num_step", type=int, default=3000, help="Number of simulation step : the number of datapoints would be : num_step*num_envs")
-parser.add_argument("--task", type=str, default=None, help="Name of the task.")
-parser.add_argument("--seed", type=int, default=None, help="Seed used for the environment")
+parser.add_argument("--num_envs",     type=int, default=None, help="Number of environments to simulate.")
+parser.add_argument("--num_step",     type=int, default=1000, help="Number of simulation step : the number of datapoints would be : num_step*num_envs")
+parser.add_argument("--task",         type=str, default=None, help="Name of the task.")
+parser.add_argument("--seed",         type=int, default=None, help="Seed used for the environment")
 parser.add_argument("--dataset_name", type=str, default=None, help="Folder where to log the generated dataset (in /dataset/task/)")
+parser.add_argument("--buffer_size",  type=int, default=5,    help="Number of prediction steps")
+parser.add_argument("--testing_flag", action="store_true",default=False,help="Flag to generate testing data, default is training data")
 
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
+
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
@@ -99,46 +104,71 @@ def main():
     buffer_obs = []
     buffer_act = []
 
+    # Set the data to be testing or training data
     file_prefix = 'training_data'
+    if args_cli.testing_flag:
+        file_prefix = 'testing_data'
+
     num_samples = args_cli.num_step
-    buffer_size = 5
+    buffer_size =  args_cli.buffer_size
     t = time.time()
 
     # reset environment
     obs, _ = env.get_observations()
+    actions = policy(obs) #just to get the shape for printing
+
+    print('\nobservation shape:', obs.shape[-1])
+    print('     action shape:', actions.shape[-1])
+    print('   Buffer   size :', buffer_size,'\n')
+
+    count = 0
 
     # simulate environment
     while simulation_app.is_running() and len(observations_list) < (num_samples + buffer_size):
 
+        count +=1
+        # print(len(observations_list))
+        # print(count)
+        # print()
+
+        # Printing
         if len(observations_list) % 100 == 0:
-            print('Progression %.2f%%, Iteration : %d, Time remaining : %ds' % (100*float(len(observations_list)) / num_samples, len(observations_list), (time.time()-t)*((num_samples - len(observations_list))//100)))
+            progress = 100 * float(len(observations_list)) / num_samples
+            iteration = len(observations_list)
+            time_remaining = (time.time() - t) * ((num_samples - len(observations_list)) / 100)
+            print(f'\rProgression {progress:6.2f}%, Iteration: {iteration:6d}, Time remaining: {time_remaining:6.0f}s', end='\n')
+            print('\033[F', end='')
             t = time.time()
+
         # run everything in inference mode
         with torch.inference_mode():
             # agent stepping
             actions = policy(obs)
 
             # Log data into the rolling buffer Log
-            buffer_obs.append(obs)
-            buffer_act.append(actions)            
+
+            # To save at 25Hz and not 50Hz
+            if count%2 :
+                buffer_obs.append(obs)
+                buffer_act.append(actions)         
 
             # env stepping
             obs, _, _, _ = env.step(actions)
+
 
             # Skip the buffer_size first iteration until we have enough data in the buffer to start logging
             if len(buffer_obs) < buffer_size:
                 continue
 
-            # Datalogging for Dataset generation - save observation at time i and action at time i, i+1,...,i+buffer_size
-            observations_list.append(buffer_obs[0].cpu())                                  # shape(batch_size, obs_dim)
-            actions_list.append(torch.stack(buffer_act).permute(1,0,2).flatten(1,2).cpu()) # shape(buffer_size, batch_size, act_dim) -> (batch_size, buffer_size*act_dim) 
+            # To save at 25Hz and not 50Hz
+            if count%2 :
+                # Datalogging for Dataset generation - save observation at time i and action at time i, i+1,...,i+buffer_size
+                observations_list.append(buffer_obs[0].cpu())                                  # shape(batch_size, obs_dim)
+                actions_list.append(torch.stack(buffer_act).permute(1,0,2).flatten(1,2).cpu()) # shape(buffer_size, batch_size, act_dim) -> (batch_size, buffer_size*act_dim) 
 
-            # print('obs list shape : ',observations_list[-1].shape)
-            # print('act list shape : ',actions_list[-1].shape)
-
-            # Remove the oldest observation and action
-            buffer_obs.pop(0)
-            buffer_act.pop(0)
+                # Remove the oldest observation and action
+                buffer_obs.pop(0)
+                buffer_act.pop(0)
 
 
     # Concatenate all observations and actions
@@ -146,8 +176,8 @@ def main():
     observations_tensor = torch.cat(observations_list).view(-1, obs.shape[-1])              # shape(len_list*num_envs, obs_dim)
     actions_tensor      = torch.cat(actions_list).view(-1, buffer_size*actions.shape[-1])   # shape(len_list*num_envs, buffer_size*act_dim)
 
-    print('actions_tensor shape ', actions_tensor.shape)
-    print('observations_tensor shape ', observations_tensor.shape)
+    print('\n\n\nobservations_tensor shape ', observations_tensor.shape[-1])
+    print('   actions_tensor   shape ', actions_tensor.shape[-1])
 
     # Save the Generated dataset
     data = {
@@ -155,6 +185,12 @@ def main():
         'actions': actions_tensor
     }
     torch.save(data, f'{logging_directory}/{file_prefix}.pt') 
+
+    print('\nData succesfully saved as ', file_prefix)
+    print('Saved at :',f'{logging_directory}/{file_prefix}.pt')
+    print('\nDataset of ',observations_tensor.shape[0],'datapoints')
+    print('Input  size :', observations_tensor.shape[-1])
+    print('Output size :', actions_tensor.shape[-1],'\n')
 
     # close the simulator
     env.close()
@@ -172,5 +208,8 @@ if __name__ == "__main__":
             
     # run the main function
     main()
+
+    print('Everything went well, closing\n')
+
     # close sim app
     simulation_app.close()

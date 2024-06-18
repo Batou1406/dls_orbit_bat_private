@@ -61,7 +61,7 @@ class ModelBaseActionCfg(ActionTermCfg):
         parametrization_p: str = 'discrete'
         """ Define how p, foot touch down position, are encoded : can be 'discrete' or 'cubic spline', this modify p_param  """
 
-        height_ref: float = 0.4
+        height_ref: float = 0.38
         """ Height reference for the optimization, defined as mean distance between legs in contact and base """
 
     optimizerCfg: OptimizerCfg | None = None

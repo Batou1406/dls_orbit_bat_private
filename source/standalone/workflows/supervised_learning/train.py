@@ -1,3 +1,6 @@
+
+import matplotlib.pyplot as plt
+
 import os
 import torch
 import argparse
@@ -29,23 +32,73 @@ class Model(nn.Module):
         x = self.lin4(x)
         return x
 
+class Model2(nn.Module):
+    def __init__(self, input_size, output_size):
+        super(Model, self).__init__()
+        self.lin1 = nn.Linear(input_size, 512)
+        self.lin2 = nn.Linear(512, 512)
+        self.lin3 = nn.Linear(512, 256)
+        self.lin4 = nn.Linear(256, 128)
+        self.lin5 = nn.Linear(128, output_size)
+
+    def forward(self, x):
+        x = self.lin1(x)
+        x = F.elu(x)
+        x = self.lin2(x)
+        x = F.elu(x)
+        x = self.lin3(x)
+        x = F.elu(x)
+        x = self.lin4(x)
+        x = F.elu(x)
+        x = self.lin5(x)
+        return x
+    
+
+class Model3(nn.Module):
+    def __init__(self, input_size, output_size):
+        super(Model, self).__init__()
+        self.lin1 = nn.Linear(input_size, 1024)
+        self.lin2 = nn.Linear(1024, 512)
+        self.lin3 = nn.Linear(512, 512)
+        self.lin4 = nn.Linear(512, 256)
+        self.lin5 = nn.Linear(256, 128)
+        self.lin6 = nn.Linear(128, output_size)
+
+    def forward(self, x):
+        x = self.lin1(x)
+        x = F.elu(x)
+        x = self.lin2(x)
+        x = F.elu(x)
+        x = self.lin3(x)
+        x = F.elu(x)
+        x = self.lin4(x)
+        x = F.elu(x)
+        x = self.lin5(x)
+        x = F.elu(x)
+        x = self.lin6(x)
+        return x
+
 
 """ --- Training and Testing Function --- """
 def train(args, model, device, train_loader, optimizer, epoch, criterion):
     model.train()
+    train_loss = 0
     for batch_idx, (data, target) in enumerate(train_loader):
         data, target = data.to(device), target.to(device)
         optimizer.zero_grad()
         output = model(data)
         loss = criterion(output, target)
         loss.backward()
+        train_loss += loss.item()
         optimizer.step()
         if (batch_idx % args.log_interval == 0) and args.verbose:
-            print('Train Epoch: {} [{}/{} ({:.0f}%)] Loss: {:.6f}'.format(
+            print('Train Epoch: {} [{}/{} ({:.0f}%)] batch cum. Loss: {:.6f}'.format(
                 epoch, batch_idx * len(data), len(train_loader.dataset),
                 100. * batch_idx /  len(train_loader), loss.item()), end='\r', flush=True)
             if args.dry_run:
                 break
+    train_loss_avg = train_loss / len(train_loader.dataset)
+    return train_loss_avg
 
 def test(model, device, test_loader, criterion):
     model.eval()
@@ -57,19 +110,19 @@ def test(model, device, test_loader, criterion):
             test_loss += criterion(output, target).item() # sum up batch loss
 
 
-    test_loss /= len(test_loader.dataset)
-    return test_loss
+    test_loss_avg = test_loss / len(test_loader.dataset)
+    return test_loss_avg
 
 """ --- Main --- """
 def main():
     # Training settings : load from arg parser
     parser = argparse.ArgumentParser(description='Supervised Learning for model base RL controller')
     parser.add_argument('--verbose', type=str, default=True,                    help='Verbose parameter to print training loss')
-    parser.add_argument('--load-experiement', type=str, default='aliengo_model_based_speed')
-    parser.add_argument('--load-dataset', type=str, default='mcQueenNine')
+    parser.add_argument('--load-experiement', type=str, default='aliengo_model_based_base')
+    parser.add_argument('--load-dataset', type=str, default='baseTaskMultActGood1')
     parser.add_argument('--batch-size', type=int, default=64, metavar='N',      help='input batch size for training (default: 64)')
     parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N', help='input batch size for testing (default: 1000)')
-    parser.add_argument('--epochs', type=int, default=15, metavar='N',          help='number of epochs to train (default: 14)')
+    parser.add_argument('--epochs', type=int, default=20, metavar='N',          help='number of epochs to train (default: 14)')
     parser.add_argument('--lr', type=float, default=1.0, metavar='LR',          help='learning rate (default: 1.0)')
     parser.add_argument('--gamma', type=float, default=0.7, metavar='M',        help='Learning rate step gamma (default: 0.7)')
     parser.add_argument('--no-cuda', action='store_true', default=False,        help='disables CUDA training')
@@ -77,7 +130,7 @@ def main():
     parser.add_argument('--seed', type=int, default=1, metavar='S',             help='random seed (default: 1)')
     parser.add_argument('--log-interval', type=int, default=10, metavar='N',    help='how many batches to wait before logging training status')
     parser.add_argument('--save-model', action='store_true', default=True,      help='For Saving the current Model')
-    parser.add_argument('--model-name', action='store_true', default='model1',  help='Name For Saving the current Model')
+    parser.add_argument('--model-name', type=str, default='model1',             help='Name For Saving the current Model')
     args = parser.parse_args()
     use_cuda = not args.no_cuda and torch.cuda.is_available()
 
@@ -105,14 +158,21 @@ def main():
         print('\nTesting done with same dataset as training...\n')
         test_dataset  = ObservationActionDataset('dataset/' + args.load_experiement + '/' + args.load_dataset + '/training_data.pt')
 
+    print('\nLoaded dataset : ',args.load_dataset)
+    print('In : ', 'dataset/' + args.load_experiement + '/' + args.load_dataset + '/training_data.pt')
+
     # Set dataset loader
     train_loader = DataLoader(train_dataset,**train_kwargs)
     test_loader = DataLoader(test_dataset, **test_kwargs)
 
     # Retrieve input and output size
     input_size = train_dataset.observations.shape[-1]
-    output_size = train_dataset.actions.shape[-1]     
-    print('Input Size : ',train_dataset.observations.shape, ' - Output_size : ',train_dataset.actions.shape,'\n')
+    output_size = train_dataset.actions.shape[-1]    
+
+    print('\nTraining Datapoints  : ', train_dataset.observations.shape[0]) 
+    print('Testing  Datapoints  : ', train_dataset.observations.shape[0]) 
+    print('\nInput  size : ',input_size)
+    print('Output Size : ',output_size,'\n')
 
     # Define Model criteria : model, optimizer and loss criterion and scheduler
     model           = Model(input_size, output_size).to(device)
@@ -121,10 +181,15 @@ def main():
     test_criterion  = nn.MSELoss() 
     scheduler       = StepLR(optimizer, step_size=1, gamma=args.gamma)
 
+    train_loss_list = []
+    test_loss_list = []
+
     # train and evaluate the model
     for epoch in range(1, args.epochs + 1):
-        train(args, model, device, train_loader, optimizer, epoch, train_criterion)
+        train_loss = train(args, model, device, train_loader, optimizer, epoch, train_criterion)
         test_loss = test(model, device, test_loader, test_criterion)
+        train_loss_list.append(train_loss)
+        test_loss_list.append(test_loss)
         print('\nTest Epoch: {} - Test set: Average loss: {:.4f}\n'.format(epoch, test_loss))
         scheduler.step()
 
@@ -137,6 +202,15 @@ def main():
         torch.save(model.state_dict(),logging_directory + '/' + args.model_name + '.pt')
         print('\nModel saved as : ',logging_directory + '/' + args.model_name + '.pt\n')
 
+    # Plots the results
+    plt.plot(test_loss_list)
+    # plt.plot(train_loss_list)
+    plt.title('Loss on Testing Dataset')
+    plt.xlabel('Iterations')
+    plt.ylabel('Loss')
+    plt.show()
+
 
 if __name__ == '__main__':
     main()
+    print('Everything went well, closing\n')
