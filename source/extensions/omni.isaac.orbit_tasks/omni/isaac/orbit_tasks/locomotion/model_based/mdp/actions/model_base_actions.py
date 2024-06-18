@@ -164,15 +164,25 @@ class ModelBaseAction(ActionTerm):
         # initialize the action term
         super().__init__(cfg, env)
 
+        # Define F and p size given how it is parametrised
         if self.cfg.optimizerCfg is not None:
-            if self.cfg.optimizerCfg.parametrization == 'spline':
-                self._F_param = 4
-                self._p_param = 4
-            if self.cfg.optimizerCfg.parametrization == 'discrete':
+            # Parametrized Action 
+            if self.cfg.optimizerCfg.parametrization_F == 'cubic spline':
+                self._F_param = 4 
+            # Discrete Action : Multiple actions - Multiple time step (one action per time step)
+            elif self.cfg.optimizerCfg.parametrization_F == 'discrete':
                 self._F_param = self.cfg.optimizerCfg.prevision_horizon
-                self._p_param = self.cfg.optimizerCfg.prevision_horizon
+            else : raise NotImplementedError('Provided F parametrisation not implemented')
 
+            # Parametrized Action 
+            if self.cfg.optimizerCfg.parametrization_p == 'cubic spline':
+                self._p_param = 4
+            # Discrete Action : Multiple actions - Multiple time step (one action per time step)
+            elif self.cfg.optimizerCfg.parametrization_p == 'discrete':
+                self._p_param = self.cfg.optimizerCfg.prevision_horizon
+            else : raise NotImplementedError('Provided P parametrisation not implemented')
         else : 
+            # Discrete Action : One action - One time step
             self._F_param = 1
             self._p_param = 1
   
@@ -269,13 +279,23 @@ class ModelBaseAction(ActionTerm):
             self.heightScan.max_y = int(self.heightScan.size[1]//self.heightScan.resolution)
 
         # Instance of control class. Gets Z and output u
-        self.controller = cfg.controller(
-            verbose_md=verbose_mb, device=self.device, num_envs=self.num_envs, num_legs=self._num_legs,
-            dt_out=self._decimation*self._env.physics_dt, decimation=self._decimation, dt_in=self._env.physics_dt,
-            p_default_lw=self.get_reset_foot_position(), step_height=cfg.footTrajectoryCfg.step_height,
-            foot_offset=cfg.footTrajectoryCfg.foot_offset, swing_ctrl_pos_gain_fb=self.cfg.swingControllerCfg.swing_ctrl_pos_gain_fb , 
-            swing_ctrl_vel_gain_fb=self.cfg.swingControllerCfg.swing_ctrl_vel_gain_fb
-        )
+        if cfg.controller == model_base_controller.modelBaseController:
+            self.controller = cfg.controller(
+                verbose_md=verbose_mb, device=self.device, num_envs=self.num_envs, num_legs=self._num_legs,
+                dt_out=self._decimation*self._env.physics_dt, decimation=self._decimation, dt_in=self._env.physics_dt,
+                p_default_lw=self.get_reset_foot_position(), step_height=cfg.footTrajectoryCfg.step_height,
+                foot_offset=cfg.footTrajectoryCfg.foot_offset, swing_ctrl_pos_gain_fb=self.cfg.swingControllerCfg.swing_ctrl_pos_gain_fb , 
+                swing_ctrl_vel_gain_fb=self.cfg.swingControllerCfg.swing_ctrl_vel_gain_fb
+            )
+        elif cfg.controller == model_base_controller.samplingController:
+            self.controller = cfg.controller(
+                verbose_md=verbose_mb, device=self.device, num_envs=self.num_envs, num_legs=self._num_legs,
+                dt_out=self._decimation*self._env.physics_dt, decimation=self._decimation, dt_in=self._env.physics_dt,
+                p_default_lw=self.get_reset_foot_position(), step_height=cfg.footTrajectoryCfg.step_height,
+                foot_offset=cfg.footTrajectoryCfg.foot_offset, swing_ctrl_pos_gain_fb=self.cfg.swingControllerCfg.swing_ctrl_pos_gain_fb , 
+                swing_ctrl_vel_gain_fb=self.cfg.swingControllerCfg.swing_ctrl_vel_gain_fb,
+                optimizerCfg=cfg.optimizerCfg
+            ) 
 
         if verbose_mb:
             self.my_visualizer = {}
@@ -697,7 +717,7 @@ class ModelBaseAction(ActionTerm):
             std_z_F  = (torch.tensor(param.std_z_F,  device=self.device)).unsqueeze(-1).unsqueeze(-1)
             F_z = (F[:,:,2,:] - mean_z_F) / std_z_F 
 
-            F = torch.cat((F_x, F_y, F_z), dim=2).reshape_as(self.F_lw)
+            F = torch.cat((F_x, F_y, F_z), dim=2).reshape_as(F)
 
 
         #--- Normalize p ---

@@ -36,7 +36,8 @@ class ModelBaseActionCfg(ActionTermCfg):
     height_scan_available: bool = True
 
     controller: type[model_base_controller.modelBaseController] = MISSING
-    """Model base controller that compute u: output torques from z: latent variable""" 
+    """Model base controller that compute u: output torques from z: latent variable
+    can be of type 'modelBaseController' or 'samplingController' """ 
 
     @configclass
     class OptimizerCfg:
@@ -46,15 +47,25 @@ class ModelBaseActionCfg(ActionTermCfg):
         """ Different type of optimizer. For now, only 'sampling' is implemented """
 
         prevision_horizon: int = 15
-        """ Prevision horizon for predictive optimization """
+        """ Prevision horizon for predictive optimization (in number of time steps) """
 
-        dt: float = 0.1
-        """ time steps for the predicitve optimization """
+        discretization_time: float = 0.04
+        """ Duration of a time step in seconds for the predicitve optimization """
 
-        parametrization: str = 'discrete'
-        """ Define how the p and F are encoded : can be 'discrete' or 'spline', this modify F_param and p_param  """
+        num_samples: int = 10000
+        """ Number of samples used if the optimizerType is 'sampling' """
+
+        parametrization_F: str = 'discrete'
+        """ Define how F, Ground Reaction Forces, are encoded : can be 'discrete' or 'cubic spline', this modify F_param """
+
+        parametrization_p: str = 'discrete'
+        """ Define how p, foot touch down position, are encoded : can be 'discrete' or 'cubic spline', this modify p_param  """
+
+        height_ref: float = 0.4
+        """ Height reference for the optimization, defined as mean distance between legs in contact and base """
 
     optimizerCfg: OptimizerCfg | None = None
+    """ Must be provided if a controller with optimizer is selected (eg. 'samplingController')"""
 
     @configclass
     class FootTrajectoryCfg:
