@@ -33,25 +33,30 @@ class ModelBaseActionCfg(ActionTermCfg):
     joint_names: list[str] = MISSING
     """List of joint names or regex expressions that the action will be mapped to."""
 
-    scale: float | dict[str, float] = 1.0
-    """Scale factor for the action (float or dict of regex expressions). Defaults to 1.0."""
-    
-    offset: float | dict[str, float] = 0.0
-    """Offset factor for the action (float or dict of regex expressions). Defaults to 0.0."""
-
-    prevision_horizon: int = 10
-    """Prediction time horizon for the Model Base controller (runs at outer loop frequecy)"""
-
-    number_predict_step: int = 3
-    """number of predicted touch down position (used by sampling controller, prior by RL)"""
-
     optimize_step_height: bool = False
 
     height_scan_available: bool = True
 
-    # controller: model_base_controller.modelBaseController = MISSING
-    controller: type[model_base_controller.samplingController] = MISSING
+    controller: type[model_base_controller.modelBaseController] = MISSING
     """Model base controller that compute u: output torques from z: latent variable""" 
+
+    @configclass
+    class OptimizerCfg:
+        """ Config class for the optimizer """
+        
+        optimizerType:str = 'sampling'
+        """ Different type of optimizer. For now, only 'sampling' is implemented """
+
+        prevision_horizon: int = 15
+        """ Prevision horizon for predictive optimization """
+
+        dt: float = 0.1
+        """ time steps for the predicitve optimization """
+
+        parametrization: str = 'discrete'
+        """ Define how the p and F are encoded : can be 'discrete' or 'spline', this modify F_param and p_param  """
+
+    optimizerCfg: OptimizerCfg | None = None
 
     @configclass
     class FootTrajectoryCfg:

@@ -92,36 +92,36 @@ class ModelBaseAction(ActionTerm):
         _joint_idx    (list): List of list of joints [FL_joints=[FL_Hip,...], FR_joints, ...]
         _hip_idx      (list): List of index (in body view) with the index of the robot's hip
         _decimation    (int): Inner Loop steps per outer loop steps
-        _prevision_horizon  : Prediction time horizon for the Model Base controller (runs at outer loop frequecy)       Received from ModelBaseActionCfg
-        _number_predict_step: number of predicted touch down position (used by sampling controller, prior by RL)        Received from ModelBaseActionCfg
+        _F_param            : Last dimension of F, can be discrete (ie. =1) or some kind of parametrisation             Received from ModelBaseActionCfg
+        _p_param            : Last dimension of p, can be discrete (ie. =1) or some kind of parametrisation             Received from ModelBaseActionCfg
         controller (modelBaseController): controller instance that compute u from z                                     Received from ModelBaseActionCfg
         
         f_raw (torch.Tensor): Prior leg frequency                 (raw)     of shape (batch_size, num_legs)
         d_raw (torch.Tensor): Prior stepping duty cycle           (raw)     of shape (batch_size, num_legs)
-        p_raw (torch.Tensor): Prior foot pos. sequence            (raw)     of shape (batch_size, num_legs, 2 or 3, _number_predict_step)
-        F_raw (torch.Tensor): Prior Gnd Reac. Forces seq.         (raw)     of shape (batch_size, num_legs, 3, time_horizon)       
+        p_raw (torch.Tensor): Prior foot pos. sequence            (raw)     of shape (batch_size, num_legs, 2 or 3, p_param)
+        F_raw (torch.Tensor): Prior Gnd Reac. Forces seq.         (raw)     of shape (batch_size, num_legs, 3, F_param)       
 
         f     (torch.Tensor): Prior leg frequency              (normalized) of shape (batch_size, num_legs)
         d     (torch.Tensor): Prior stepping duty cycle        (normalized) of shape (batch_size, num_legs)
-        p_norm (trch.Tensor): Prior foot pos. seq. hip center  (normalized) of shape (batch_size, num_legs, 2 or 3, _number_predict_step)
-        F_norm (trch.Tensor): Prior Gnd Reac. Forces seq.      (normalized) of shape (batch_size, num_legs, 3, time_horizon) 
+        p_norm (trch.Tensor): Prior foot pos. seq. hip center  (normalized) of shape (batch_size, num_legs, 2 or 3, p_param)
+        F_norm (trch.Tensor): Prior Gnd Reac. Forces seq.      (normalized) of shape (batch_size, num_legs, 3, F_param) 
 
         f_prev  (tch.Tensor): Previous Prior leg frequency     (normalized) of shape (batch_size, num_legs)
         d_prev  (tch.Tensor): Previous Prior step duty cycle   (normalized) of shape (batch_size, num_legs)
-        p_norm_prev (Tensor): Previous Prior f p s hip center  (normalized) of shape (batch_size, num_legs, 2 or 3, _number_predict_step)
-        F_norm_prev (Tensor): Previous Prior Gnd Reac. F. seq. (normalized) of shape (batch_size, num_legs, 3, time_horizon) 
+        p_norm_prev (Tensor): Previous Prior f p s hip center  (normalized) of shape (batch_size, num_legs, 2 or 3, p_param)
+        F_norm_prev (Tensor): Previous Prior Gnd Reac. F. seq. (normalized) of shape (batch_size, num_legs, 3, F_param) 
 
-        p_lw  (torch.Tensor): Prior foot pos. sequence                      of shape (batch_size, num_legs, 3, time_horizon)
-        F_lw  (torch.Tensor): Prior Ground Reac. Forces (GRF) seq.          of shape (batch_size, num_legs, 3, time_horizon)
+        p_lw  (torch.Tensor): Prior foot pos. sequence                      of shape (batch_size, num_legs, 3, p_param)
+        F_lw  (torch.Tensor): Prior Ground Reac. Forces (GRF) seq.          of shape (batch_size, num_legs, 3, F_param)
 
         f_len               : To ease the actions extraction
         d_len               : To ease the actions extraction
         p_len               : To ease the actions extraction
         F_len               : To ease the actions extraction
         
-        p_star_lw (t.Tensor): Optimizied foot pos sequence                  of shape (batch_size, num_legs, 3, _number_predict_step)
-        F_star_lw (t.Tensor): Opt. Ground Reac. Forces (GRF) seq.           of shape (batch_size, num_legs, 3, time_horizon)
-        c_star (trch.Tensor): Optimizied foot contact sequence              of shape (batch_size, num_legs, time_horizon)
+        p_star_lw (t.Tensor): Optimizied foot pos sequence                  of shape (batch_size, num_legs, 3, p_param)
+        F_star_lw (t.Tensor): Opt. Ground Reac. Forces (GRF) seq.           of shape (batch_size, num_legs, 3, F_param)
+        c_star (trch.Tensor): Optimizied foot contact sequence              of shape (batch_size, num_legs, 1)
         pt_star_lw  (Tensor): Optimizied foot swing trajectory              of shape (batch_size, num_legs, 9, decimation)  (9 = pos, vel, acc)
         
         z            (tuple): Latent variable : z=(f,d,p,F)                 of shape (...)
@@ -154,17 +154,11 @@ class ModelBaseAction(ActionTerm):
     _asset: Articulation
     """The articulation asset on which the action term is applied. Asset is defined in ActionTerm base clase, here just the type is redefined"""
 
-    _scale: torch.Tensor | float
-    """The scaling factor applied to the input action."""
-
-    _offset: torch.Tensor | float
-    """The offset applied to the input action."""
-
     _env : RLTaskEnv
     """To enable type hinting"""
 
-    # controller: model_base_controller.modelBaseController
-    controller: model_base_controller.samplingController
+    controller: model_base_controller.modelBaseController
+    # controller: model_base_controller.samplingController
     """Model base controller that compute u: output torques from z: latent variable""" 
 
 
@@ -172,31 +166,17 @@ class ModelBaseAction(ActionTerm):
         # initialize the action term
         super().__init__(cfg, env)
 
-        # Prevision Horizon and number of predicted step
-        self._prevision_horizon = self.cfg.prevision_horizon
-        self._number_predict_step = self.cfg.number_predict_step
+        if self.cfg.optimizerCfg is not None:
+            if self.cfg.optimizerCfg.parametrization == 'spline':
+                self._F_param = 4
+                self._p_param = 4
+            if self.cfg.optimizerCfg.parametrization == 'discrete':
+                self._F_param = 3 * self.cfg.optimizerCfg.prevision_horizon
+                self._p_param = 3 * self.cfg.optimizerCfg.prevision_horizon
 
-        # parse scale
-        if isinstance(cfg.scale, (float, int)):
-            self._scale = float(cfg.scale)
-        elif isinstance(cfg.scale, dict):
-            self._scale = torch.ones(self.num_envs, self.action_dim, device=self.device)
-            # resolve the dictionary config
-            index_list, _, value_list = string_utils.resolve_matching_names_values(self.cfg.scale, self._joint_names)
-            self._scale[:, index_list] = torch.tensor(value_list, device=self.device)
-        else:
-            raise ValueError(f"Unsupported scale type: {type(cfg.scale)}. Supported types are float and dict.")
-        
-        # parse offset
-        if isinstance(cfg.offset, (float, int)):
-            self._offset = float(cfg.offset)
-        elif isinstance(cfg.offset, dict):
-            self._offset = torch.zeros_like(self._raw_actions)
-            # resolve the dictionary config
-            index_list, _, value_list = string_utils.resolve_matching_names_values(self.cfg.offset, self._joint_names)
-            self._offset[:, index_list] = torch.tensor(value_list, device=self.device)
-        else:
-            raise ValueError(f"Unsupported offset type: {type(cfg.offset)}. Supported types are float and dict.")
+        else : 
+            self._F_param = 1
+            self._p_param = 1
   
         # resolve the joints over which the action term is applied
         self._joint_ids, self._joint_names = self._asset.find_joints(self.cfg.joint_names)  # joint_ids = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
@@ -206,9 +186,6 @@ class ModelBaseAction(ActionTerm):
             f"Resolved joint names for the action term {self.__class__.__name__}:"
             f" {self._joint_names} [{self._joint_ids}]"
         )
-        # Avoid indexing across all joints for efficiency #TODO Is it still usefull
-        # if self._num_joints == self._asset.num_joints:
-        #     self._joint_ids = slice(None)
 
         # Retrieve series of information usefull for computation and generalisation
         # Feet Index in body, list [13, 14, 15, 16]
@@ -232,10 +209,10 @@ class ModelBaseAction(ActionTerm):
         else : p_dim=2
         
         # raw RL output
-        self.f_raw  = 1.0*torch.ones( self.num_envs, self._num_legs,                                   device=self.device) 
-        self.d_raw  = 0.6*torch.ones( self.num_envs, self._num_legs,                                   device=self.device)
-        self.p_raw  =     torch.zeros(self.num_envs, self._num_legs, p_dim, self._number_predict_step, device=self.device)
-        self.F_raw  =     torch.zeros(self.num_envs, self._num_legs,     3,   self._prevision_horizon, device=self.device)
+        self.f_raw  = 1.0*torch.ones( self.num_envs, self._num_legs,                       device=self.device) 
+        self.d_raw  = 0.6*torch.ones( self.num_envs, self._num_legs,                       device=self.device)
+        self.p_raw  =     torch.zeros(self.num_envs, self._num_legs, p_dim, self._p_param, device=self.device)
+        self.F_raw  =     torch.zeros(self.num_envs, self._num_legs,     3, self._F_param, device=self.device)
 
         # Normalized RL output
         self.f      = self.f_raw.clone().detach() 
@@ -250,8 +227,8 @@ class ModelBaseAction(ActionTerm):
         self.F_norm_prev = self.F_raw.clone().detach() 
 
         # Normalized and transformed to frame RL output
-        self.p_lw   =     torch.zeros(self.num_envs, self._num_legs,     3, self._number_predict_step, device=self.device) 
-        self.F_lw   =     torch.zeros(self.num_envs, self._num_legs,     3,   self._prevision_horizon, device=self.device)
+        self.p_lw   =     torch.zeros(self.num_envs, self._num_legs, 3, self._p_param, device=self.device) 
+        self.F_lw   =     torch.zeros(self.num_envs, self._num_legs, 3, self._F_param, device=self.device)
 
         # For ease of reshaping variables
         self.f_len = self.f_raw.shape[1:].numel()
@@ -264,11 +241,13 @@ class ModelBaseAction(ActionTerm):
         self._processed_actions = torch.zeros_like(self.raw_actions)   
 
         # Model-based optimized latent variable
-        self.p_star_lw  = torch.zeros(self.num_envs, self._num_legs, 3, self._number_predict_step, device=self.device)
-        self.F_star_lw  = torch.zeros(self.num_envs, self._num_legs, 3, self._prevision_horizon,   device=self.device)
-        self.c_star     = torch.ones( self.num_envs, self._num_legs,    self._prevision_horizon,   device=self.device)
-        self.pt_star_lw = torch.zeros(self.num_envs, self._num_legs, 9, self._decimation,          device=self.device)
-        self.full_pt_lw = torch.zeros(self.num_envs, self._num_legs, 9, 22,                        device=self.device)  # Used for plotting only
+        self.f_star     = torch.zeros(self.num_envs, self._num_legs,                     device=self.device)
+        self.d_star     = torch.zeros(self.num_envs, self._num_legs,                     device=self.device)
+        self.c_star     = torch.ones( self.num_envs, self._num_legs, 1,                  device=self.device)
+        self.p_star_lw  = torch.zeros(self.num_envs, self._num_legs, 3, self._p_param,   device=self.device)
+        self.F_star_lw  = torch.zeros(self.num_envs, self._num_legs, 3, self._F_param,   device=self.device)
+        self.pt_star_lw = torch.zeros(self.num_envs, self._num_legs, 9, self._decimation,device=self.device)
+        self.full_pt_lw = torch.zeros(self.num_envs, self._num_legs, 9, 22,              device=self.device)  # Used for plotting only
 
         # Control input u : joint torques
         self.u = torch.zeros(self.num_envs, self._num_joints, device=self.device)
@@ -295,7 +274,7 @@ class ModelBaseAction(ActionTerm):
 
         # Instance of control class. Gets Z and output u
         self.controller = cfg.controller(
-            verbose_md=verbose_mb, device=self.device, num_envs=self.num_envs, num_legs=self._num_legs, time_horizon=self._prevision_horizon,
+            verbose_md=verbose_mb, device=self.device, num_envs=self.num_envs, num_legs=self._num_legs,
             dt_out=self._decimation*self._env.physics_dt, decimation=self._decimation, dt_in=self._env.physics_dt,
             p_default_lw=self.get_reset_foot_position(), step_height=cfg.footTrajectoryCfg.step_height,
             foot_offset=cfg.footTrajectoryCfg.foot_offset, swing_ctrl_pos_gain_fb=self.cfg.swingControllerCfg.swing_ctrl_pos_gain_fb , 
@@ -340,10 +319,9 @@ class ModelBaseAction(ActionTerm):
 
         Note:
             This function is called once per environment step. : Outer loop frequency
-            1. Apply affine transformation (scale and offset)
-            2. Reconstrut latent variable z = (f,d,p,F)
-            3. Normalized and transformed to relevant frame the latent variable z = (f,d,p,F)
-            4. Optimize the latent variable (call controller.optimize_control_output)
+            1. Reconstrut latent variable z = (f,d,p,F)
+            2. Normalized and transformed to relevant frame the latent variable z = (f,d,p,F)
+            3. Process the latent variable (call controller.optimize_control_output)
                 and update optimizied solution p*, F*, c*, pt*
 
         Args:
@@ -353,7 +331,7 @@ class ModelBaseAction(ActionTerm):
         self._raw_actions[:] = actions
 
         # apply the affine transformations
-        self._processed_actions = self._raw_actions * self._scale + self._offset
+        self._processed_actions = self._raw_actions
 
         # save the previous variable - used for derivative computation in penalty
         self.f_prev      = self.f
@@ -366,13 +344,6 @@ class ModelBaseAction(ActionTerm):
         self.d_raw = (self._processed_actions[:, self.f_len                           : self.f_len + self.d_len                          ]).reshape_as(self.d_raw)
         self.p_raw = (self._processed_actions[:, self.f_len + self.d_len              : self.f_len + self.d_len + self.p_len             ]).reshape_as(self.p_raw)
         self.F_raw = (self._processed_actions[:, self.f_len + self.d_len + self.p_len : self.f_len + self.d_len + self.p_len + self.F_len]).reshape_as(self.F_raw)
-
-        # Increment d from d_dot
-        # d_rl = self.d + d_dot.clamp(-0.05,0.05) # TODO this must be normalize also !!
-
-        if not torch.distributions.constraints.real.check(actions).all() :
-            print('Problem with NaN in actions -> this problem come from the observations')
-            breakpoint()
 
         # Normalize the actions
         self.f, self.d, self.F_norm, self.p_norm = self.normalize_actions(f=self.f_raw, d=self.d_raw, F=self.F_raw, p=self.p_raw)
@@ -412,9 +383,10 @@ class ModelBaseAction(ActionTerm):
             # breakpoint() 
             self.p_lw[torch.nonzero(torch.isinf(self.p_lw))] = 0
             
+        height_map = torch.zeros(17,11)
 
         # Optimize the latent variable with the model base controller
-        self.p_star_lw, self.F_star_lw, self.c_star, self.pt_star_lw, self.full_pt_lw = self.controller.optimize_latent_variable(f=self.f, d=self.d, p_lw=self.p_lw, F_lw=self.F_lw)
+        self.f_star, self.d_star, self.c_star, self.p_star_lw, self.F_star_lw, self.pt_star_lw, self.full_pt_lw = self.controller.process_latent_variable(f=self.f, d=self.d, p_lw=self.p_lw, F_lw=self.F_lw, env=self._env, height_map=height_map)
 
         # Reset the inner loop counter
         self.inner_loop = 0      
@@ -442,10 +414,10 @@ class ModelBaseAction(ActionTerm):
         # Use model controller to compute the torques from the latent variable
         # Transform the shape from (batch_size, num_legs, num_joints_per_leg) to (batch_size, num_joints) # Permute and reshape to have the joint in right order [0,4,8][1,5,...] to [0,1,2,...]
         self.u = (self.controller.compute_control_output(F0_star_lw=F0_star_lw, c0_star=c0_star, pt_i_star_lw=pt_i_star_lw, p_lw=p_lw, p_dot_lw=p_dot_lw, q_dot=q_dot,
-                                                          jacobian_lw=jacobian_lw, jacobian_dot_lw=jacobian_dot_lw, mass_matrix=mass_matrix, h=h)).permute(0,2,1).reshape(self.num_envs,self._num_joints)
+                                                         jacobian_lw=jacobian_lw, jacobian_dot_lw=jacobian_dot_lw, mass_matrix=mass_matrix, h=h)).permute(0,2,1).reshape(self.num_envs,self._num_joints)
 
         # Apply the computed torques
-        self._asset.set_joint_effort_target(self.u)#, joint_ids=self._joint_ids) # Do use joint_ids to speed up the process     
+        self._asset.set_joint_effort_target(self.u)#, joint_ids=self._joint_ids) # Don't use joint_ids to speed up the process     
 
         # Debug
         if verbose_mb:
@@ -681,13 +653,13 @@ class ModelBaseAction(ActionTerm):
         This function transform the Ground Reaction Forces into local world frame
 
         Args:
-            - F_norm (torch.Tensor): Ground Reaction Forces in RL frame           of shape (batch_size, num_legs, 3, time_horizon)
+            - F_norm (torch.Tensor): Ground Reaction Forces in RL frame           of shape (batch_size, num_legs, 3, F_param)
 
         Returns:
-            - F_lw (torch.Tensor): Ground Reaction Forces in local world frame  of shape (batch_size, num_legs, 3, time_horizon)
+            - F_lw (torch.Tensor): Ground Reaction Forces in local world frame  of shape (batch_size, num_legs, 3, F_param)
         """
 
-        # Rotate the GRF : shape(batch_size, num_legs, 3, time_horizon)
+        # Rotate the GRF : shape(batch_size, num_legs, 3, F_param)
         robot_yaw_in_w = math_utils.yaw_quat(self._asset.data.root_quat_w)
         F_norm_flatten = F_norm.transpose(2,3).reshape(F_norm.shape[0], F_norm.shape[1]*F_norm.shape[3], F_norm.shape[2])
         F_lw_flatten = math_utils.transform_points(F_norm_flatten, quat=robot_yaw_in_w)
@@ -704,13 +676,13 @@ class ModelBaseAction(ActionTerm):
         Args :
             - f (torch.Tensor): leg frequency  RL policy output in [-1,1] range of shape(batch_size, num_legs)
             - d (torch.Tensor): leg duty cycle RL policy output in [-1,1] range of shape(batch_size, num_legs)
-            - F (torch.Tensor): GRF            RL policy output in [-1,1] range of shape(batch_size, num_legs, 3, time_horizon)
-            - p (torch.Tensor): touch down pos RL policy output in [-1,1] range of shape(batch_size, num_legs, 2 or 3, step_predict)
+            - F (torch.Tensor): GRF            RL policy output in [-1,1] range of shape(batch_size, num_legs, 3, F_param)
+            - p (torch.Tensor): touch down pos RL policy output in [-1,1] range of shape(batch_size, num_legs, 2 or 3, p_param)
 
         Returns :
             - f (torch.Tensor): Scaled output in [Hz]    of shape(batch_size, num_legs)
             - d (torch.Tensor): Scaled output in [1/rad] of shape(batch_size, num_legs)
-            - F (torch.Tensor): Scaled output in [N]     of shape(batch_size, num_legs, 3, time_horizon)
+            - F (torch.Tensor): Scaled output in [N]     of shape(batch_size, num_legs, 3, F_param)
             - p (torch.Tensor): Scaled output in [m]     of shape(batch_size, num_legs, 2 or 3, step_predict)
         """
 
@@ -739,7 +711,7 @@ class ModelBaseAction(ActionTerm):
         #--- Normalize F ---
         # F_xy:[-1,1]->[-std,+std]  : mean=0, std=std
         # F_z:[-1,1]->[mean-std,mean+std]      : mean=m*g/2, std=mean/10
-        # shape(batch_size, num_legs, 3, time_horizon)
+        # shape(batch_size, num_legs, 3, F_param)
         if F is not None :
             # shape (batch_size)
             number_leg_in_contact = torch.clamp_min(torch.sum(self.c_star[:,:,0], dim=1),1) # set a minimum of 1 to avoid div by 0 
@@ -793,10 +765,10 @@ class ModelBaseAction(ActionTerm):
         """ Enforce the friction cone constraints
         ||F_xy|| < F_z*mu
         Args :
-            F (torch.Tensor): The GRF   of shape(batch_size, num_legs, 3, time_horizon)
+            F (torch.Tensor): The GRF   of shape(batch_size, num_legs, 3, F_param)
 
         Returns :
-            F (torch.Tensor): The GRF with enforced friction constraints of shape(batch_size, num_legs, 3, time_horizon)
+            F (torch.Tensor): The GRF with enforced friction constraints of shape(batch_size, num_legs, 3, F_param)
         """
 
         F_x = F[:,:,0,:].unsqueeze(2)
@@ -857,13 +829,13 @@ class ModelBaseAction(ActionTerm):
         if verbose_loop>=50:
             verbose_loop=0
             print()
-            # print('Contact sequence : ', c0_star[0,...].flatten())
-            # print('  Leg  frequency : ', self.f[0,:])
-            # print('   duty   cycle  : ', self.d[0,...].flatten())
+            print('Contact sequence : ', c0_star[0,...].flatten())
+            print('  Leg  frequency : ', self.f[0,:])
+            print('   duty   cycle  : ', self.d[0,...].flatten())
             # print('terrain dificulty: ', torch.mean(self._env.scene.terrain.terrain_levels.float()))
-            print('  Max dificulty  : ', self._env.scene.terrain.difficulty.float()[:4])
-            print('terrain dificulty: ', self._env.scene.terrain.terrain_levels.float()[:4])
-            print('Terrain Progress : ', self._env.command_manager.get_term("base_velocity").metrics['cumulative_distance'][:4]/(self._env.scene.terrain.cfg.terrain_generator.size[0] / 2))
+            # print('  Max dificulty  : ', self._env.scene.terrain.difficulty.float()[:4])
+            # print('terrain dificulty: ', self._env.scene.terrain.terrain_levels.float()[:4])
+            # print('Terrain Progress : ', self._env.command_manager.get_term("base_velocity").metrics['cumulative_distance'][:4]/(self._env.scene.terrain.cfg.terrain_generator.size[0] / 2))
             # print('speed difficulty : ', self._env.command_manager.get_term("base_velocity").difficulty)
             # print('speed command    : ', self._env.command_manager.get_command("base_velocity")[:,0])
             # print('Actual Speed     : ', self._asset.data.root_lin_vel_b[:,0])
@@ -872,15 +844,15 @@ class ModelBaseAction(ActionTerm):
             # print(' Robot position  : ', self._asset.data.root_pos_w[0,...])
             # print('Foot traj shape  : ', self.pt_star_lw.shape)
             # print('Foot traj : ', self.pt_star_lw[0,0,:3,:])
-            # print('Foot Force :', self.F_star_lw[0,:,:])
+            print('Foot Force :', self.F_star_lw[0,:,:])
             # print('\nZ lin vel : ', self._asset.data.root_lin_vel_b[0, 2])
             # print(self._env.reward_manager.find_terms('track_lin_vel_xy_exp'))
             # try : 
-            #     # print('Penalty Lin vel z  : ',self._env.reward_manager._episode_sums["penalty_lin_vel_z_l2"][0])
-            #     # print('Track ang vel z    : ',self._env.reward_manager._episode_sums["track_ang_vel_z_exp"][0])
-            #     # print('Penalty frequency  : ',self._env.reward_manager._episode_sums["penalty_frequency_variation"][0])
-            #     print('Track soft exp    : ',self._env.reward_manager._episode_sums["track_soft_vel_xy_exp"][0:4])
-            #     print('Track exp         : ',self._env.reward_manager._episode_sums["track_lin_vel_xy_exp"][0:4])
+                # print('Penalty Lin vel z  : ',self._env.reward_manager._episode_sums["penalty_lin_vel_z_l2"][0])
+                # print('Track ang vel z    : ',self._env.reward_manager._episode_sums["track_ang_vel_z_exp"][0])
+                # print('Penalty frequency  : ',self._env.reward_manager._episode_sums["penalty_frequency_variation"][0])
+                # print('Track soft exp    : ',self._env.reward_manager._episode_sums["track_soft_vel_xy_exp"][0:4])
+                # print('Track exp         : ',self._env.reward_manager._episode_sums["track_lin_vel_xy_exp"][0:4])
             # except : pass
 
             if (self.F_lw != self.F_star_lw).any():

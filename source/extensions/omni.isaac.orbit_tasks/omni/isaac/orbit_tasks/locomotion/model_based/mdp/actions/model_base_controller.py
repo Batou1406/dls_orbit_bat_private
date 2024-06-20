@@ -11,21 +11,28 @@ import omni.isaac.orbit.utils.math as math_utils
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     pass
-from omni.isaac.orbit.envs import RLTaskEnv
 from omni.isaac.orbit.assets.articulation import Articulation
+from omni.isaac.orbit.envs import RLTaskEnv
 
- 
 
+import jax
+import jax.dlpack
+import torch
+import torch.utils.dlpack
 
-# import jax
-# import jax.dlpack
-# import torch
-# import torch.utils.dlpack
+def jax_to_torch(x):#: jax.Array):
+    return torch.utils.dlpack.from_dlpack(jax.dlpack.to_dlpack(x))
+def torch_to_jax_old(x):
+    return jax.dlpack.from_dlpack(torch.utils.dlpack.to_dlpack(x))
 
-# def jax_to_torch(x: jax.Array):
-#     return torch.utils.dlpack.from_dlpack(jax.dlpack.to_dlpack(x))
-# def torch_to_jax(x):
-#     return jax.dlpack.from_dlpack(torch.utils.dlpack.to_dlpack(x))
+# Hopefuly this should solved the stride problem : https://github.com/google/jax/issues/14399
+def torch_to_jax(x_torch):
+    shape = x_torch.shape
+    x_torch_flat = torch.flatten(x_torch)
+    x_jax = jax.dlpack.from_dlpack(torch.utils.dlpack.to_dlpack(x_torch_flat))
+    return x_jax.reshape(shape)
+
+from .quadrupedpympc.sampling.centroidal_model_jax import Centroidal_Model_JAX
 
 # import numpy as np
 # import matplotlib.pyplot as plt
@@ -36,7 +43,7 @@ from omni.isaac.orbit.assets.articulation import Articulation
 # vel_tracking_error = [[],[],[],[]]
 # acc_tracking_error = [[],[],[],[]]
 
-class modelBaseController(ABC):
+class baseController(ABC):
     """
     Abstract controller class for model base control implementation
     
@@ -45,7 +52,6 @@ class modelBaseController(ABC):
         - _device
         - _num_envs
         - _num_legs
-        - _time_horizon : Outer Loop prediction time horizon
         - _dt_out       : Outer Loop time step 
         - _decimation   : Inner Loop time horizon
         - _dt_in        : Inner Loop time step
@@ -53,13 +59,13 @@ class modelBaseController(ABC):
     Method :
         - late_init(device, num_envs, num_legs) : save environment variable and allow for lazy initialisation of variables
         - reset(env_ids) : Reset controller variables upon environment reset if needed
-        - optimize_latent_variable(f, d, p, F) -> p*, F*, c*, pt*
+        - process_latent_variable(f, d, p, F) -> p*, F*, c*, pt*
         - compute_control_output(F0*, c0*, pt01*) -> T
         - gait_generator(f, d, phase) -> c, new_phase
 
     """
 
-    def __init__(self, verbose_md, device, num_envs, num_legs, time_horizon, dt_out, decimation, dt_in):
+    def __init__(self, verbose_md, device, num_envs, num_legs, dt_out, decimation, dt_in):
         """ Initialise Model Base variable after the model base action class has been initialised
 
         Args : 
@@ -76,7 +82,6 @@ class modelBaseController(ABC):
         self._num_envs = num_envs
         self._device = device
         self._num_legs = num_legs
-        self._time_horizon = time_horizon
         self._dt_out = dt_out
         self._decimation = decimation
         self._dt_in = dt_in
@@ -88,20 +93,20 @@ class modelBaseController(ABC):
         pass 
 
 
-    def optimize_latent_variable(self, f: torch.Tensor, d: torch.Tensor, p_b: torch.Tensor, F_w: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    def process_latent_variable(self, f: torch.Tensor, d: torch.Tensor, p_b: torch.Tensor, F_w: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """ Given the latent variable z=[f,d,p,F], return the optimized latent variable p*, F*, c*, pt*
 
         Args:
             - f   (torch.Tensor): Prior leg frequency                   of shape (batch_size, num_legs)
             - d   (torch.Tensor): Prior stepping duty cycle             of shape (batch_size, num_legs)
-            - p_b (torch.Tensor): Prior foot pos. seq. in base frame    of shape (batch_size, num_legs, 3, time_horizon)
-            - F_w (torch.Tensor): Prior Ground Reac. Forces (GRF) seq.  of shape (batch_size, num_legs, 3, time_horizon)
+            - p_b (torch.Tensor): Prior foot pos. seq. in base frame    of shape (batch_size, num_legs, 3, p_param)
+            - F_w (torch.Tensor): Prior Ground Reac. Forces (GRF) seq.  of shape (batch_size, num_legs, 3, F_param)
                                   In world frame
 
         Returns:
-            - p*  (torch.Tensor): Optimized foot position sequence      of shape (batch_size, num_legs, 3, time_horizon)
-            - F*  (torch.Tensor): Opt. Ground Reac. Forces (GRF) seq.   of shape (batch_size, num_legs, 3, time_horizon)
-            - c*  (torch.Tensor): Optimized foot contact sequence       of shape (batch_size, num_legs, time_horizon)
+            - p*  (torch.Tensor): Optimized foot position sequence      of shape (batch_size, num_legs, 3, p_param)
+            - F*  (torch.Tensor): Opt. Ground Reac. Forces (GRF) seq.   of shape (batch_size, num_legs, 3, F_param)
+            - c*  (torch.Tensor): Optimized foot contact sequence       of shape (batch_size, num_legs, 1)
         """
         raise NotImplementedError
 
@@ -126,7 +131,7 @@ class modelBaseController(ABC):
         raise NotImplementedError
 
     
-class samplingController(modelBaseController):
+class modelBaseController(baseController):
     """
     Implement a model based controller based on the latent variable z = [f,d,p,F]
 
@@ -138,14 +143,13 @@ class samplingController(modelBaseController):
         Optimize the latent variable z. Generates samples, simulate the samples, evaluate them and return the best one.
 
     Properties : 
-        - verbose_md    : Verbose variable. Save some computation that aren't necessary if not in debug mode.           Inherited from modelBaseController
-        - _device                                                                                                       Inherited from modelBaseController
-        - _num_envs                                                                                                     Inherited from modelBaseController
-        - _num_legs                                                                                                     Inherited from modelBaseController
-        - _time_horizon : Outer Loop prediction time horizon                                                            Inherited from modelBaseController
-        - _dt_out       : Outer Loop time step                                                                          Inherited from modelBaseController
-        - _decimation   : Inner Loop time horizon                                                                       Inherited from modelBaseController
-        - _dt_in        : Inner Loop time step                                                                          Inherited from modelBaseController
+        - verbose_md    : Verbose variable. Save some computation that aren't necessary if not in debug mode.           Inherited from baseController
+        - _device                                                                                                       Inherited from baseController
+        - _num_envs                                                                                                     Inherited from baseController
+        - _num_legs                                                                                                     Inherited from baseController
+        - _dt_out       : Outer Loop time step                                                                          Inherited from baseController
+        - _decimation   : Inner Loop time horizon                                                                       Inherited from baseController
+        - _dt_in        : Inner Loop time step                                                                          Inherited from baseController
         - phase (Tensor): Leg phase                                             of shape (batch_size, num_legs)
         - p0_lw (Tensor): Lift-off position                                     of shape (batch_size, num_legs, 3)
         - swing_time (T): time progression of the leg in swing phase            of shape (batch_size, num_legs)  
@@ -154,11 +158,11 @@ class samplingController(modelBaseController):
         - FOOT_OFFSET   : Offset between the foot (as return by the sim.) and the ground when in contact
 
     Method :
-        - late_init(device, num_envs, num_legs) : save environment variable and allow for lazy init of variables        Inherited from modelBaseController
-        - reset(env_ids) : Reset controller variables upon environment reset if needed                                  Inherited from modelBaseController (not implemented)
-        - optimize_latent_variable(f, d, p, F) -> p*, F*, c*, pt*                                                       Inherited from modelBaseController (not implemented)
-        - compute_control_output(F0*, c0*, pt01*) -> T                                                                  Inherited from modelBaseController (not implemented)
-        - gait_generator(f, d, phase) -> c, new_phase                                                                   Inherited from modelBaseController (not implemented)
+        - late_init(device, num_envs, num_legs) : save environment variable and allow for lazy init of variables        Inherited from baseController
+        - reset(env_ids) : Reset controller variables upon environment reset if needed                                  Inherited from baseController (not implemented)
+        - process_latent_variable(f, d, p, F) -> p*, F*, c*, pt*                                                       Inherited from baseController (not implemented)
+        - compute_control_output(F0*, c0*, pt01*) -> T                                                                  Inherited from baseController (not implemented)
+        - gait_generator(f, d, phase) -> c, new_phase                                                                   Inherited from baseController (not implemented)
         - swing_trajectory_generator(p_b, c, decimation) -> pt_b
         - swing_leg_controller(c0*, pt01*) -> T_swing
         - stance_leg_controller(F0*, c0*) -> T_stance
@@ -169,7 +173,7 @@ class samplingController(modelBaseController):
     swing_time : torch.Tensor
     p_lw_sim_prev : torch.Tensor
 
-    def __init__(self, verbose_md, device, num_envs, num_legs, time_horizon, dt_out, decimation, dt_in, p_default_lw: torch.Tensor, step_height, foot_offset, swing_ctrl_pos_gain_fb, swing_ctrl_vel_gain_fb):
+    def __init__(self, verbose_md, device, num_envs, num_legs, dt_out, decimation, dt_in, p_default_lw: torch.Tensor, step_height, foot_offset, swing_ctrl_pos_gain_fb, swing_ctrl_vel_gain_fb):
         """ Initialise Model Base variable after the model base action class has been initialised
         Note :
             The variable are in the 'local' world frame _wl. This notation is introduced to avoid confusion with the 'global' world frame, where all the batches coexists.
@@ -184,7 +188,7 @@ class samplingController(modelBaseController):
             - dt_in        (int): Inner loop delta t
             - p_default (Tensor): Default feet pos of robot when reset  of Shape (batch_size, num_legs, 3)
         """
-        super().__init__(verbose_md, device, num_envs, num_legs, time_horizon, dt_out, decimation, dt_in)
+        super().__init__(verbose_md, device, num_envs, num_legs, dt_out, decimation, dt_in)
         self.phase = torch.zeros(num_envs, num_legs, device=device)
         self.phase[:,(0,3)] = 0.5 # Init phase [0.5, 0, 0.5, 0]
         self.p0_lw = p_default_lw.clone().detach()
@@ -193,7 +197,10 @@ class samplingController(modelBaseController):
         self.step_height = step_height
         self.FOOT_OFFSET = foot_offset
         self.swing_ctrl_pos_gain_fb = swing_ctrl_pos_gain_fb
-        self.swing_ctrl_vel_gain_fb = swing_ctrl_vel_gain_fb       
+        self.swing_ctrl_vel_gain_fb = swing_ctrl_vel_gain_fb
+
+        self.samplingOptimizer = SamplingOptimizer()  
+        self.c_prev = torch.ones(num_envs, num_legs, device=device)
 
 
     def reset(self, env_ids: Sequence[int] | None,  p_default_lw: torch.Tensor) -> None:
@@ -221,8 +228,8 @@ class samplingController(modelBaseController):
 
 
 # ----------------------------------- Outer Loop ------------------------------
-    def optimize_latent_variable(self, f: torch.Tensor, d: torch.Tensor, p_lw: torch.Tensor, F_lw: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        """ Given the latent variable z=[f,d,p,F], return the optimized latent variable p*, F*, c*, pt*
+    def process_latent_variable(self, f: torch.Tensor, d: torch.Tensor, p_lw: torch.Tensor, F_lw: torch.Tensor, env: RLTaskEnv, height_map:torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """ Given the latent variable z=[f,d,p,F], return the process latent variable p*, F*, c*, pt*
         Note :
             The variable are in the 'local' world frame _wl. This notation is introduced to avoid confusion with the 'global' world frame, where all the batches coexists.
 
@@ -230,35 +237,34 @@ class samplingController(modelBaseController):
             - f   (torch.Tensor): Prior leg frequency                   of shape (batch_size, num_legs)
             - d   (torch.Tensor): Prior stepping duty cycle             of shape (batch_size, num_legs)
             - p_lw (trch.Tensor): Prior foot touch down seq. in _lw     of shape (batch_size, num_legs, 3, number_predict_step)
-            - F_lw (trch.Tensor): Prior Ground Reac. Forces (GRF) seq.  of shape (batch_size, num_legs, 3, time_horizon)
+            - F_lw (trch.Tensor): Prior Ground Reac. Forces (GRF) seq.  of shape (batch_size, num_legs, 3, F_param)
                                   In local world frame
+            - height_map (Tnsor): Height map arround the robot          of shape(x, y)
 
         Returns:
             - p*_lw (tch.Tensor): Optimized foot touch down seq. in _lw of shape (batch_size, num_legs, 3, number_predict_step)
-            - F*_lw (tch.Tensor): Opt. Gnd Reac. F. (GRF) seq.   in _lw of shape (batch_size, num_legs, 3, time_horizon)
-            - c*  (torch.Tensor): Optimized foot contact sequence       of shape (batch_size, num_legs, time_horizon)
+            - F*_lw (tch.Tensor): Opt. Gnd Reac. F. (GRF) seq.   in _lw of shape (batch_size, num_legs, 3, F_param)
+            - c*  (torch.Tensor): Optimized foot contact sequence       of shape (batch_size, num_legs, 1)
             - pt*_lw (th.Tensor): Optimized foot swing traj.     in _lw of shape (batch_size, num_legs, 9, decimation)  (9 = pos, vel, acc)
         """
 
-        # Call the optimizer
-        # F_star_lw, p_star_lw, c_star = self.samplingOptimizer()
+        # No optimizer
+        f_star, d_star, F_star_lw, p_star_lw = f, d, F_lw, p_lw
 
         # Compute the contact sequence and update the phase
-        c, self.phase = self.gait_generator(f=f, d=d, phase=self.phase, time_horizon=self._time_horizon, dt=self._dt_out)
+        c_star, self.phase = self.gait_generator(f=f_star, d=d_star, phase=self.phase, horizon=1, dt=self._dt_out)
+
+        # Update c_prev
+        self.c_prev = c_star
 
         # Generate the swing trajectory
         # pt_lw = self.swing_trajectory_generator(p_lw=p_lw[:,:,:,0], c=c, d=d, f=f)
-        pt_lw, full_pt_lw = self.full_swing_trajectory_generator(p_lw=p_lw[:,:,:,0], c=c, d=d, f=f)
+        pt_star_lw, full_pt_lw = self.full_swing_trajectory_generator(p_lw=p_star_lw[:,:,:,0], c=c_star, d=d_star, f=f_star)
 
-        p_star_lw = p_lw
-        F_star_lw = F_lw
-        c_star = c
-        pt_star_lw = pt_lw
-
-        return p_star_lw, F_star_lw, c_star, pt_star_lw, full_pt_lw
+        return f_star, d_star, c_star, p_star_lw, F_star_lw, pt_star_lw, full_pt_lw
     
 
-    def gait_generator(self, f: torch.Tensor, d: torch.Tensor, phase: torch.Tensor, time_horizon: int, dt) -> tuple[torch.Tensor, torch.Tensor]:
+    def gait_generator(self, f: torch.Tensor, d: torch.Tensor, phase: torch.Tensor, horizon: int, dt) -> tuple[torch.Tensor, torch.Tensor]:
         """ Implement a gait generator that return a contact sequence given a leg frequency and a leg duty cycle
         Increment phase by dt*f 
         restart if needed
@@ -271,20 +277,20 @@ class samplingController(modelBaseController):
             parallel_rollout : this is optional, it will work without the parallel rollout dimension
 
         Args:
-            - f   (torch.Tensor): Leg frequency                         of shape(batch_size, (parallel_rollout), num_legs)
-            - d   (torch.Tensor): Stepping duty cycle in [0,1]          of shape(batch_size, (parallel_rollout), num_legs)
-            - phase (tch.Tensor): phase of leg in [0,1]                 of shape(batch_size, (parallel_rollout), num_legs)
-            - time_horizon (int): Time horizon for the contact sequence
+            - f   (torch.Tensor): Leg frequency                         of shape(batch_size, num_legs)
+            - d   (torch.Tensor): Stepping duty cycle in [0,1]          of shape(batch_size, num_legs)
+            - phase (tch.Tensor): phase of leg in [0,1]                 of shape(batch_size, num_legs)
+            - horizon (int): Time horizon for the contact sequence
 
         Returns:
-            - c     (torch.bool): Foot contact sequence                 of shape(batch_size, (parallel_rollout), num_legs, time_horizon)
-            - phase (tch.Tensor): The phase updated by one time steps   of shape(batch_size, (parallel_rollout), num_legs)
+            - c     (torch.bool): Foot contact sequence                 of shape(batch_size, num_legs, horizon)
+            - phase (tch.Tensor): The phase updated by one time steps   of shape(batch_size, num_legs)
         """
         
         # Increment phase of f*dt: new_phases[0] : incremented of 1 step, new_phases[1] incremented of 2 steps, etc. without a for loop.
-        # new_phases = phase + f*dt*[1,2,...,time_horizon]
-        # phase and f must be exanded from (batch_size, num_legs, parallel_rollout) to (batch_size, num_legs, parallel_rollout, time_horizon) in order to perform the operations
-        new_phases = phase.unsqueeze(-1).expand(*[-1] * len(phase.shape),time_horizon) + f.unsqueeze(-1).expand(*[-1] * len(f.shape),time_horizon)*torch.linspace(start=1, end=time_horizon, steps=time_horizon, device=self._device)*dt
+        # new_phases = phase + f*dt*[1,2,...,horizon]
+        # phase and f must be exanded from (batch_size, num_legs) to (batch_size, num_legs, horizon) in order to perform the operations
+        new_phases = phase.unsqueeze(-1).expand(*[-1] * len(phase.shape),horizon) + f.unsqueeze(-1).expand(*[-1] * len(f.shape),horizon)*torch.linspace(start=1, end=horizon, steps=horizon, device=self._device)*dt
 
         # Make the phases circular (like sine) (% is modulo operation)
         new_phases = new_phases%1
@@ -293,7 +299,7 @@ class samplingController(modelBaseController):
         new_phase = new_phases[..., 0]
 
         # Make comparaison to return discret contat sequence : c = 1 if phase < d, 0 otherwise
-        c = new_phases <= d.unsqueeze(-1).expand(*[-1] * len(d.shape), time_horizon)
+        c = new_phases <= d.unsqueeze(-1).expand(*[-1] * len(d.shape), horizon)
 
         return c, new_phase
 
@@ -309,7 +315,7 @@ class samplingController(modelBaseController):
         
         Args:
             - p_lw (trch.Tensor): Foot touch down postion in _lw        of shape(batch_size, num_legs, 3)
-            - c   (torch.Tensor): Foot contact sequence                 of shape(batch_size, num_legs, time_horizon)
+            - c   (torch.Tensor): Foot contact sequence                 of shape(batch_size, num_legs, decimation)
             - f   (torch.Tensor): Leg frequency           in R+         of shape(batch_size, num_legs)
             - d   (torch.Tensor): Stepping duty cycle     in[0,1]       of shape(batch_size, num_legs)
 
@@ -632,314 +638,699 @@ class samplingController(modelBaseController):
         return T_stance
 
 
+class samplingController(modelBaseController):
+    """
+    TODO
+    """
+    def process_latent_variable(self, f: torch.Tensor, d: torch.Tensor, p_lw: torch.Tensor, F_lw: torch.Tensor, env: RLTaskEnv, height_map: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """ Given the latent variable z=[f,d,p,F], return the process latent variable p*, F*, c*, pt*
+        Note :
+            The variable are in the 'local' world frame _wl. This notation is introduced to avoid confusion with the 'global' world frame, where all the batches coexists.
+
+        Args:
+            - f   (torch.Tensor): Prior leg frequency                   of shape (batch_size, num_legs)
+            - d   (torch.Tensor): Prior stepping duty cycle             of shape (batch_size, num_legs)
+            - p_lw (trch.Tensor): Prior foot touch down seq. in _lw     of shape (batch_size, num_legs, 3, p_param)
+            - F_lw (trch.Tensor): Prior Ground Reac. Forces (GRF) seq.  of shape (batch_size, num_legs, 3, F_param)
+                                  In local world frame
+            - height_map (Tnsor): Height map arround the robot          of shape(x, y)
+
+        Returns:
+            - p*_lw (tch.Tensor): Optimized foot touch down seq. in _lw of shape (batch_size, num_legs, 3, p_param)
+            - F*_lw (tch.Tensor): Opt. Gnd Reac. F. (GRF) seq.   in _lw of shape (batch_size, num_legs, 3, F_param)
+            - c*  (torch.Tensor): Optimized foot contact sequence       of shape (batch_size, num_legs, 1)
+            - pt*_lw (th.Tensor): Optimized foot swing traj.     in _lw of shape (batch_size, num_legs, 9, decimation)  (9 = pos, vel, acc)
+        """
+
+        F_lw = F_lw.expand(1,4,3,5)
+        p_lw = p_lw.expand(1,4,3,5)
+
+        # Call the optimizer
+        f_star, d_star, p_star_lw, F_star_lw = self.samplingOptimizer.optimize_latent_variable(env=env, f=f, d=d, p_lw=p_lw, F_lw=F_lw, phase=self.phase, c_prev=self.c_prev, height_map=height_map)
+        # f_star, d_star, F_star_lw, p_star_lw = f, d, F_lw, p_lw
+
+        # Compute the contact sequence and update the phase
+        c_star, self.phase = self.gait_generator(f=f_star, d=d_star, phase=self.phase, horizon=1, dt=self._dt_out)
+
+        # Update c_prev
+        self.c_prev = c_star
+
+        # Generate the swing trajectory
+        # pt_lw = self.swing_trajectory_generator(p_lw=p_lw[:,:,:,0], c=c, d=d, f=f)
+        pt_star_lw, full_pt_lw = self.full_swing_trajectory_generator(p_lw=p_star_lw[:,:,:,0], c=c_star, d=d_star, f=f_star)
+
+        return f_star, d_star, c_star, p_star_lw, F_star_lw, pt_star_lw, full_pt_lw
+
 # ---------------------------------- Optimizer --------------------------------
-# class samplingOptimizer():
-#     """ TODO """
-#     def __init__(self):
-#         """ TODO """
+fake = False
+class SamplingOptimizer():
+    """ TODO """
+    def __init__(self):
+        """ TODO """
 
-#         self.time_horizon = 10
-#         self.num_predict_step = 3
+        self.time_horizon = 5
+        self.num_predict_step = 3
 
-#         self.num_samples = 1000
+        self.num_samples = 5000 # set to 1 for fake sampling and taking directly the RL output
 
-#         self.F_param = self.time_horizon
-#         self.P_param = self.num_predict_step
+        self.F_param = self.time_horizon
+        self.p_param = self.time_horizon
 
-#         self.dt = 0.02
+        self.dt = 0.02
 
-#         self.device = 'cuda'
+        self.device = 'cuda'
+        self.device_jax = jax.devices('gpu')[0]
+
+        self.num_legs = 4
+
+        self.sampling_horizon = self.time_horizon
+
+        self.state_dim = 24 # CoM_pos(3) + lin_vel(3) + CoM_pose(3) + ang_vel(3) + foot_pos(12) 
+        self.input_dim = 12 # GRF(12) (foot touch down pos is state and an input)
+
+        self.dtype_general = 'float32'
+
+        interpolation_F_method = 'discrete' # 'discrete', 'cubic spline'
+        if interpolation_F_method=='cubic spline' : self.interpolation_F=self.compute_cubic_spline
+        if interpolation_F_method=='discrete'     : self.interpolation_F=self.compute_discrete
+
+        interpolation_p_method = 'discrete' # 'discrete', 'cubic spline'
+        if interpolation_p_method=='cubic spline' : self.interpolation_p=self.compute_cubic_spline
+        if interpolation_p_method=='discrete'     : self.interpolation_p=self.compute_discrete
+
+        # Initialize the robot model
+        self.robot_model = Centroidal_Model_JAX(self.dt,self.device_jax)
+
+        # Add the 'samples' dimension on the last for input variable, and on the output
+        self.parallel_compute_rollout = jax.vmap(self.compute_rollout, in_axes=(None, None, 0, 0, 0, 0), out_axes=0)
+        self.jit_parallel_compute_rollout = jax.jit(self.parallel_compute_rollout, device=self.device_jax)
+        # self.jit_parallel_compute_rollout = self.parallel_compute_rollout
+
+        self.F_z_min = 0
+        self.F_z_max = self.robot_model.mass*9.81
+        self.mu = 0.5
+
+        self.height_ref = 0.4
+
+        # State weight matrix (JAX)
+        self.Q = jnp.identity(self.state_dim, dtype=self.dtype_general)*0
+        self.Q = self.Q.at[0,0].set(0.0)        #com_x
+        self.Q = self.Q.at[1,1].set(0.0)        #com_y
+        self.Q = self.Q.at[2,2].set(111500)     #com_z
+        self.Q = self.Q.at[3,3].set(5000)       #com_vel_x
+        self.Q = self.Q.at[4,4].set(5000)       #com_vel_y
+        self.Q = self.Q.at[5,5].set(200)        #com_vel_z
+        self.Q = self.Q.at[6,6].set(11200)      #base_angle_roll
+        self.Q = self.Q.at[7,7].set(11200)      #base_angle_pitch
+        self.Q = self.Q.at[8,8].set(0.0)        #base_angle_yaw
+        self.Q = self.Q.at[9,9].set(20)         #base_angle_rates_x
+        self.Q = self.Q.at[10,10].set(20)       #base_angle_rates_y
+        self.Q = self.Q.at[11,11].set(600)      #base_angle_rates_z
+        self.Q = self.Q.at[12,12].set(0.0)      #foot_pos_x_FL
+        self.Q = self.Q.at[13,13].set(0.0)      #foot_pos_y_FL
+        self.Q = self.Q.at[14,14].set(0.0)      #foot_pos_z_FL
+        self.Q = self.Q.at[15,15].set(0.0)      #foot_pos_x_FR
+        self.Q = self.Q.at[16,16].set(0.0)      #foot_pos_y_FR
+        self.Q = self.Q.at[17,17].set(0.0)      #foot_pos_z_FR
+        self.Q = self.Q.at[18,18].set(0.0)      #foot_pos_x_RL
+        self.Q = self.Q.at[19,19].set(0.0)      #foot_pos_y_RL
+        self.Q = self.Q.at[20,20].set(0.0)      #foot_pos_z_RL
+        self.Q = self.Q.at[21,21].set(0.0)      #foot_pos_x_RR
+        self.Q = self.Q.at[22,22].set(0.0)      #foot_pos_y_RR
+        self.Q = self.Q.at[23,23].set(0.0)      #foot_pos_z_RR
+
+        # Input weight matrix (JAX)
+        self.R = jnp.identity(self.input_dim, dtype=self.dtype_general)*0
+        self.R = self.R.at[0,0].set(0.1)        #foot_force_x_FL
+        self.R = self.R.at[1,1].set(0.1)        #foot_force_y_FL
+        self.R = self.R.at[2,2].set(0.001)      #foot_force_z_FL
+        self.R = self.R.at[3,3].set(0.1)        #foot_force_x_FR
+        self.R = self.R.at[4,4].set(0.1)        #foot_force_y_FR
+        self.R = self.R.at[5,5].set(0.001)      #foot_force_z_FR
+        self.R = self.R.at[6,6].set(0.1)        #foot_force_x_RL
+        self.R = self.R.at[7,7].set(0.1)        #foot_force_y_RL
+        self.R = self.R.at[8,8].set(0.001)      #foot_force_z_RL
+        self.R = self.R.at[9,9].set(0.1)        #foot_force_x_RR
+        self.R = self.R.at[10,10].set(0.1)      #foot_force_y_RR
+        self.R = self.R.at[11,11].set(0.001)    #foot_force_z_RR
 
 
-#     def optimize_latent_variable(self, env: RLTaskEnv, f:torch.Tensor, d:torch.Tensor, p_lw:torch.Tensor, F_lw:torch.Tensor, phase:torch.Tensor, c_prev:torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-#         """ Given latent variable f,d,F,p, returns f*,d*,F*,p*, optimized with a sampling optimization 
+    def optimize_latent_variable(self, env: RLTaskEnv, f:torch.Tensor, d:torch.Tensor, p_lw:torch.Tensor, F_lw:torch.Tensor, phase:torch.Tensor, c_prev:torch.Tensor, height_map) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """ Given latent variable f,d,F,p, returns f*,d*,F*,p*, optimized with a sampling optimization 
         
-#         Args :
-#             f      (Tensor): Leg frequency                of shape(batch_size, num_leg)
-#             d      (Tensor): Leg duty cycle               of shape(batch_size, num_leg)
-#             p_lw   (Tensor): Foot touch down position     of shape(batch_size, num_leg, 3, TODO)
-#             F_lw   (Tensor): ground Reaction Forces       of shape(batch_size, num_leg, 3, TODO)
-#             phase  (Tensor): Current feet phase           of shape(batch_size, num_leg)
-#             c_prev (Tensor): Contact sequence determined at previous iteration of shape (batch_size, num_leg)
+        Args :
+            f      (Tensor): Leg frequency                of shape(batch_size, num_leg)
+            d      (Tensor): Leg duty cycle               of shape(batch_size, num_leg)
+            p_lw   (Tensor): Foot touch down position     of shape(batch_size, num_leg, 3, p_param)
+            F_lw   (Tensor): ground Reaction Forces       of shape(batch_size, num_leg, 3, F_param)
+            phase  (Tensor): Current feet phase           of shape(batch_size, num_leg)
+            c_prev (Tensor): Contact sequence determined at previous iteration of shape (batch_size, num_leg)
+            height_map (Tr): Height map arround the robot of shape(x, y)
 
-#         Returns :
-#             f_star    (Tensor): Leg frequency                of shape(batch_size, num_leg)
-#             d_star    (Tensor): Leg duty cycle               of shape(batch_size, num_leg)
-#             p_star_lw (Tensor): Foot touch down position     of shape(batch_size, num_leg, 3, TODO)
-#             F_star_lw (Tensor): ground Reaction Forces       of shape(batch_size, num_leg, 3, TODO)
-#         """
+        Returns :
+            f_star    (Tensor): Leg frequency                of shape(batch_size, num_leg)
+            d_star    (Tensor): Leg duty cycle               of shape(batch_size, num_leg)
+            p_star_lw (Tensor): Foot touch down position     of shape(batch_size, num_leg, 3, p_param)
+            F_star_lw (Tensor): ground Reaction Forces       of shape(batch_size, num_leg, 3, F_param)
+        """
 
-#         # --- Step 1 : Generate the samples
-#         f_samples, d_samples, p_lw_samples, F_lw_samples = self.generate_samples(f=f, d=d, p_lw=p_lw, F_lw=F_lw)
+        # --- Step 1 : Generate the samples and bound them to valid input
+        f_samples, d_samples, p_lw_samples, F_lw_samples = self.generate_samples(f=f, d=d, p_lw=p_lw, F_lw=F_lw, height_map=height_map)
 
-#         # --- Step 2 : Given f and d samples -> generate the contact sequence for the samples
-#         c_samples, new_phase = self.gait_generator(f_samples=f_samples, d_samples=d_samples, phase=phase[0], time_horizon=self.time_horizon, dt=self.dt)
+        # --- Step 2 : Given f and d samples -> generate the contact sequence for the samples
+        c_samples, new_phase = self.gait_generator(f_samples=f_samples, d_samples=d_samples, phase=phase.squeeze(0), time_horizon=self.sampling_horizon, dt=self.dt)
 
-#         # --- Step 2 : prepare the variables : convert from torch.Tensor to Jax
-#         initial_state_jax, reference_seq_jax, action_seq_samples_jax = self.prepare_variable_for_compute_rollout(env=env, c_samples=c_samples, p_lw_samples=p_lw_samples, F_lw_samples=F_lw_samples, feet_in_contact=c_prev[0,])
+        # --- Step 2 : prepare the variables : convert from torch.Tensor to Jax
+        initial_state_jax, reference_seq_state_jax, reference_seq_input_samples_jax, \
+        action_seq_c_samples_jax, action_p_lw_samples_jax, action_F_lw_samples_jax = self.prepare_variable_for_compute_rollout(env=env, c_samples=c_samples, p_lw_samples=p_lw_samples, F_lw_samples=F_lw_samples, feet_in_contact=c_prev[0,])
 
-#         # --- Step 3 : Compute the rollouts to find the rollout cost
-#         cost_samples_jax = self.compute_rollout(initial_state_jax=initial_state_jax, reference_seq_jax=reference_seq_jax, action_seq_samples_jax=action_seq_samples_jax)
+        # --- Step 3 : Compute the rollouts to find the rollout cost : can't used named argument with VMAP...
+        cost_samples_jax = self.jit_parallel_compute_rollout(initial_state_jax, reference_seq_state_jax, reference_seq_input_samples_jax,
+                                                             action_seq_c_samples_jax, action_p_lw_samples_jax, action_F_lw_samples_jax)
         
-#         # --- Step 4 : Given the samples cost, find the best control action
-#         best_action_seq_jax, best_index = self.find_best_actions(action_seq_samples_jax, cost_samples_jax)
+        # --- Step 4 : Given the samples cost, find the best control action
+        best_action_seq_jax, best_index = self.find_best_actions(action_seq_c_samples_jax, cost_samples_jax)
 
-#         # --- Step 4 : Convert the optimal value back to torch.Tensor
-#         f_star, d_star, p_star_lw, F_star_lw = self.retrieve_z_from_action_seq(best_action_seq_jax)
+        # --- Step 4 : Convert the optimal value back to torch.Tensor
+        f_star, d_star, p_star_lw, F_star_lw = self.retrieve_z_from_action_seq(best_index, f_samples, d_samples, p_lw_samples, F_lw_samples)
 
-#         return f_star, d_star, p_star_lw, F_star_lw
+        return f_star, d_star, p_star_lw, F_star_lw
 
 
-#     def prepare_variable_for_compute_rollout(self, env: RLTaskEnv, c_samples:torch.Tensor, p_lw_samples:torch.Tensor, F_lw_samples:torch.Tensor, feet_in_contact:torch.Tensor) -> tuple[jnp.array, jnp.array, jnp.array]:
-#         """ Helper function to modify the embedded state, reference and action to be used with the 'compute_rollout' function
+    def prepare_variable_for_compute_rollout(self, env: RLTaskEnv, c_samples:torch.Tensor, p_lw_samples:torch.Tensor, F_lw_samples:torch.Tensor, feet_in_contact:torch.Tensor) -> tuple[jnp.array, jnp.array, jnp.array, jnp.array, jnp.array, jnp.array]:
+        """ Helper function to modify the embedded state, reference and action to be used with the 'compute_rollout' function
 
-#         Note :
-#             Initial state and reference can be retrieved only with the environment
+        Note :
+            Initial state and reference can be retrieved only with the environment
+            _w   : World frame
+            _lw  : World frame centered at the environment center -> local world frame
+            _b   : Base frame 
+            _h   : Horizontal frame -> Base frame position for xy, world frame for z, roll, pitch, base frame for yaw
+            _bw  : Base/world frame -> Base frame position, world frame rotation
 
-#         Args :
-#             env (RLTaskEnv): Environment manager to retrieve all necessary simulation variable
-#             c_samples       (Tensor): Leg frequency                of shape(num_samples, num_leg)
-#             p_lw_samples    (Tensor): Foot touch down position     of shape(num_samples, num_leg, 3, p_param)
-#             F_lw_samples    (Tensor): ground Reaction Forces       of shape(num_samples, num_leg, 3, F_param)
-#             feet_in_contact (Tensor): Feet in contact, determined by prevous solution of shape(num_legs)
+        Args :
+            env (RLTaskEnv): Environment manager to retrieve all necessary simulation variable
+            c_samples       (t.bool): Foot contact sequence sample                                                      of shape(num_samples, num_legs, time_horizon)
+            p_lw_samples    (Tensor): Foot touch down position                                                          of shape(num_samples, num_leg, 3, p_param)
+            F_lw_samples    (Tensor): ground Reaction Forces                                                            of shape(num_samples, num_leg, 3, F_param)
+            feet_in_contact (Tensor): Feet in contact, determined by prevous solution                                   of shape(num_legs)
 
         
-#         Return :
-#             initial_state_jax      (jnp.array): Current state of the robot (CoM pos-vel, foot pos) as required by 'compute_rollout'
-#             reference_seq_jax      (jnp.array): Reference state along the prediction horizon as required by 'compute_rollout'
-#             action_seq_samples_jax (jnp.array): Action sequence along the prediction horizon as required by 'compute_rollout'
-#         """
-#         # Check that a single robot was provided
-#         if env.num_envs > 1:
-#             assert ValueError('More than a single environment was provided to the sampling controller')
+        Return :
+            initial_state_jax               (jnp.array): Current state of the robot (CoM pos-vel, foot pos)             of shape(state_dim)
+            reference_seq_state_jax         (jnp.array): Reference state sequence along the prediction horizon          of shape(time_horizon, state_dim)
+            reference_seq_input_samples_jax (jnp.array): Reference GRF sequence samples along the prediction horizon    of shape(num_samples, time_horizon, input_dim)
+            action_seq_c_samples_jax        (jnp.array): contact sequence samples along the prediction horizon          of shape(num_samples, time_horizon, num_legs)
+            action_p_lw_samples_jax         (jnp.array): Foot touch down position parameters samples                    of shape(num_samples, num_legs, 3*p_param)
+            action_F_lw_samples_jax         (jnp.array): GRF parameters samples                                         of shape(num_samples, num_legs, 3*F_param)
+        """
+        # Check that a single robot was provided
+        if env.num_envs > 1:
+            assert ValueError('More than a single environment was provided to the sampling controller')
 
-#         # Retrieve robot from the scene : specify type to enable type hinting
-#         robot: Articulation = env.scene["robot"]
+        # Retrieve robot from the scene : specify type to enable type hinting
+        robot: Articulation = env.scene["robot"]
+
+        # Retrieve indexes
+        foot_idx = robot.find_bodies(".*foot")[0]
+
+        # ----- Step 1 : Retrieve the initial state
+        # Retrieve the robot position in local world frame of shape(3)
+        com_pos_lw = (robot.data.root_pos_w - env.scene.env_origins).squeeze(0) # shape(3)
+        com_pos_lw[2] = robot.data.root_pos_w[:,2] - (torch.sum(((robot.data.body_pos_w[:, foot_idx,:]).squeeze(0))[:,2] * feet_in_contact)) / (torch.sum(feet_in_contact)) # height is proprioceptive
+
+        # Retrieve the robot orientation in lw as euler angle ZXY of shape(3)
+        roll, pitch, yaw = math_utils.euler_xyz_from_quat(robot.data.root_quat_w) # TODO Check the angles !
+        com_pose_w = torch.tensor((roll, pitch, yaw), device=self.device)
+        com_pose_lw = com_pose_w
+
+        # Retrieve the robot linear and angular velocity in base frame of shape(6)
+        com_ang_vel_b = (robot.data.root_ang_vel_b).squeeze(0)
+        com_lin_vel_w = (robot.data.root_lin_vel_w).squeeze(0)
+
+        # Retrieve the feet position in local world frame of shape(num_legs*3)
+        p_w = (robot.data.body_pos_w[:, foot_idx,:]).squeeze(0) # shape(4,3) - foot position in w
+        p_lw = p_w - env.scene.env_origins                      # shape(4,3) - foot position in lw
+        p_lw = p_lw.flatten(0,1)                                # shape(12)  - foot position in lw
+
+        # Prepare the state (at time t)
+        initial_state = torch.cat((
+            com_pos_lw,    # CoM position in horizontal in local world frame, height is proprioceptive
+            com_lin_vel_w, # Linear Velocity in world frame               
+            com_pose_lw,   # Orientation as euler_angle (roll, pitch, yaw) in world frame
+            com_ang_vel_b, # Angular velocity as (roll, pitch, yaw) in base frame -> would be converted to euler rate in the centroidal model     
+            p_lw,          # Foot position in local world frame
+        )) # of shape(24) -> 3 + 3 + 3 + 3 + (4*3)
 
 
-#         # ----- Step 1 : Retrieve the initial state
-#         # Retrieve the robot position in local world frame of shape(3)
-#         com_pos_lw = (robot.data.root_pos_w - env.scene.env_origins).squeeze(0)
+        # ----- Step 2 : Retrieve the robot's reference along the integration horizon
+        # Retrieve the speed command : (lin_vel_x_b, lin_vel_y_b, ang_vel_yaw_b)
+        speed_command_b = (env.command_manager.get_command("base_velocity")).squeeze(0) # shape(3)
 
-#         # Robot height is proprioceptive : need to compute it
-#         foot_idx = robot.find_bodies(".*foot")[0]
-#         feet_pos_lw = (robot.data.body_pos_w[:, foot_idx,:]).squeeze(0) - env.scene.env_origins.unsqueeze(0) # ((4,3) - (1,3)) -> shape(4,3) - retrieve position
-#         com_pos_lw = com_pos_lw[2] - (torch.sum(feet_pos_lw[:,2] * feet_in_contact)) / (torch.sum(feet_in_contact)) # shape(1)
+        # CoM reference position : tracked only for the height -> xy can be anything eg 0
+        com_pos_ref_seq_lw = torch.tensor((0,0,self.height_ref), device=self.device).unsqueeze(1).expand(3,self.sampling_horizon)
 
-#         # Retrieve the robot orientation in lw as euler angle ZXY of shape(3)
-#         roll, pitch, yaw = math_utils.euler_xyz_from_quat(robot.data.root_quat_w) # TODO Check the angles !
-#         com_pose_lw = torch.tensor((roll, pitch, yaw))
+        # The pose reference is (0,0) for roll and pitch, but the yaw must be integrated along the horizon (in world frame)
+        com_pose_ref_w = torch.zeros_like(com_pos_ref_seq_lw) # shape(3, time_horizon)
+        com_pose_ref_w[2] =  com_pose_w[2] + (torch.arange(self.sampling_horizon, device=env.device) * (self.dt * speed_command_b[2])) # shape(time_horizon)
+        com_pose_ref_lw = com_pose_ref_w # shape(3, time_horizon)
 
-#         # Retrieve the robot linear and angular velocity in base frame of shape(6)
-#         com_vel_b = (robot.data.root_vel_b).squeeze(0)
+        # The speed reference is tracked for x_b, y_b and yaw -> must be converted accordingly  # shape(3, time_horizon)
+        com_lin_vel_ref_seq_w = torch.zeros_like(com_pos_ref_seq_lw)
+        com_ang_vel_ref_seq_b = torch.zeros_like(com_pos_ref_seq_lw)
 
-#         # Retrieve the feet position in local world frame of shape(num_legs, 3)
-#         p_lw = feet_pos_lw#shape(4,3) - foot position in lw
-#         p_lw = p_lw.flatten(0,1) # shape(12) TODO, check that it reshaped correctly
+        com_lin_vel_ref_seq_w[0] = speed_command_b[0]*torch.cos(com_pose_ref_w[2]) - speed_command_b[1]*torch.sin(com_pose_ref_w[2]) # shape(t_h*t_h - t_h*t_h) -> t_h #TODO Check that the rotation is correct
+        com_lin_vel_ref_seq_w[1] = speed_command_b[0]*torch.sin(com_pose_ref_w[2]) + speed_command_b[1]*torch.cos(com_pose_ref_w[2]) # shape(t_h*t_h - t_h*t_h) -> t_h
 
-#         # Prepare the state (at time t)
-#         initial_state = torch.cat((
-#             com_pos_lw,    # Position                       TODO Should be center at the COM -> Thus (0,0,0) -> height tracking is proprioceptive -> would be done with the feet
-#             com_vel_b[:3], # Linear Velocity                TODO in world frame
-#             com_pose_lw,   # Orientation as euler_angle ZXY TODO in world frame
-#             com_vel_b[3:], # Angular velocity               TODO in base frame (Roll, Pitch, Yaw)
-#             p_lw,          # Foot position                  TODO Should be center at the COM
-#         )) # of shape(TODO)
+        com_ang_vel_ref_seq_b[2] = speed_command_b[2]
 
+        # Defining the foot position sequence is tricky.. Since we only have number of predicted step < time_horizon
+        p_ref_seq_lw = torch.zeros((4,3, self.sampling_horizon), device=env.device) # shape(4, 3, sampling_horizon) TODO Define this !
+        p_ref_seq_lw = p_ref_seq_lw.flatten(0,1)                                    # shape(12, sampling_horizon)
+        p_ref_seq_lw = p_lw.unsqueeze(-1).expand(12,self.sampling_horizon)          # shape(12, sampling_horizon) -> quick fix
 
-#         # ----- Step 2 : Retrieve the robot's reference along the integration horizon
-
-#         # The reference position is tracked only for the height
-#         com_pos_ref_lw = torch.tensor((0,0,0.4), device=env.device).expand(3,self.time_horizon) # TODO : get the height reference from the right place + in the right frame
-
-#         # The speed reference is tracked for x_b, y_b and yaw   # shape(6, time_horizon)
-#         speed_command = (env.command_manager.get_command("base_velocity")).squeeze(0) # shape(3)
-#         com_vel_ref_b = torch.tensor((speed_command[0], speed_command[1], 0, 0, 0, speed_command[2]), device=env.device).expand(6, self.time_horizon) 
-
-#         # The pose reference is (0,0) for roll and pitch, but the yaw must be integrated along the horizon
-#         com_pose_ref_lw = torch.zeros_like(com_pos_ref_lw) # shape(3, time_horizon)
-#         com_pose_ref_lw[2] =  com_pose_lw[2] + (torch.arange(self.time_horizon, device=env.device) * (self.dt * speed_command[2])) # shape(time_horizon)
-
-#         # Defining the foot position sequence is tricky.. Since we only have number of predicted step < time_horizon
-#         p_ref_lw = torch.empty((3, self.time_horizon), device=env.device) #TODO Define this !
+        # Compute the gravity compensation GRF along the horizon : of shape (num_samples, num_legs, 3, time_horizon)
+        number_of_leg_in_contact_samples = (torch.sum(c_samples, dim=1)).clamp(min=1) # Compute the number of leg in contact, clamp by minimum 1 to avoid division by zero. shape(num_samples, time_horizon)
+        gravity_compensation_F_samples = torch.zeros((self.num_samples, self.num_legs, 3, self.sampling_horizon), device=self.device) # shape (num_samples, num_legs, 3, time_horizon)
+        gravity_compensation_F_samples[:,:,2,:] = ((self.robot_model.mass * 9.81) / number_of_leg_in_contact_samples).unsqueeze(1) # shape (num_samples, 1, time_horizon)
         
-#         # Prepare the reference sequence (at time t, t+dt, etc.)
-#         reference_seq = torch.cat((
-#             com_pos_ref_lw,    # Position reference
-#             com_vel_ref_b[:3], # Linear Velocity reference
-#             com_pose_ref_lw,   # Orientation reference as euler_angle
-#             com_vel_ref_b[3:], # Angular velocity reference
-#             p_ref_lw,          # Foot position reference
-#         )) # of shape(TODO)
+        # Prepare the reference sequence (at time t, t+dt, etc.)
+        reference_seq_state = torch.cat((
+            com_pos_ref_seq_lw,    # Position reference                                                     of shape( 3, time_horizon)
+            com_lin_vel_ref_seq_w, # Linear Velocity reference                                              of shape( 3, time_horizon)
+            com_pose_ref_lw,       # Orientation reference as euler_angle                                   of shape( 3, time_horizon)
+            com_ang_vel_ref_seq_b, # Angular velocity reference                                             of shape( 3, time_horizon)
+            p_ref_seq_lw,          # Foot position reference (xy plane in horizontal plane, hip centered)   of shape(12, time_horizon)
+        )).permute(1,0) # of shape(time_horizon, 24) -> 3 + 3 + 3 + 3 + (4*3)
+
+        reference_seq_input_samples = torch.cat((
+            gravity_compensation_F_samples.flatten(1,2), # Gravity compensation                             of shape(num_samples, num_legs*3, time_horizon)
+        )).permute(0,2,1) # of shape(num_samples, time_horizon, num_legs*3)
 
 
-#         # ----- Step 3 : Retrieve the actions 
-#         action_seq_samples = torch.cat((
-#             c_samples,      # Contact sequence samples          of shape(TODO)
-#             p_lw_samples,   # Foot touch down position samples  of shape(TODO)
-#             F_lw_samples,   # Ground Reaction Forces            of shape(TODO)
-#         )) # of shape(TODO)
+        # ----- Step 3 : Retrieve the actions and prepare them with the correct method
+
+        # TODO One could prepare the action here (discrete, spline, etc.)
+
+        action_seq_c_samples = c_samples.permute(0,2,1).int() # Contact sequence samples         of shape(num_samples, time_horizon, num_legs) (converted to int for jax conversion)
+        action_p_lw_samples  = p_lw_samples.flatten(2,3)      # Foot touch down position samples of shape(num_samples, num_legs, 3*p_param)
+        action_F_lw_samples  = F_lw_samples.flatten(2,3)      # Ground Reaction Forces           of shape(num_samples, num_legs, 3*F_param)
 
 
-#         # ----- Step 4 : Convert torch tensor to jax.array
-#         initial_state_jax       = torch_to_jax(initial_state)
-#         reference_seq_jax       = torch_to_jax(reference_seq)
-#         action_seq_samples_jax  = torch_to_jax(action_seq_samples)             
 
-#         return initial_state_jax, reference_seq_jax, action_seq_samples_jax
+        # ----- Step 4 : Convert torch tensor to jax.array
+        initial_state_jax               = torch_to_jax(initial_state)                          # of shape(state_dim)
+        reference_seq_state_jax         = torch_to_jax(reference_seq_state)                    # of shape(time_horizon, state_dim)
+        reference_seq_input_samples_jax = torch_to_jax(reference_seq_input_samples)            # of shape(num_samples, time_horizon, input_dim)
+        action_seq_c_samples_jax        = torch_to_jax(action_seq_c_samples)                   # of shape(num_samples, time_horizon, num_legs)
+        action_p_lw_samples_jax         = torch_to_jax(action_p_lw_samples)                    # of shape(num_samples, num_legs, 3*p_param)
+        action_F_lw_samples_jax         = torch_to_jax(action_F_lw_samples)                    # of shape(num_samples, num_legs, 3*F_param)
 
 
-#     def retrieve_z_from_action_seq(self, action_sequence) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-#         """ Given an action sequence return by the sampling optimizer as a Jax array, return the latent variabl z=(f,d,p,F)
-#         As torch.Tensor, usable by the model based controller
+        return initial_state_jax, reference_seq_state_jax, reference_seq_input_samples_jax, action_seq_c_samples_jax, action_p_lw_samples_jax, action_F_lw_samples_jax
+
+
+    def retrieve_z_from_action_seq(self, best_index, f_samples, d_samples, p_lw_samples, F_lw_samples) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """ Given the index of the best sample and the samples, return the 'optimized' latent variabl z*=(f*,d*,p*,F*)
+        As torch.Tensor, usable by the model based controller
          
-#         Args : 
-#             action_sequence (TODO): Action sequence containing z as returned by the sampling optimizer
+        Args : 
+            best_index            : Index of the best sample
+            f_samples    (Tensor) : Leg frequency samples               of shape(num_samples, num_leg)
+            d_samples    (Tensor) : Leg duty cycle samples              of shape(num_samples, num_leg)
+            p_lw_samples (Tensor) : Foot touch down position samples    of shape(num_samples, num_leg, 3, p_param)
+            F_lw_samples (Tensor) : Ground Reaction forces samples      of shape(num_samples, 3, F_param
           
-#         Returns:
-#             f_star    (Tensor): Leg frequency                of shape(num_policy, num_leg)
-#             d_star    (Tensor): Leg duty cycle               of shape(num_policy, num_leg)
-#             p_star_lw (Tensor): Foot touch down position     of shape(num_policy, num_leg, 3, TODO)
-#             F_star_lw (Tensor): ground Reaction Forces       of shape(num_policy, num_leg, 3, TODO)            
-#         """
+        Returns:
+            f_star    (Tensor): Best leg frequency                      of shape(1, num_leg)
+            d_star    (Tensor): Best leg duty cycle                     of shape(1, num_leg)
+            p_star_lw (Tensor): Best foot touch down position           of shape(1, num_leg, 3, p_param)
+            F_star_lw (Tensor): Best ground Reaction Forces             of shape(1, num_leg, 3, F_param)            
+        """
 
-#         f_star, d_star, p_star_lw, F_star_lw = ...
+        f_star = f_samples[best_index.item()].unsqueeze(0)
+        d_star = d_samples[best_index.item()].unsqueeze(0)
+        p_star_lw = p_lw_samples[best_index.item()].unsqueeze(0)
+        F_star_lw = F_lw_samples[best_index.item()].unsqueeze(0)
 
-#         return f_star, d_star, p_star_lw, F_star_lw
+        # Since Foot touch down position aren't optimized yet, get the nominal one # TODO Change this
+        p_star_lw = p_lw_samples[0].unsqueeze(0)
+
+        return f_star, d_star, p_star_lw, F_star_lw
 
 
-#     def find_best_actions(self, action_seq_samples, cost_samples) : 
-#         """ Given action samples and associated cost, filter invalid values and retrieves the best cost and associated actions
+    def find_best_actions(self, action_seq_samples, cost_samples) : 
+        """ Given action samples and associated cost, filter invalid values and retrieves the best cost and associated actions
         
-#         Args : 
-#             action_seq_samples (TODO): Samples of actions   of shape(TODO)
-#             cost_samples       (TODO): Associated cost      of shape(TODO)
+        Args : 
+            action_seq_samples (TODO): Samples of actions   of shape(TODO)
+            cost_samples       (TODO): Associated cost      of shape(TODO)
              
-#         Returns :
-#             best_action_seq    (TODO):  Action with the smallest cost of shape(TODO)
-#             best_index          (int):
-#         """
+        Returns :
+            best_action_seq    (TODO):  Action with the smallest cost of shape(TODO)
+            best_index          (int):
+        """
 
-#         # Saturate the cost in case of NaN or inf
-#         cost_samples = jnp.where(jnp.isnan(cost_samples), 1000000, cost_samples)
-#         cost_samples = jnp.where(jnp.isinf(cost_samples), 1000000, cost_samples)
+        # Saturate the cost in case of NaN or inf
+        cost_samples = jnp.where(jnp.isnan(cost_samples), 1000000, cost_samples)
+        cost_samples = jnp.where(jnp.isinf(cost_samples), 1000000, cost_samples)
         
 
-#         # Take the best found control parameters
-#         best_index = jnp.nanargmin(cost_samples)
-#         best_cost = cost_samples.take(best_index)
-#         best_action_seq = action_seq_samples[best_index]
+        # Take the best found control parameters
+        best_index = jnp.nanargmin(cost_samples)
+        best_cost = cost_samples.take(best_index)
+        best_action_seq = action_seq_samples[best_index]
 
-#         return best_action_seq, best_index
+        if fake : best_index = jnp.int32(0)
+
+        return best_action_seq, best_index
 
 
-#     def generate_samples(self, f:torch.Tensor, d:torch.Tensor, p_lw:torch.Tensor, F_lw:torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-#         """ Given action (f,d,p,F), generate action sequence samples (f_samples, d_samples, p_samples, F_samples)
-#         If multiple action sequence are provided (because several policies are blended together), generate samples
-#         from these polices with equal proportions. TODO
+    def generate_samples(self, f:torch.Tensor, d:torch.Tensor, p_lw:torch.Tensor, F_lw:torch.Tensor, height_map:torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """ Given action (f,d,p,F), generate action sequence samples (f_samples, d_samples, p_samples, F_samples)
+        If multiple action sequence are provided (because several policies are blended together), generate samples
+        from these polices with equal proportions. TODO
         
-#         Args :
-#             f    (Tensor): Leg frequency                of shape(batch_size, num_leg)
-#             d    (Tensor): Leg duty cycle               of shape(batch_size, num_leg)
-#             p_lw (Tensor): Foot touch down position     of shape(batch_size, num_leg, 3, p_param)
-#             F_lw (Tensor): ground Reaction Forces       of shape(batch_size, num_leg, 3, F_param)
+        Args :
+            f    (Tensor): Leg frequency                of shape(batch_size, num_leg)
+            d    (Tensor): Leg duty cycle               of shape(batch_size, num_leg)
+            p_lw (Tensor): Foot touch down position     of shape(batch_size, num_leg, 3, p_param)
+            F_lw (Tensor): ground Reaction Forces       of shape(batch_size, num_leg, 3, F_param)
+            height_map   (torch.Tensor): Height map arround the robot        of shape(x, y)
             
-#         Returns :
-#             f_samples    (Tensor) : Leg frequency samples               of shape(num_samples, num_leg)
-#             d_samples    (Tensor) : Leg duty cycle samples              of shape(num_samples, num_leg)
-#             p_lw_samples (Tensor) : Foot touch down position samples    of shape(num_samples, num_leg, 3, p_param)
-#             F_lw_samples (Tensor) : Ground Reaction forces samples      of shape(num_samples, 3, F_param)
-#         """
+        Returns :
+            f_samples    (Tensor) : Leg frequency samples               of shape(num_samples, num_leg)
+            d_samples    (Tensor) : Leg duty cycle samples              of shape(num_samples, num_leg)
+            p_lw_samples (Tensor) : Foot touch down position samples    of shape(num_samples, num_leg, 3, p_param)
+            F_lw_samples (Tensor) : Ground Reaction forces samples      of shape(num_samples, 3, F_param)
+        """
 
-#         f_samples = self.normal_sampling(num_samples=self.num_samples, mean=f[0])
-#         d_samples = self.normal_sampling(num_samples=self.num_samples, mean=d[0])
-#         p_lw_samples = self.normal_sampling(num_samples=self.num_samples, mean=p_lw[0])
-#         F_lw_samples = self.normal_sampling(num_samples=self.num_samples, mean=F_lw[0])
+        if self.num_samples == 1:
+            return f, d, p_lw, F_lw
 
-#         return f_samples, d_samples, p_lw_samples, F_lw_samples
+        f_samples = self.normal_sampling(num_samples=self.num_samples, mean=f[0], var=torch.tensor((0.05), device=self.device))
+        d_samples = self.normal_sampling(num_samples=self.num_samples, mean=d[0], var=torch.tensor((0.02), device=self.device))
+        p_lw_samples = self.normal_sampling(num_samples=self.num_samples, mean=p_lw[0], var=torch.tensor((0.01), device=self.device))
+        F_lw_samples = self.normal_sampling(num_samples=self.num_samples, mean=F_lw[0], var=torch.tensor((1.0), device=self.device))
+        # f_samples = self.normal_sampling(num_samples=self.num_samples, mean=f[0], var=torch.tensor((0.0000001), device=self.device))
+        # d_samples = self.normal_sampling(num_samples=self.num_samples, mean=d[0], var=torch.tensor((0.0000001), device=self.device))
+        # p_lw_samples = self.normal_sampling(num_samples=self.num_samples, mean=p_lw[0], var=torch.tensor((0.0000001), device=self.device))
+        # F_lw_samples = self.normal_sampling(num_samples=self.num_samples, mean=F_lw[0], var=torch.tensor((0.0000001), device=self.device))
+
+        # Clamp the input to valid range and make sure p[2] is on the ground
+        f_samples, d_samples, p_lw_samples, F_lw_samples = self.enforce_valid_input(f_samples=f_samples, d_samples=d_samples, p_lw_samples=p_lw_samples, F_lw_samples=F_lw_samples, height_map=height_map)
+
+        # Set the foot height to the nominal foot height # TODO change
+        p_lw_samples[:,:,2,:] = p_lw[0,:,2,:]
+
+        # Put the orignal actions as the first samples
+        f_samples[0,:] = f[0,:]
+        d_samples[0,:] = d[0,:]
+        p_lw_samples[0,:,:,:] = p_lw[0,:,:,:]
+        F_lw_samples[0,:,:,:] = F_lw[0,:,:,:]
+
+        return f_samples, d_samples, p_lw_samples, F_lw_samples
 
 
-#     def normal_sampling(self, num_samples:int, mean:torch.Tensor, var:torch.Tensor|None=None, seed:int|None=None) -> torch.Tensor:
-#         """ Normal sampling law given mean and var -> return a samples
+    def normal_sampling(self, num_samples:int, mean:torch.Tensor, var:torch.Tensor|None=None, seed:int|None=None) -> torch.Tensor:
+        """ Normal sampling law given mean and var -> return a samples
         
-#         Args :
-#             mean     (Tensor): Mean of normal sampling law          of shape(num_dim1, num_dim2, etc.)
-#             var      (Tensor): Varriance of normal sampling law     of shape(num_dim1, num_dim2, etc.)
-#             num_samples (int): Number of samples to generate
-#             seed        (int): seed to generate random numbers
+        Args :
+            mean     (Tensor): Mean of normal sampling law          of shape(num_dim1, num_dim2, etc.)
+            var      (Tensor): Varriance of normal sampling law     of shape(num_dim1, num_dim2, etc.)
+            num_samples (int): Number of samples to generate
+            seed        (int): seed to generate random numbers
 
-#         Return :
-#             samples  (Tensor): Samples generated with mean and var  of shape(num_sammple, num_dim1, num_dim2, etc.)
-#         """
+        Return :
+            samples  (Tensor): Samples generated with mean and var  of shape(num_sammple, num_dim1, num_dim2, etc.)
+        """
 
-#         # Seed if provided
-#         if seed : 
-#             torch.manual_seed(seed)
+        # Seed if provided
+        if seed : 
+            torch.manual_seed(seed)
 
-#         if var is None :
-#             var = torch.ones_like(mean)
+        if var is None :
+            var = torch.ones_like(mean)
 
-#         # Sample from a normal law with the provided parameters
-#         samples = mean + torch.sqrt(var) * torch.randn((num_samples,) + mean.shape)
+        # Sample from a normal law with the provided parameters
+        samples = mean + torch.sqrt(var) * torch.randn((num_samples,) + mean.shape, device=self.device)
 
-#         return samples
+        return samples
 
 
-#     # TODO Try this !
-#     def gait_generator(self, f_samples: torch.Tensor, d_samples: torch.Tensor, phase: torch.Tensor, time_horizon: int, dt) -> tuple[torch.Tensor, torch.Tensor]:
-#         """ Implement a gait generator that return a contact sequence given a leg frequency and a leg duty cycle
-#         Increment phase by dt*f 
-#         restart if needed
-#         return contact : 1 if phase < duty cyle, 0 otherwise  
-#         c == 1 : Leg is in contact (stance)
-#         c == 0 : Leg is in swing
+    def gait_generator(self, f_samples: torch.Tensor, d_samples: torch.Tensor, phase: torch.Tensor, time_horizon: int, dt) -> tuple[torch.Tensor, torch.Tensor]:
+        """ Implement a gait generator that return a contact sequence given a leg frequency and a leg duty cycle
+        Increment phase by dt*f 
+        restart if needed
+        return contact : 1 if phase < duty cyle, 0 otherwise  
+        c == 1 : Leg is in contact (stance)
+        c == 0 : Leg is in swing
 
-#         Note:
-#             No properties used, no for loop : purely functional -> made to be jitted
-#             parallel_rollout : this is optional, it will work without the parallel rollout dimension
+        Note:
+            No properties used, no for loop : purely functional -> made to be jitted
+            parallel_rollout : this is optional, it will work without the parallel rollout dimension
 
-#         Args:
-#             - f_samples     (Tensor): Leg frequency samples                 of shape(num_samples, num_legs)
-#             - d_samples     (Tensor): Stepping duty cycle samples in [0,1]  of shape(num_samples, num_legs)
-#             - phase         (Tensor): phase of leg samples in [0,1]         of shape(num_legs)
-#             - time_horizon     (int): Time horizon for the contact sequence
+        Args:
+            - f_samples     (Tensor): Leg frequency samples                 of shape(num_samples, num_legs)
+            - d_samples     (Tensor): Stepping duty cycle samples in [0,1]  of shape(num_samples, num_legs)
+            - phase         (Tensor): phase of leg samples in [0,1]         of shape(num_legs)
+            - time_horizon     (int): Time horizon for the contact sequence
 
-#         Returns:
-#             - c_samples     (t.bool): Foot contact sequence samples         of shape(num_samples, num_legs, time_horizon)
-#             - phase_samples (Tensor): The phase samples updated by 1 dt     of shape(num_samples, num_legs)
-#         """
+        Returns:
+            - c_samples     (t.bool): Foot contact sequence samples         of shape(num_samples, num_legs, time_horizon)
+            - phase_samples (Tensor): The phase samples updated by 1 dt     of shape(num_samples, num_legs)
+        """
         
-#         # Increment phase of f*dt: new_phases[0] : incremented of 1 step, new_phases[1] incremented of 2 steps, etc. without a for loop.
-#         # new_phases = phase + f*dt*[1,2,...,time_horizon]
-#         #            (1, num_legs, 1)                  +  (samples, legs, 1)      * (1, 1, time_horizon) -> shape(samples, legs, time_horizon)
-#         new_phases_samples = phase.unsqueeze(0).unsqueeze(-1) + (f_samples.unsqueeze(-1) * torch.linspace(start=1, end=time_horizon, steps=time_horizon, device=self.device).unsqueeze(0).unsqueeze(1)*dt)
+        # Increment phase of f*dt: new_phases[0] : incremented of 1 step, new_phases[1] incremented of 2 steps, etc. without a for loop.
+        # new_phases = phase + f*dt*[1,2,...,time_horizon]
+        #            (1, num_legs, 1)                  +  (samples, legs, 1)      * (1, 1, time_horizon) -> shape(samples, legs, time_horizon)
+        new_phases_samples = phase.unsqueeze(0).unsqueeze(-1) + (f_samples.unsqueeze(-1) * torch.linspace(start=1, end=time_horizon, steps=time_horizon, device=self.device).unsqueeze(0).unsqueeze(1)*dt)
 
-#         # Make the phases circular (like sine) (% is modulo operation)
-#         new_phases_samples = new_phases_samples%1
+        # Make the phases circular (like sine) (% is modulo operation)
+        new_phases_samples = new_phases_samples%1
 
-#         # Save first phase -> shape(num_samples, num_legs)
-#         new_phase_samples = new_phases_samples[..., 0]
+        # Save first phase -> shape(num_samples, num_legs)
+        new_phase_samples = new_phases_samples[..., 0]
 
-#         # Make comparaison to return discret contat sequence : c = 1 if phase < d, 0 otherwise
-#         #(samples, legs, time_horizon) <= (samples, legs, 1) -> shape(num_samples, num_legs, time_horizon)
-#         c_samples = new_phases_samples <= d_samples.unsqueeze(-1)
+        # Make comparaison to return discret contat sequence : c = 1 if phase < d, 0 otherwise
+        #(samples, legs, time_horizon) <= (samples, legs, 1) -> shape(num_samples, num_legs, time_horizon)
+        c_samples = new_phases_samples <= d_samples.unsqueeze(-1)
 
-#         return c_samples, new_phase_samples
+        return c_samples, new_phase_samples
 
 
-#     def compute_rollout(self, initial_state_jax: jnp.array, reference_seq_jax: jnp.array, action_seq_samples_jax: jnp.array) -> jnp.array:
-#         """Calculate cost of rollouts of given action sequence samples 
+    def compute_rollout(self, initial_state_jax: jnp.array, reference_seq_state_jax: jnp.array, reference_seq_input_jax: jnp.array, action_seq_c_jax: jnp.array, action_p_lw_jax: jnp.array, action_F_lw_jax: jnp.array) -> jnp.array:
+        """Calculate cost of rollouts of given action sequence samples 
 
-#         Args :
-#             initial_state_jax      (jnp.array): Inital state of the robot                   of shape(TODO)
-#             reference_seq_jax      (jnp.array): reference sequence for the robot state      of shape(TODO)
-#             action_seq_samples_jax (jnp.array): Action sequence to apply to the robot       of shape(TODO)            
+        Args :
+            initial_state_jax       (jnp.array): Inital state of the robot                  of shape(state_dim)
+            reference_seq_state_jax (jnp.array): reference sequence for the robot state     of shape(time_horizon, state_dim)                                           
+            reference_seq_input_jax (jnp.array): GRF references                             of shape(time_horizon, input_dim)  Will be augmented with 'num_sample' dimension on dim0
+            action_seq_c_jax        (jnp.array): Contact sequence samples                   of shape(time_horizon, num_legs)   Will be augmented with 'num_sample' dimension on dim0
+            action_p_lw_jax         (jnp.array): Foot touch down position samples           of shape(num_legs, 3*p_param)      Will be augmented with 'num_sample' dimension on dim0
+            action_F_lw_jax         (jnp.array): Ground Reaction Forces                     of shape(num_legs, 3*F_param)      Will be augmented with 'num_sample' dimension on dim0      
             
-#         Returns:
-#             cost_samples_jax       (jnp.array): costs of the rollouts                       of shape(num_samples)   
-#         """  
+        Returns:
+            cost_samples_jax                (jnp.array): costs of the rollouts                      of shape(num_samples)   
+        """  
 
-#         cost_samples_jax = ...
+        def iterate_fun(n, carry):
+            # --- Step 1 : Prepare variables
+            # Extract the last state and cost from the carried over variable
+            cost, state = carry 
+
+            # Embed current contact into variable for the centroidal model
+            current_contact = action_seq_c_jax[n]
+
+
+            # --- Step 2 : Retrieve the input given the interpolation parameters
+            step = n # TODO : do this properly
+            horizon = self.sampling_horizon # TODO : do this properly
+
+            # Compute the GRFs given the interpolation parameter and the point in the curve
+            F_lw = self.interpolation_F(parameters=action_F_lw_jax, step=step, horizon=horizon)
+
+            # Compute the foot touch down position given the interpolation parameter and the point in the curve
+            p_lw = self.interpolation_p(parameters=action_p_lw_jax, step=step, horizon=horizon)
+
+            # Apply Force constraints : Friction cone constraints and Force set to zero if foot not in contact
+            F_lw = self.enforce_force_constraints(F=F_lw, c=current_contact)    # TODO Single spline for now : Implement multiple spline function
+
+            # Embed input into variable for the centroidal model
+            input = jnp.concatenate([
+                p_lw,
+                F_lw
+            ])
+
+
+            # --- Step 3 : Integrate the dynamics with the centroidal model
+            state_next = self.robot_model.integrate_jax(state, input, current_contact)
+
+
+            # --- Step 4 : Compute the cost
+
+            # Compute the state cost
+            state_error = state_next - reference_seq_state_jax[n]
+            state_cost  = state_error.T @ self.Q @ state_error
+
+            # Compute the input cost
+            input_error = input[12:] - reference_seq_input_jax[n] # Input error computed only for GRF. Foot touch down pos is a state and an input, error is computed with the states
+            input_cost  = input_error.T @ self.R @ input_error
+
+            step_cost = state_cost + input_cost
+
+            return (cost + step_cost, state_next)
+
+        # Prepare the inital variable
+        initial_cost  = jnp.float32(0.0) # type: ignore
+        carry = (initial_cost, initial_state_jax)
+
+        # Iterate the model over the time horizon and retrieve the cost
+        cost, state = jax.lax.fori_loop(0, self.sampling_horizon, iterate_fun, carry)
+
+        cost_samples_jax = cost
+
+        return cost_samples_jax
+
+
+    def compute_cubic_spline(self, parameters, step, horizon):
+        """ Given a set of spline parameters, and the point in the trajectory return the function value 
         
-#         return cost_samples_jax
+        Args :
+            parameters (jnp.array): of shape(TODO)
+            step             (int): The point in the curve in [0, horizon]
+            horizon          (int): The length of the curve
+            
+        Returns : 
+        
+        """
+
+        # Find the point in the curve q in [0,1]
+        tau = step/(horizon)        
+        q = (tau - 0.0)/(1.0-0.0)
+        
+        # Compute the spline interpolation parameters
+        a = 2*q*q*q - 3*q*q + 1
+        b = (q*q*q - 2*q*q + q)*0.5
+        c = -2*q*q*q + 3*q*q
+        d = (q*q*q - q*q)*0.5
+
+        # Compute the phi parameters
+        phi_x = (1./2.)*(((parameters[2] - parameters[1])/0.5) + ((parameters[1] - parameters[0])/0.5))
+        phi_next_x = (1./2.)*(((parameters[3] - parameters[2])/0.5) + ((parameters[2] - parameters[1])/0.5))
+
+        phi_y = (1./2.)*(((parameters[6] - parameters[5])/0.5) + ((parameters[5] - parameters[4])/0.5))
+        phi_next_y = (1./2.)*(((parameters[7] - parameters[6])/0.5) + ((parameters[6] - parameters[5])/0.5))
+
+        phi_z = (1./2.)*(((parameters[10] - parameters[9])/0.5) + ((parameters[9] - parameters[8])/0.5))
+        phi_next_z = (1./2.)*(((parameters[11] - parameters[10])/0.5) + ((parameters[10] - parameters[9])/0.5))
+
+        # Compute the function value f(x)
+        f_x = a*parameters[1] + b*phi_x + c*parameters[2]  + d*phi_next_x
+        f_y = a*parameters[5] + b*phi_y + c*parameters[6]  + d*phi_next_y
+        f_z = a*parameters[9] + b*phi_z + c*parameters[10] + d*phi_next_z
+       
+        return f_x, f_y, f_z  
+
+
+    def compute_discrete(self, parameters, step, horizon):
+        """ If actions are discrete actions, no interpolation are required.
+        This function simply return the action at the right time step
+
+        Args :
+            parameters (jnp.array): The action of shape(num_legs, 3*time_horizon)
+            step             (int): The current step index along horizon
+            horizon          (int): Not used : here for compatibility
+
+        Returns :
+            parameters (jnp.array): The action of shape(num_legs*3)
+        """
+
+        param = (parameters.reshape((self.num_legs, 3, self.sampling_horizon)))[:,:,step].flatten()
+
+        return param
+
     
+    def enforce_force_constraints(self, F: jnp.array, c: jnp.array) -> jnp.array:
+        """ Given raw GRFs in local world frame and the contact sequence, return the GRF clamped by the friction cone
+        and set to zero if not in contact
+        
+        Args :
+            F (jnp.array): Ground Reaction forces samples                    of shape(num_legs*3)
+            c    (jnp.array): contact sequence samples                       of shape(num_legs)
+            
+        Return
+            F_lw (jnp.array): Clamped ground reaction forces                 of shape(num_legs*3)"""
+
+        # --- Step 1 : Enforce the friction cone constraints
+        # Retrieve Force component
+        F_x = F[0::3]  # x components: elements 0, 3, 6, 9   shape(num_legs)
+        F_y = F[1::3]  # y components: elements 1, 4, 7, 10  shape(num_legs)
+        F_z = F[2::3]  # z components: elements 2, 5, 8, 11  shape(num_legs)
+
+        # Compute the maximum Force in the xz plane
+        F_xy_max = self.mu * F_z            # shape(num_legs)
+
+        # Compute the actual force in the xy plane
+        F_xy = jnp.sqrt(F_x**2 + F_y**2)    # shape(num_legs)
+
+        # Compute the angle in the xy plane of the Force
+        alpha = jnp.arccos(F_x / F_xy)      # shape(num_legs)
+
+        # Apply the constraint in the xy plane
+        F_xy_clamped = jnp.minimum(F_xy, F_xy_max)  # shape(num_legs)
+
+        # Project these clamped forces in the xy plane back as x,y component
+        F_x_clamped = F_xy_clamped*jnp.cos(alpha)   # shape(num_legs)
+        F_y_clamped = F_xy_clamped*jnp.sin(alpha)   # shape(num_legs)
+
+        # Finally reconstruct the vector
+        F_clamped = jnp.ravel(jnp.column_stack([F_x_clamped, F_y_clamped, F_z])) # To reconstruct with the right indexing
+
+        # --- Step 2 : Set force to zero for feet not in contact
+        F_constrained = F_clamped * c.repeat(3)     # shape(num_legs*3)
+
+        return F_constrained
+        
+
+    def enforce_valid_input(self, f_samples: torch.Tensor, d_samples: torch.Tensor, p_lw_samples: torch.Tensor, F_lw_samples: torch.Tensor, height_map: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """ Enforce the input f, d, p_lw, F_lw to valid ranges. Ie. clip
+            - f to [0,3] [Hz]
+            - d to [0,1]
+            /!\ NOT CLAMPED /!\ - p_lw to (p_x=[-0.24,+0.36], p_y=[-0.20,+0.20],[]) because not in the right frame
+            - F_lw -> F_lw_z to [0, +inf]
+        Moreover, ensure, p_z on the ground
+
+        Args
+            f_samples    (torch.Tensor): Leg frequency samples               of shape(num_samples, num_leg)
+            d_samples    (torch.Tensor): Leg duty cycle samples              of shape(num_samples, num_leg)
+            p_lw_samples (torch.Tensor): Foot touch down position samples    of shape(num_samples, num_leg, 3, p_param)
+            F_lw_samples (torch.Tensor): Ground Reaction forces samples      of shape(num_samples, 3, F_param)
+            height_map   (torch.Tensor): Height map arround the robot        of shape(x, y)
+
+        Return
+            f_samples    (torch.Tensor): Clipped Leg frequency samples               of shape(num_samples, num_leg)
+            d_samples    (torch.Tensor): Clipped Leg duty cycle samples              of shape(num_samples, num_leg)
+            p_lw_samples (torch.Tensor): Clipped Foot touch down position samples    of shape(num_samples, num_leg, 3, p_param)
+            F_lw_samples (torch.Tensor): Clipped Ground Reaction forces samples      of shape(num_samples, 3, F_param)
+        """
+        
+        # Clip f
+        f_samples = f_samples.clamp(min=0, max=3)
+        # f_samples = torch.zeros_like(f_samples)
+
+        # Clip d
+        d_samples = d_samples.clamp(min=0, max=1)
+        # d_samples = torch.ones_like(d_samples)
+
+        # Clip p
+        # p_lw_samples[:,0] = p_lw_samples[:,0].clamp(min=-0.24,max=+0.36)
+        # p_lw_samples[:,1] = p_lw_samples[:,1].clamp(min=-0.20,max=+0.20)
+
+        # Clip F
+        F_lw_samples = F_lw_samples.clamp(min=0)
+
+        # Ensure p on the ground TODO Implement
+        p_lw_samples[:,:,2,:] = 0.0*torch.ones_like(p_lw_samples[:,:,2,:])
+
+        return f_samples, d_samples, p_lw_samples, F_lw_samples
