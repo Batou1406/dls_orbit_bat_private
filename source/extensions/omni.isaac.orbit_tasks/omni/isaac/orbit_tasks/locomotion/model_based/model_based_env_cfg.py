@@ -97,14 +97,14 @@ class MySceneCfg(InteractiveSceneCfg):
     # )
 
     # Spot Light
-    sky_light = AssetBaseCfg(
-        prim_path="/World/spotLight",
-        spawn=sim_utils.DomeLightCfg(
-            intensity=750.0,
-            color=(0.81081, 0.44141, 0.44141),
-            texture_file="{NVIDIA_NUCLEUS_DIR}/Materials/Textures/Skies/PolyHaven/kloofendal_43d_clear_puresky_4k.hdr",
-        ),
-    )
+    # sky_light = AssetBaseCfg(
+    #     prim_path="/World/spotLight",
+    #     spawn=sim_utils.DomeLightCfg(
+    #         intensity=750.0,
+    #         color=(0.81081, 0.44141, 0.44141),
+    #         texture_file="{NVIDIA_NUCLEUS_DIR}/Materials/Textures/Skies/PolyHaven/kloofendal_43d_clear_puresky_4k.hdr",
+    #     ),
+    # )
 
     # # colored light
     colored_distant_light = AssetBaseCfg(

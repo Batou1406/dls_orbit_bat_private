@@ -15,10 +15,14 @@ from omni.isaac.orbit_tasks.locomotion.model_based.model_based_env_cfg import Lo
 from omni.isaac.orbit_assets.unitree import UNITREE_ALIENGO_CFG, UNITREE_GO2_CFG, UNITREE_ALIENGO_TORQUE_CONTROL_CFG, UNITREE_ALIENGO_SELF_COLLISION_TORQUE_CONTROL_CFG  # isort: skip
 from omni.isaac.orbit_assets.anymal import ANYMAL_C_CFG  # isort: skip
 
+from omni.isaac.orbit.terrains.config.niceFlat import COBBLESTONE_ROAD_CFG
 
 @configclass
 class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
     def __post_init__(self):
+
+        self.scene.terrain.terrain_generator = COBBLESTONE_ROAD_CFG
+
         # post init of parent
         super().__post_init__()
 
@@ -56,8 +60,9 @@ class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
             self.scene.terrain.terrain_generator.sub_terrains["random_rough"].noise_range = (0.01, 0.06)
             self.scene.terrain.terrain_generator.sub_terrains["random_rough"].noise_step = 0.01
         else :
-            self.curriculum.terrain_levels = None                                                                       # By default activated
-            self.scene.terrain.terrain_type = 'plane'
+            # self.curriculum.terrain_levels = None                                                                       # By default activated
+            # self.scene.terrain.terrain_type = 'plane'
+            pass
 
         if Speed_curriculum :
             self.commands.base_velocity.initial_difficulty = 0.2
