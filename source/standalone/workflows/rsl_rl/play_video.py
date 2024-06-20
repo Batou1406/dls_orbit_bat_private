@@ -3,9 +3,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-# ./orbit.sh -p source/standalone/workflows/supervised_learning/datalogger.py --task Isaac-Model-Based-Base-Aliengo-v0  --num_envs 64 --load_run test --checkpoint model_14999.pt --dataset_name mcQueenFour
-
-"""Script to generate a dataset for supervised learning with RL agent from RSL-RL."""
+"""Script to play a checkpoint if an RL agent from RSL-RL."""
 
 from __future__ import annotations
 
@@ -22,12 +20,12 @@ import cli_args  # isort: skip
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Train an RL agent with RSL-RL.")
 parser.add_argument("--cpu", action="store_true", default=False, help="Use CPU pipeline.")
-parser.add_argument("--disable_fabric", action="store_true", default=False, help="Disable fabric and use USD I/O operations.")
+parser.add_argument(
+    "--disable_fabric", action="store_true", default=False, help="Disable fabric and use USD I/O operations."
+)
 parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
 parser.add_argument("--task", type=str, default=None, help="Name of the task.")
 parser.add_argument("--seed", type=int, default=None, help="Seed used for the environment")
-parser.add_argument("--dataset_name", type=str, default=None, help="Folder where to log the generated dataset (in /dataset/task/)")
-
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
 # append AppLauncher cli args
@@ -55,15 +53,43 @@ from omni.isaac.orbit_tasks.utils.wrappers.rsl_rl import (
     export_policy_as_onnx,
 )
 
+from omni.isaac.orbit.envs import RLTaskEnv
+import math
+def move_camera(env: RLTaskEnv, w: float):
+    """ Update default cam eye to rotate arround the target"""
+
+    (pos_x, pos_y, pos_z) = env.viewport_camera_controller.default_cam_eye 
+
+    hypothenuse = (pos_x**2 + pos_y**2)**0.5
+
+    alpha = math.atan2(pos_y, pos_x)
+
+    alpha = alpha + (w*env.step_dt)
+
+    pos_x = hypothenuse*math.cos(alpha)
+    pos_y = hypothenuse*math.sin(alpha)
+
+    env.viewport_camera_controller.default_cam_eye = (pos_x, pos_y, pos_z)
+
 
 def main():
     """Play with RSL-RL agent."""
     # parse configuration
-    env_cfg = parse_env_cfg(args_cli.task, use_gpu=not args_cli.cpu, num_envs=args_cli.num_envs, use_fabric=not args_cli.disable_fabric)
+    env_cfg = parse_env_cfg(
+        args_cli.task, use_gpu=not args_cli.cpu, num_envs=args_cli.num_envs, use_fabric=not args_cli.disable_fabric
+    )
     agent_cfg: RslRlOnPolicyRunnerCfg = cli_args.parse_rsl_rl_cfg(args_cli.task, args_cli)
 
     # create isaac environment
-    env = gym.make(args_cli.task, cfg=env_cfg)
+    env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array")
+
+    video_kwargs = {
+        "video_folder": "videos",
+        "name_prefix" : args_cli.task,
+        "step_trigger": lambda step: step == 40,
+        "video_length": 400,
+    }
+    env = gym.wrappers.RecordVideo(env, **video_kwargs)
 
     # wrap around environment for rsl-rl
     env = RslRlVecEnvWrapper(env)
@@ -87,59 +113,21 @@ def main():
     export_model_dir = os.path.join(os.path.dirname(resume_path), "exported")
     export_policy_as_onnx(ppo_runner.alg.actor_critic, export_model_dir, filename="policy.onnx")
 
-    # Create logging directory 
-    logging_directory = f'dataset/{agent_cfg.experiment_name}/{args_cli.dataset_name}'
-    if not os.path.exists(logging_directory):
-        os.makedirs(logging_directory)
-
-    # Variable for datalogging
-    observations_list = []
-    actions_list = []
-
-    file_prefix = 'training_data'
-    num_samples = 1000
-
     # reset environment
     obs, _ = env.get_observations()
-    actions = policy(obs) #just to get the shape for printing
-
-    print('\nobservation shape:', obs.shape)
-    print('     action shape:', actions.shape,'\n')
-
     # simulate environment
-    while simulation_app.is_running() and len(observations_list) < num_samples:
-
-        if len(observations_list)%100 == 0:
-            print('Iteration :',len(observations_list),'out of', num_samples)
-
+    while simulation_app.is_running():
         # run everything in inference mode
         with torch.inference_mode():
             # agent stepping
             actions = policy(obs)
-
             # env stepping
             obs, _, _, _ = env.step(actions)
 
-            # Datalogging for Dataset generation
-            observations_list.append(obs.cpu())
-            actions_list.append(actions.cpu())
+            # camera angular speed in radian per second
+            w = 1
 
-    # Concatenate all observations and actions
-    observations_tensor = torch.cat(observations_list).view(-1, obs.shape[-1])  # shape(len_list*num_envs, obs_dim)
-    actions_tensor      = torch.cat(actions_list).view(-1, actions.shape[-1])   # shape(len_list*num_envs, act_dim)
-
-    # Save the Generated dataset
-    data = {
-        'observations': observations_tensor,
-        'actions': actions_tensor
-    }
-    torch.save(data, f'{logging_directory}/{file_prefix}.pt') 
-
-    print('\nData succesfully saved as ', file_prefix)
-    print('Saved at :',f'{logging_directory}/{file_prefix}.pt')
-    print('Dataset of ',args_cli.num_envs*num_samples,'datapoints')
-    print('Input  size :', observations_tensor.shape[-1])
-    print('Output size :', actions_tensor.shape[-1],'\n')
+            move_camera(env.unwrapped, w)
 
     # close the simulator
     env.close()
@@ -157,9 +145,5 @@ if __name__ == "__main__":
             
     # run the main function
     main()
-
-    print('Everything went well, closing')
     # close sim app
     simulation_app.close()
-
-    

@@ -87,14 +87,48 @@ class MySceneCfg(InteractiveSceneCfg):
     contact_forces = ContactSensorCfg(prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=3, track_air_time=False)
 
     # lights
-    light = AssetBaseCfg(
-        prim_path="/World/light",
-        spawn=sim_utils.DistantLightCfg(color=(0.75, 0.75, 0.75), intensity=3000.0),
-    )
+    # light = AssetBaseCfg(
+    #     prim_path="/World/light",
+    #     spawn=sim_utils.DistantLightCfg(color=(0.75, 0.75, 0.75), intensity=3000.0),
+    # )
+    # sky_light = AssetBaseCfg(
+    #     prim_path="/World/skyLight",
+    #     spawn=sim_utils.DomeLightCfg(color=(0.13, 0.13, 0.13), intensity=1000.0),
+    # )
+
+    # Spot Light
     sky_light = AssetBaseCfg(
-        prim_path="/World/skyLight",
-        spawn=sim_utils.DomeLightCfg(color=(0.13, 0.13, 0.13), intensity=1000.0),
+        prim_path="/World/spotLight",
+        spawn=sim_utils.DomeLightCfg(
+            intensity=750.0,
+            color=(0.81081, 0.44141, 0.44141),
+            texture_file="{NVIDIA_NUCLEUS_DIR}/Materials/Textures/Skies/PolyHaven/kloofendal_43d_clear_puresky_4k.hdr",
+        ),
     )
+
+    # # colored light
+    colored_distant_light = AssetBaseCfg(
+        prim_path="/World/coloredLight/distantLight",
+        spawn=sim_utils.DistantLightCfg(color=(0.33692, 0.76232, 0.89961), intensity=3000.0, color_temperature=6500, angle=5.0, exposure=0.2),
+    )
+    colored_distant_light1 = AssetBaseCfg(
+        prim_path="/World/coloredLight/distantLight1",
+        spawn=sim_utils.DistantLightCfg(color=(0.81081, 0.44141, 0.44141), intensity=3000.0, color_temperature=6500, angle=10.0, exposure=0.0),
+    )
+    colored_distant_light2 = AssetBaseCfg(
+        prim_path="/World/coloredLight/distantLight2",
+        spawn=sim_utils.DistantLightCfg(color=(0.89189, 0.55451, 0.28926), intensity=3000.0, color_temperature=6500, angle=10.0, exposure=0.0),
+    )
+
+    # # Grey Studio
+    # grey_distant_light = AssetBaseCfg(
+    #     prim_path="/World/greyStudio/distantLight",
+    #     spawn=sim_utils.DistantLightCfg(color=(1.0, 1.0, 1.0), intensity=300.0, color_temperature=6500, angle=34.3, exposure=0.0), #intensity = 3000
+    # )
+    # grey_dome_light = AssetBaseCfg(
+    #     prim_path="/World/greyStudio/domeLight",
+    #     spawn=sim_utils.DomeLightCfg(color=(1.0, 1.0, 1.0), intensity=100.0, exposure=0.4, texture_format="latlong"), #intensity = 1000
+    # )
 
 
 ##
@@ -114,7 +148,7 @@ class CommandsCfg:
         asset_name="robot",
         resampling_time_range=(1000.0, 1000.0),
         heading_control_stiffness=0.5,
-        debug_vis=True,
+        debug_vis=False,
         ranges=mdp.CurriculumUniformVelocityCommandCfg.Ranges(
             for_vel_b=(-0.5,0.5), lat_vel_b=(-0.5, 0.5), ang_vel_b=(-0.5,0.5), initial_heading_err=(-math.pi,math.pi),
         ),
@@ -300,7 +334,7 @@ class RewardsCfg:
     track_lin_vel_xy_exp    = RewTerm(func=mdp.track_lin_vel_xy_exp, weight=1.5, params={"command_name": "base_velocity", "std": math.sqrt(0.25)})
     track_soft_vel_xy_exp   = RewTerm(func=mdp.soft_track_lin_vel_xy_exp, weight=1.5, params={"command_name": "base_velocity", "std": math.sqrt(0.1)})
     track_ang_vel_z_exp     = RewTerm(func=mdp.track_ang_vel_z_exp, weight=0.75, params={"command_name": "base_velocity", "std": math.sqrt(0.25)})
-    track_robot_height_exp  = RewTerm(func=mdp.track_proprioceptive_height_exp, weight=0.1, params={"target_height": 0.38, "std": 0.1})
+    track_robot_height_exp  = RewTerm(func=mdp.track_proprioceptive_height_exp, weight=0.1, params={"target_height": 0.33, "std": 0.1}) #0.38
 
     # -- Additionnal penalties : Need a negative weight
     penalty_lin_vel_z_l2    = RewTerm(func=mdp.lin_vel_z_l2, weight=-2.0)
@@ -319,7 +353,7 @@ class RewardsCfg:
         weight=-0.1,
         params={
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*foot"),
-            "mu": 0.75
+            "mu": 0.55
         }
     )
     penalty_stance_foot_vel = RewTerm(func=mdp.penalize_foot_in_contact_displacement_l2, weight=-1.0)
@@ -339,6 +373,7 @@ class RewardsCfg:
 
     # -- Additionnal Reward : Need a positive weight
     reward_is_alive        = RewTerm(func=mdp.is_alive, weight=0.25)
+    penalty_failed         = RewTerm(func=mdp.is_terminated, weight=1.0)
 
 
 @configclass
@@ -424,3 +459,16 @@ class LocomotionModelBasedEnvCfg(RLTaskEnvCfg):
         else:
             if self.scene.terrain.terrain_generator is not None:
                 self.scene.terrain.terrain_generator.curriculum = False
+
+        self.viewer.eye             = (1.5, 1.5, 0.9)
+        self.viewer.lookat          = (0.0, 0.0, 0.0)
+        self.viewer.cam_prim_path   = "/OmniverseKit_Persp"
+        # self.viewer.resolution      = (1280, 720)     # 720p
+        # self.viewer.resolution      = (1920, 1080)    # 1080p
+        # self.viewer.resolution      = (2560, 1440)      # 2k
+        self.viewer.resolution      = (3840, 2160)      # 4k
+        self.viewer.origin_type     = "asset_root"
+        self.viewer.env_index       = 0
+        self.viewer.asset_name      = "robot"
+
+
