@@ -3,6 +3,8 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
+# ./orbit.sh -p source/standalone/workflows/supervised_learning/datalogger_mult_actions.py --task Isaac-Model-Based-Base-Aliengo-v0  --num_envs 256 --load_run test --checkpoint model_14999.pt --dataset_name baseTask15Act25HzGood1 --buffer_size 15 --seed 456
+
 """Script to generate a dataset for supervised learning with RL agent from RSL-RL. 
 The action space consists of multiple actions of the original environment"""
 
@@ -119,8 +121,15 @@ def main():
     print('     action shape:', actions.shape[-1])
     print('   Buffer   size :', buffer_size,'\n')
 
+    count = 0
+
     # simulate environment
     while simulation_app.is_running() and len(observations_list) < (num_samples + buffer_size):
+
+        count +=1
+        # print(len(observations_list))
+        # print(count)
+        # print()
 
         # Printing
         if len(observations_list) % 100 == 0:
@@ -137,23 +146,29 @@ def main():
             actions = policy(obs)
 
             # Log data into the rolling buffer Log
-            buffer_obs.append(obs)
-            buffer_act.append(actions)            
+
+            # To save at 25Hz and not 50Hz
+            if count%2 :
+                buffer_obs.append(obs)
+                buffer_act.append(actions)         
 
             # env stepping
             obs, _, _, _ = env.step(actions)
+
 
             # Skip the buffer_size first iteration until we have enough data in the buffer to start logging
             if len(buffer_obs) < buffer_size:
                 continue
 
-            # Datalogging for Dataset generation - save observation at time i and action at time i, i+1,...,i+buffer_size
-            observations_list.append(buffer_obs[0].cpu())                                  # shape(batch_size, obs_dim)
-            actions_list.append(torch.stack(buffer_act).permute(1,0,2).flatten(1,2).cpu()) # shape(buffer_size, batch_size, act_dim) -> (batch_size, buffer_size*act_dim) 
+            # To save at 25Hz and not 50Hz
+            if count%2 :
+                # Datalogging for Dataset generation - save observation at time i and action at time i, i+1,...,i+buffer_size
+                observations_list.append(buffer_obs[0].cpu())                                  # shape(batch_size, obs_dim)
+                actions_list.append(torch.stack(buffer_act).permute(1,0,2).flatten(1,2).cpu()) # shape(buffer_size, batch_size, act_dim) -> (batch_size, buffer_size*act_dim) 
 
-            # Remove the oldest observation and action
-            buffer_obs.pop(0)
-            buffer_act.pop(0)
+                # Remove the oldest observation and action
+                buffer_obs.pop(0)
+                buffer_act.pop(0)
 
 
     # Concatenate all observations and actions

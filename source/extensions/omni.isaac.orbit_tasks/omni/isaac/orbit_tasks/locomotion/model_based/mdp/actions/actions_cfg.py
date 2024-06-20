@@ -33,12 +33,11 @@ class ModelBaseActionCfg(ActionTermCfg):
     joint_names: list[str] = MISSING
     """List of joint names or regex expressions that the action will be mapped to."""
 
-    optimize_step_height: bool = False
-
     height_scan_available: bool = True
 
     controller: type[model_base_controller.modelBaseController] = MISSING
-    """Model base controller that compute u: output torques from z: latent variable""" 
+    """Model base controller that compute u: output torques from z: latent variable
+    can be of type 'modelBaseController' or 'samplingController' """ 
 
     @configclass
     class OptimizerCfg:
@@ -48,15 +47,25 @@ class ModelBaseActionCfg(ActionTermCfg):
         """ Different type of optimizer. For now, only 'sampling' is implemented """
 
         prevision_horizon: int = 15
-        """ Prevision horizon for predictive optimization """
+        """ Prevision horizon for predictive optimization (in number of time steps) """
 
-        dt: float = 0.1
-        """ time steps for the predicitve optimization """
+        discretization_time: float = 0.04
+        """ Duration of a time step in seconds for the predicitve optimization """
 
-        parametrization: str = 'discrete'
-        """ Define how the p and F are encoded : can be 'discrete' or 'spline', this modify F_param and p_param  """
+        num_samples: int = 10000
+        """ Number of samples used if the optimizerType is 'sampling' """
+
+        parametrization_F: str = 'discrete'
+        """ Define how F, Ground Reaction Forces, are encoded : can be 'discrete' or 'cubic spline', this modify F_param """
+
+        parametrization_p: str = 'discrete'
+        """ Define how p, foot touch down position, are encoded : can be 'discrete' or 'cubic spline', this modify p_param  """
+
+        height_ref: float = 0.38
+        """ Height reference for the optimization, defined as mean distance between legs in contact and base """
 
     optimizerCfg: OptimizerCfg | None = None
+    """ Must be provided if a controller with optimizer is selected (eg. 'samplingController')"""
 
     @configclass
     class FootTrajectoryCfg:
@@ -107,6 +116,48 @@ class ModelBaseActionCfg(ActionTermCfg):
         """ Number of tile in the y dir. of the grid """
 
 
+    @configclass
+    class ActionNormalizationCfg:
+        """  Set of parameters for scaling and shifting raw action
+
+        Raw actions are distributed (initially) with mean=0 and std=1 
+        """
+
+        # Frequency f : mean=(std_n+std_p)/2, std=(std_p-std_n)/2     : clipped to (min, max)
+        std_p_f = 1.7        # [Hz]
+        std_n_f = 1.3        # [Hz]
+        max_f = 3            # [Hz]
+        min_f = 0            # [Hz]
+
+        # Duty Cycle d : mean=(std_n+std_p)/2, std=(std_p-std_n)/2     : clipped to (min, max)
+        std_p_d = 0.63       # [2pi Rad]
+        std_n_d = 0.57       # [2pi Rad]
+        max_d = 1.0          # [2pi Rad]
+        min_d = 0.0          # [2pi Rad]
+
+        # Foot touch down position : mean=(std_n+std_p)/2, std=(std_p-std_n)/2     : clipped to (min, max)
+        std_p_x_p = +0.03    # [m]
+        std_n_x_p = -0.01    # [m] 
+        std_p_y_p = +0.01    # [m]
+        std_n_y_p = -0.01    # [m]
+        max_x_p = +0.36      # [m]
+        min_x_p = -0.24      # [m]
+        max_y_p = +0.20      # [m]
+        min_y_p = -0.20      # [m]
+
+        # Ground Reaction Forces : clipped to (min, max), not clipped if set to None
+        std_xy_F = (10 / 2)  # [N]
+        max_xy_F = None      # [N]
+        min_xy_F = None      # [N]
+
+        mean_z_F = (200 / 2) # [N] : 200/2 ~= 20[kg_aliengo] * 9.81 [m/s²] / 2 [leg in contact]
+        std_z_F = mean_z_F/5   # [N]
+        max_z_F = None       # [N]
+        min_z_F = 0          # [N]
+
+
+    actionNormalizationCfg = ActionNormalizationCfg()
+    """ Hyperparameter for normalizing raw actions (shift and scale) """
 
 
 

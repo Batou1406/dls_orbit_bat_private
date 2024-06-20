@@ -87,7 +87,8 @@ def main():
     policy = policy.to(env.device)
 
     # From model output and env actions, retrieve the buffer size
-    buffer_size = output_size // env.num_actions 
+    # buffer_size = output_size // env.num_actions 
+    buffer_size = 15
 
     # Print
     print('\nModel : ',args_cli.model_name)
@@ -110,10 +111,20 @@ def main():
             actions = policy(obs)
 
             # Reshape the actions correctly : shape(num_envs, buffer_size, actions_size)
-            actions = actions.view(env.num_envs, buffer_size, env.num_actions)
+            # actions = actions.view(env.num_envs, buffer_size, env.num_actions)
+            actions = actions.view(env.num_envs, buffer_size, 28)
 
             # Select only actions at next step
-            actions = actions[:,0,:] 
+            # actions = actions[:,0,:] 
+
+            # Select every acions only for p and F
+            f_and_d = actions[:,0,:8] # shape(env, 8)
+            p = actions[:,:,8:16]     # shape(env, 15, 8)
+            F = actions[:,:,16:]      # shape(env, 15, 12)
+            p = p.permute(0,2,1).flatten(1,2) # shape(env, 15*8)
+            F = F.permute(0,2,1).flatten(1,2) # shape(env, 15*12)
+
+            actions = torch.concatenate((f_and_d, p, F),dim=1)
 
             # env stepping
             obs, _, _, _ = env.step(actions) 

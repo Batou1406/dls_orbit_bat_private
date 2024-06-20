@@ -32,6 +32,52 @@ class Model(nn.Module):
         x = self.lin4(x)
         return x
 
+class Model2(nn.Module):
+    def __init__(self, input_size, output_size):
+        super(Model, self).__init__()
+        self.lin1 = nn.Linear(input_size, 512)
+        self.lin2 = nn.Linear(512, 512)
+        self.lin3 = nn.Linear(512, 256)
+        self.lin4 = nn.Linear(256, 128)
+        self.lin5 = nn.Linear(128, output_size)
+
+    def forward(self, x):
+        x = self.lin1(x)
+        x = F.elu(x)
+        x = self.lin2(x)
+        x = F.elu(x)
+        x = self.lin3(x)
+        x = F.elu(x)
+        x = self.lin4(x)
+        x = F.elu(x)
+        x = self.lin5(x)
+        return x
+    
+
+class Model3(nn.Module):
+    def __init__(self, input_size, output_size):
+        super(Model, self).__init__()
+        self.lin1 = nn.Linear(input_size, 1024)
+        self.lin2 = nn.Linear(1024, 512)
+        self.lin3 = nn.Linear(512, 512)
+        self.lin4 = nn.Linear(512, 256)
+        self.lin5 = nn.Linear(256, 128)
+        self.lin6 = nn.Linear(128, output_size)
+
+    def forward(self, x):
+        x = self.lin1(x)
+        x = F.elu(x)
+        x = self.lin2(x)
+        x = F.elu(x)
+        x = self.lin3(x)
+        x = F.elu(x)
+        x = self.lin4(x)
+        x = F.elu(x)
+        x = self.lin5(x)
+        x = F.elu(x)
+        x = self.lin6(x)
+        return x
+
 
 """ --- Training and Testing Function --- """
 def train(args, model, device, train_loader, optimizer, epoch, criterion):
@@ -76,7 +122,7 @@ def main():
     parser.add_argument('--load-dataset', type=str, default='baseTaskMultActGood1')
     parser.add_argument('--batch-size', type=int, default=64, metavar='N',      help='input batch size for training (default: 64)')
     parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N', help='input batch size for testing (default: 1000)')
-    parser.add_argument('--epochs', type=int, default=15, metavar='N',          help='number of epochs to train (default: 14)')
+    parser.add_argument('--epochs', type=int, default=20, metavar='N',          help='number of epochs to train (default: 14)')
     parser.add_argument('--lr', type=float, default=1.0, metavar='LR',          help='learning rate (default: 1.0)')
     parser.add_argument('--gamma', type=float, default=0.7, metavar='M',        help='Learning rate step gamma (default: 0.7)')
     parser.add_argument('--no-cuda', action='store_true', default=False,        help='disables CUDA training')
