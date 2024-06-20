@@ -377,11 +377,6 @@ class ModelBaseAction(ActionTerm):
         # Transform GRF into local world frame
         self.F_lw = self.rotate_GRF_from_rl_frame_to_lw(F_norm=self.F_norm) #self.F_norm_clipped
 
-        # Check if there is a problem with foot touch down position -> NaN value
-        if not torch.distributions.constraints.real.check(self.p_lw).all() :
-            print('Problem with NaN in foot touch down position')
-            breakpoint()
-
         # Todo Fix this ! Why is there infinite value as the network output
         if torch.isinf(self.p_lw).any():
             print('Problem with Infinite value in foot touch down position')
@@ -831,18 +826,20 @@ class ModelBaseAction(ActionTerm):
 
         # --- Print --- 
         verbose_loop+=1
-        if verbose_loop>=400:
+        if verbose_loop>=50:
             verbose_loop=0
             print()
             print('Contact sequence : ', c0_star[0,...].flatten())
             print('  Leg  frequency : ', self.f[0,:])
             print('   duty   cycle  : ', self.d[0,...].flatten())
             # print('terrain dificulty: ', torch.mean(self._env.scene.terrain.terrain_levels.float()))
+            # print('  Max dificulty  : ', self._env.scene.terrain.difficulty.float()[:4])
             # print('terrain dificulty: ', self._env.scene.terrain.terrain_levels.float()[:4])
+            # print('Terrain Progress : ', self._env.command_manager.get_term("base_velocity").metrics['cumulative_distance'][:4]/(self._env.scene.terrain.cfg.terrain_generator.size[0] / 2))
             # print('speed difficulty : ', self._env.command_manager.get_term("base_velocity").difficulty)
             # print('speed command    : ', self._env.command_manager.get_command("base_velocity")[:,0])
             # print('Actual Speed     : ', self._asset.data.root_lin_vel_b[:,0])
-            print('Touch-down pos   : ', self.p_lw[0,0,:,0])
+            # print('Touch-down pos   : ', self.p_lw[0,0,:,0])
             # print(' Foot  position  : ', p_lw[0,...])
             # print(' Robot position  : ', self._asset.data.root_pos_w[0,...])
             # print('Foot traj shape  : ', self.pt_star_lw.shape)

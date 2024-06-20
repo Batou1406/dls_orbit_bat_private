@@ -77,10 +77,14 @@ def improved_terrain_levels_vel(
     speed_command = env.command_manager.get_command("base_velocity")
 
     # compute the distance the robot walked : not only in the xy plane but in 3D space ! Usefull for very big steps 
-    distance = torch.norm(asset.data.root_pos_w[env_ids, :] - env.scene.env_origins[env_ids, :], dim=1)
+    # distance = torch.norm(asset.data.root_pos_w[env_ids, :] - env.scene.env_origins[env_ids, :], dim=1)
+
+    # Retrieve the effective distance walked by the robot
+    speed_commandTerm: CurriculumUniformVelocityCommand = env.command_manager.get_term("base_velocity")
+    distance = speed_commandTerm.metrics['cumulative_distance'][env_ids]
 
     # robots that reached 80% of the distance the the border progress to harder terrains + must be time_out reset. Ie. can't be a fall or other early termination condition
-    move_up = (distance > terrain.cfg.terrain_generator.size[0] / 2.5) #* env.reset_time_outs[env_ids,] : last term don't work at init...
+    move_up = (distance > terrain.cfg.terrain_generator.size[0] / 2) #* env.reset_time_outs[env_ids,] : last term don't work at init...
 
     # robots that walked less than half of their required distance go to simpler terrains
     move_down = distance < torch.norm(speed_command[env_ids, :2], dim=1) * env.max_episode_length_s * 0.5
@@ -98,6 +102,61 @@ def improved_terrain_levels_vel(
     # else is instance of TerrainImporter and return the mean terrain level    
     return torch.mean(terrain.terrain_levels.float())
  
+
+def climb_terrain_curriculum(
+    env: RLTaskEnv, env_ids: Sequence[int], asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+) -> torch.Tensor:
+    """Curriculum based on the number of steps cleared by the robot
+
+    Increase difficulty when : the robot clears more than 3 steps
+    Decrease difficulty when : the robot fall or didn't clear any steps
+
+    This term is used to increase the difficulty of the terrain when the robot walks far enough and decrease the
+    difficulty when the robot walks less than half of the distance required by the commanded velocity.
+
+    .. note::
+        It is only possible to use this term with the terrain type ``generator``. For further information
+        on different terrain types, check the :class:`omni.isaac.orbit.terrains.TerrainImporter` class.
+
+    Returns:
+        The mean terrain level for the given environment ids.
+    """
+    min_steps_to_progress = 3
+    max_steps_to_regress = 0
+
+    # extract the used quantities (to enable type-hinting)
+    asset: Articulation = env.scene[asset_cfg.name]
+    terrain: TerrainImporter = env.scene.terrain
+    speed_command = env.command_manager.get_command("base_velocity")
+
+    # compute the distance the robot walked : not only in the xy plane but in 3D space ! Usefull for very big steps 
+    distance = torch.norm(asset.data.root_pos_w[env_ids, :] - env.scene.env_origins[env_ids, :], dim=1)
+
+    # Compute the move up and move down treshold distance
+    move_up_threshold   = (terrain.cfg.terrain_generator.sub_terrains["pyramid_stairs"].platform_width / 2) + (min_steps_to_progress * terrain.cfg.terrain_generator.sub_terrains["pyramid_stairs"].step_width)
+    move_down_threshold = (terrain.cfg.terrain_generator.sub_terrains["pyramid_stairs"].platform_width / 2) + (max_steps_to_regress  * terrain.cfg.terrain_generator.sub_terrains["pyramid_stairs"].step_width)
+
+    # Robot that walked more than the max threshold distance move up
+    move_up = distance > move_up_threshold
+
+    # robots that walked less than the min threshold distance move down
+    move_down = distance < move_down_threshold
+
+    # Robot that fall (or early termination) also move down
+    move_down &= env.termination_manager.terminated[env_ids]
+
+    # Robots that move down can't move up
+    move_up *= ~move_down
+
+    # update terrain levels
+    terrain.update_env_origins(env_ids, move_up, move_down)
+
+    # return the mean difficulty
+    if isinstance(terrain, TerrainImporterUniformDifficulty) :
+        return torch.mean(terrain.difficulty.float())
+
+    # else is instance of TerrainImporter and return the mean terrain level    
+    return torch.mean(terrain.terrain_levels.float())
 
 
 def speed_command_levels_walked_distance(env: RLTaskEnv, env_ids: Sequence[int], commandTermName: str, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
@@ -205,7 +264,7 @@ def speed_command_levels_fast_walked_distance(env: RLTaskEnv, env_ids: Sequence[
 
     # Compute the number of environment that progress or regress in the difficulty (ie. maximal velocity command sampling range)
     increase_difficulty = torch.sum( walked_distance[fast] > (0.9 * required_distance[fast]) )
-    decrease_difficulty = torch.sum( walked_distance[fast] < (0.8 * required_distance[fast]) )
+    decrease_difficulty = torch.sum( walked_distance[fast] < (0.75 * required_distance[fast]) )
 
     difficulty_progress = (increase_difficulty - decrease_difficulty) / env.num_envs
 

@@ -11,12 +11,14 @@ from omni.isaac.orbit_tasks.locomotion.model_based.model_based_env_cfg import Lo
 ##
 # Pre-defined configs
 ##
-from omni.isaac.orbit_assets.unitree import UNITREE_ALIENGO_CFG, UNITREE_GO2_CFG, UNITREE_ALIENGO_TORQUE_CONTROL_CFG  # isort: skip
+from omni.isaac.orbit_assets.unitree import UNITREE_ALIENGO_CFG, UNITREE_GO2_CFG, UNITREE_ALIENGO_TORQUE_CONTROL_CFG, UNITREE_ALIENGO_SELF_COLLISION_TORQUE_CONTROL_CFG  # isort: skip
 from omni.isaac.orbit_assets.anymal import ANYMAL_C_CFG  # isort: skip
 
 from omni.isaac.orbit.terrains.config.climb import STAIRS_TERRAINS_CFG
 from omni.isaac.orbit.terrains import TerrainImporterUniformDifficulty
 
+from omni.isaac.orbit.managers import CurriculumTermCfg as CurrTerm
+import omni.isaac.orbit_tasks.locomotion.model_based.mdp as mdp
 
 @configclass
 class UnitreeAliengoClimbEnvCfg(LocomotionModelBasedEnvCfg):
@@ -26,6 +28,8 @@ class UnitreeAliengoClimbEnvCfg(LocomotionModelBasedEnvCfg):
         self.scene.terrain.terrain_generator = STAIRS_TERRAINS_CFG
         self.scene.terrain.class_type = TerrainImporterUniformDifficulty
 
+        self.curriculum.terrain_levels = CurrTerm(func=mdp.climb_terrain_curriculum)
+
         # post init of parent
         super().__post_init__()
 
@@ -34,13 +38,13 @@ class UnitreeAliengoClimbEnvCfg(LocomotionModelBasedEnvCfg):
         # self.scene.robot = UNITREE_ALIENGO_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
         # self.scene.robot = UNITREE_GO2_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
         # self.scene.robot = ANYMAL_C_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
-        self.scene.robot = UNITREE_ALIENGO_TORQUE_CONTROL_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")                 
+        self.scene.robot = UNITREE_ALIENGO_SELF_COLLISION_TORQUE_CONTROL_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")                 
 
         # --- Select the prime path of the height sensor
         self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/base"                                               # Unnecessary : already default 
 
-        # # --- Select the Climb terrain
-        # self.scene.terrain.terrain_generator = STAIRS_TERRAINS_CFG
+
+        self.episode_length_s=20
 
 
         """ ----- Commands ----- """
@@ -151,8 +155,11 @@ class UnitreeAliengoClimbEnvCfg(LocomotionModelBasedEnvCfg):
 
         # -- Additionnal Reward : Need a positive weight
         self.rewards.reward_is_alive                     = None
+        self.rewards.penalty_failed                      = None
 
 
         """ ----- terminations ----- """
+        # Augment the limit angle before reset
+        self.terminations.bad_orientation.params['limit_angle'] = 70*(3.14/180)
 
  
