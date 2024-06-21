@@ -44,7 +44,7 @@ class UnitreeAliengoClimbEnvCfg(LocomotionModelBasedEnvCfg):
         self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/base"                                               # Unnecessary : already default 
 
 
-        self.episode_length_s=20
+        # self.episode_length_s=20
 
 
         """ ----- Commands ----- """
@@ -122,7 +122,7 @@ class UnitreeAliengoClimbEnvCfg(LocomotionModelBasedEnvCfg):
         self.rewards.track_robot_height_exp              = None 
 
         # -- Additionnal penalties : Need a negative weight
-        self.rewards.penalty_lin_vel_z_l2.weight         = -10.0 #-2.0
+        self.rewards.penalty_lin_vel_z_l2.weight         = -2.0 #-2.0
         self.rewards.penalty_ang_vel_xy_l2.weight        = -0.10 #-0.05
         self.rewards.penalty_dof_torques_l2.weight       = -0.0001 # None
         self.rewards.penalty_dof_acc_l2                  = None # -1.0e-07 TODO test
