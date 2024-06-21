@@ -334,7 +334,7 @@ class RewardsCfg:
     track_lin_vel_xy_exp    = RewTerm(func=mdp.track_lin_vel_xy_exp, weight=1.5, params={"command_name": "base_velocity", "std": math.sqrt(0.25)})
     track_soft_vel_xy_exp   = RewTerm(func=mdp.soft_track_lin_vel_xy_exp, weight=1.5, params={"command_name": "base_velocity", "std": math.sqrt(0.1)})
     track_ang_vel_z_exp     = RewTerm(func=mdp.track_ang_vel_z_exp, weight=0.75, params={"command_name": "base_velocity", "std": math.sqrt(0.25)})
-    track_robot_height_exp  = RewTerm(func=mdp.track_proprioceptive_height_exp, weight=0.1, params={"target_height": 0.33, "std": 0.1}) #0.38
+    track_robot_height_exp  = RewTerm(func=mdp.track_proprioceptive_height_exp, weight=0.1, params={"target_height": 0.38, "std": 0.1}) #0.38
 
     # -- Additionnal penalties : Need a negative weight
     penalty_lin_vel_z_l2    = RewTerm(func=mdp.lin_vel_z_l2, weight=-2.0)
@@ -464,9 +464,9 @@ class LocomotionModelBasedEnvCfg(RLTaskEnvCfg):
         self.viewer.lookat          = (0.0, 0.0, 0.0)
         self.viewer.cam_prim_path   = "/OmniverseKit_Persp"
         # self.viewer.resolution      = (1280, 720)     # 720p
-        # self.viewer.resolution      = (1920, 1080)    # 1080p
+        self.viewer.resolution      = (1920, 1080)    # 1080p
         # self.viewer.resolution      = (2560, 1440)      # 2k
-        self.viewer.resolution      = (3840, 2160)      # 4k
+        # self.viewer.resolution      = (3840, 2160)      # 4k
         self.viewer.origin_type     = "asset_root"
         self.viewer.env_index       = 0
         self.viewer.asset_name      = "robot"

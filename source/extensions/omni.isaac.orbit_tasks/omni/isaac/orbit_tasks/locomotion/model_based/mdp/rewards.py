@@ -370,19 +370,23 @@ def track_proprioceptive_height_exp(env: RLTaskEnv, target_height: float, height
     # Retrieve the CoM height : shape(batch_size) 
     CoM_height_w = robot.data.root_pos_w[:,2]
 
+    print()
+
     # Retrieve the number of feet in contact (set as a minimum of 1 to avoid division by zero)
     if method == "Action":
         action: ModelBaseAction = env.action_manager.get_term(actionName)
-        num_feet_in_contact = (torch.sum(action.c_star[:,:,0], dim=1)).clamp(min=1)
+        feet_in_contact = action.c_star[:,:,0]
+        num_feet_in_contact = (torch.sum(feet_in_contact, dim=1)).clamp(min=1)
     elif method == "Sensor":
         sensor: ContactSensor = env.scene.sensors[sensorCfg.name]
         contact_forces = sensor.data.net_forces_w_history[:,0,sensorCfg.body_ids,2] # 0=last measurement, 2=z dim, shape(batch_size, num_legs)
-        num_feet_in_contact = (torch.sum(contact_forces > 1, dim=1)).clamp(min=1) # set contact threshold to 1 [N]
+        feet_in_contact = contact_forces > 1 # set contact threshold to 1 [N]
+        num_feet_in_contact = (torch.sum(feet_in_contact, dim=1)).clamp(min=1) 
     else :
         raise NotImplementedError("Provided method for proprioceptive height not in {Action, Sensor}")
-    
+
     # Compute the proprioceptive robot height
-    robot_height_prop = CoM_height_w - (torch.sum(foot_height_w, dim=1) / num_feet_in_contact)
+    robot_height_prop = CoM_height_w - ((torch.sum(foot_height_w * feet_in_contact, dim=1)) / num_feet_in_contact)
 
     # Compute the tracking error
     tracking_error = robot_height_prop - target_height
