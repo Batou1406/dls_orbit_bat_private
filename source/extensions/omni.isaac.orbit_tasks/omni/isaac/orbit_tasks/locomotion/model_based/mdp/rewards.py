@@ -370,8 +370,6 @@ def track_proprioceptive_height_exp(env: RLTaskEnv, target_height: float, height
     # Retrieve the CoM height : shape(batch_size) 
     CoM_height_w = robot.data.root_pos_w[:,2]
 
-    print()
-
     # Retrieve the number of feet in contact (set as a minimum of 1 to avoid division by zero)
     if method == "Action":
         action: ModelBaseAction = env.action_manager.get_term(actionName)
