@@ -51,7 +51,7 @@ plt_i = 0
 
 verbose_mb = False
 verbose_loop = 40
-vizualise_debug = {'foot': False, 'jacobian': False, 'foot_traj': True, 'lift-off': False, 'touch-down': True, 'GRF': True, 'touch-down polygon': False}
+vizualise_debug = {'foot': False, 'jacobian': False, 'foot_traj': True, 'lift-off': False, 'touch-down': True, 'GRF': False, 'touch-down polygon': False}
 torch.set_printoptions(precision=4, linewidth=200, sci_mode=False)
 if verbose_mb: import omni.isaac.debug_draw._debug_draw as omni_debug_draw
 
@@ -798,7 +798,7 @@ class ModelBaseAction(ActionTerm):
             # Retrieve the touch down position height given their index in the height grid : The height_scan has the env_origins offset, that must be removed to be in lw
             terrain_height_feet = terrain_height_grid[torch.arange(self.num_envs).unsqueeze(1), height_scan_index, 2] - self._env.scene.env_origins[:,2].unsqueeze(-1) #shape (batch_size, num_legs)
 
-            self.p_lw[:,:,2] += terrain_height_feet.unsqueeze(-1) #shape (batch_size, num_legs, num_predict_step)
+            p_lw[:,:,2] += terrain_height_feet.unsqueeze(-1) #shape (batch_size, num_legs, num_predict_step)
 
 
         # --- F : Rotate GRF from horizonzal frame (roll_w, pitch_w, yaw_b) to local wolrd frame
@@ -953,12 +953,12 @@ class ModelBaseAction(ActionTerm):
         if verbose_loop>=50:
             verbose_loop=0
             print()
-            print('Contact sequence : ', c0_star[0,...].flatten())
-            print('  Leg  frequency : ', self.f[0,:])
-            print('   duty   cycle  : ', self.d[0,...].flatten())
+            # print('Contact sequence : ', c0_star[0,...].flatten())
+            # print('  Leg  frequency : ', self.f[0,:])
+            # print('   duty   cycle  : ', self.d[0,...].flatten())
             # print('terrain dificulty: ', torch.mean(self._env.scene.terrain.terrain_levels.float()))
-            # print('  Max dificulty  : ', self._env.scene.terrain.difficulty.float()[:4])
-            # print('terrain dificulty: ', self._env.scene.terrain.terrain_levels.float()[:4])
+            print('  Max dificulty  : ', self._env.scene.terrain.difficulty.float()[:])
+            print('terrain dificulty: ', self._env.scene.terrain.terrain_levels.float()[:])
             # print('Terrain Progress : ', self._env.command_manager.get_term("base_velocity").metrics['cumulative_distance'][:4]/(self._env.scene.terrain.cfg.terrain_generator.size[0] / 2))
             # print('speed difficulty : ', self._env.command_manager.get_term("base_velocity").difficulty)
             # print('speed command    : ', self._env.command_manager.get_command("base_velocity")[:,0])
@@ -968,7 +968,7 @@ class ModelBaseAction(ActionTerm):
             # print(' Robot position  : ', self._asset.data.root_pos_w[0,...])
             # print('Foot traj shape  : ', self.pt_star_lw.shape)
             # print('Foot traj : ', self.pt_star_lw[0,0,:3,:])
-            print('Foot Force :', self.F_star_lw[0,:,:])
+            # print('Foot Force :', self.F_star_lw[0,:,:])
             # print('\nZ lin vel : ', self._asset.data.root_lin_vel_b[0, 2])
             # print(self._env.reward_manager.find_terms('track_lin_vel_xy_exp'))
             # try : 

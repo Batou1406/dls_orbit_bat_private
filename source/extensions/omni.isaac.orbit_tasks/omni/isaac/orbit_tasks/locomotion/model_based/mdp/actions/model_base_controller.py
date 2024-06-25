@@ -1018,22 +1018,18 @@ class SamplingOptimizer():
             best_index          (int):
         """
 
-        # print('cost sample shape',cost_samples)
+        print('cost sample shape',cost_samples)
 
         if jnp.isnan(cost_samples).all():print('all NaN')
 
         # Saturate the cost in case of NaN or inf
         cost_samples = jnp.where(jnp.isnan(cost_samples), 1000000, cost_samples)
         cost_samples = jnp.where(jnp.isinf(cost_samples), 1000000, cost_samples)
-      
-        # print('cost sample shape',cost_samples)
 
         # Take the best found control parameters
         best_index = jnp.nanargmin(cost_samples)
         best_cost = cost_samples.take(best_index)
         best_action_seq = action_seq_samples[best_index]
-
-        # print('best_cost :',best_cost)
 
         if fake : best_index = jnp.int32(0)
 
