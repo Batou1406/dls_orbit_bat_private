@@ -163,7 +163,7 @@ class modelBaseController(baseController):
         - process_latent_variable(f, d, p, F) -> p*, F*, c*, pt*                                                       Inherited from baseController (not implemented)
         - compute_control_output(F0*, c0*, pt01*) -> T                                                                  Inherited from baseController (not implemented)
         - gait_generator(f, d, phase) -> c, new_phase                                                                   Inherited from baseController (not implemented)
-        - swing_trajectory_generator(p_b, c, decimation) -> pt_b
+        - full_swing_trajectory_generator(p_b, c, decimation) -> pt_b
         - swing_leg_controller(c0*, pt01*) -> T_swing
         - stance_leg_controller(F0*, c0*) -> T_stance
     """
@@ -623,6 +623,9 @@ class modelBaseController(baseController):
 class samplingController(modelBaseController):
     """
     TODO
+
+    Properties
+        c_prev  (Tensor): previous value used for contact       shape(batch_size, num_legs)
     """
 
     def __init__(self, verbose_md, device, num_envs, num_legs, dt_out, decimation, dt_in, p_default_lw: torch.Tensor, step_height, foot_offset, swing_ctrl_pos_gain_fb, swing_ctrl_vel_gain_fb, optimizerCfg):
@@ -664,16 +667,16 @@ class samplingController(modelBaseController):
         # Compute the contact sequence and update the phase
         c_star, self.phase = self.gait_generator(f=f_star, d=d_star, phase=self.phase, horizon=1, dt=self._dt_out)
 
-        # Update c_prev
-        self.c_prev = c_star
+        # Update c_prev : shape (batch_size, num_legs)
+        self.c_prev = c_star[:,:,0]
 
         # Generate the swing trajectory
-        # pt_lw = self.swing_trajectory_generator(p_lw=p_lw[:,:,:,0], c=c, d=d, f=f)
         pt_star_lw, full_pt_lw = self.full_swing_trajectory_generator(p_lw=p_star_lw[:,:,:,0], c=c_star, d=d_star, f=f_star)
 
         return f_star, d_star, c_star, p_star_lw, F_star_lw, pt_star_lw, full_pt_lw
 
 # ---------------------------------- Optimizer --------------------------------
+count=0
 fake = False
 class SamplingOptimizer():
     """ Model Based optimizer based on the centroidal model """
@@ -867,12 +870,17 @@ class SamplingOptimizer():
         # ----- Step 1 : Retrieve the initial state
         # Retrieve the robot position in local world frame of shape(3)
         com_pos_lw = (robot.data.root_pos_w - env.scene.env_origins).squeeze(0) # shape(3)
-        com_pos_lw[2] = robot.data.root_pos_w[:,2] - (torch.sum(((robot.data.body_pos_w[:, foot_idx,:]).squeeze(0))[:,2] * feet_in_contact)) / (torch.sum(feet_in_contact)) # height is proprioceptive
+        # Compute proprioceptive height
+        if (feet_in_contact == 0).all() : feet_in_contact = torch.ones_like(feet_in_contact) # if no feet in contact : robot is in the air, we use all feet to compute the height, not correct but avoid div by zero
+        com_pos_lw[2] = robot.data.root_pos_w[:,2] - (torch.sum(((robot.data.body_pos_w[:, foot_idx,2]).squeeze(0)) * feet_in_contact)) / (torch.sum(feet_in_contact)) # height is proprioceptive
 
         # Retrieve the robot orientation in lw as euler angle ZXY of shape(3)
         roll, pitch, yaw = math_utils.euler_xyz_from_quat(robot.data.root_quat_w) # TODO Check the angles !
+        roll, pitch, yaw = self.from_zero_twopi_to_minuspi_pluspi(roll, pitch, yaw) 
         com_pose_w = torch.tensor((roll, pitch, yaw), device=self.device)
         com_pose_lw = com_pose_w
+
+        # print('roll  %.3f, pitch %.3f, yaw %.3f'%(roll, pitch, yaw))
 
         # Retrieve the robot linear and angular velocity in base frame of shape(6)
         com_ang_vel_b = (robot.data.root_ang_vel_b).squeeze(0)
@@ -922,7 +930,7 @@ class SamplingOptimizer():
         # Compute the gravity compensation GRF along the horizon : of shape (num_samples, num_legs, 3, sampling_horizon)
         number_of_leg_in_contact_samples = (torch.sum(c_samples, dim=1)).clamp(min=1) # Compute the number of leg in contact, clamp by minimum 1 to avoid division by zero. shape(num_samples, sampling_horizon)
         gravity_compensation_F_samples = torch.zeros((self.num_samples, self.num_legs, 3, self.sampling_horizon), device=self.device) # shape (num_samples, num_legs, 3, sampling_horizon)
-        gravity_compensation_F_samples[:,:,2,:] = ((self.robot_model.mass * 9.81) / number_of_leg_in_contact_samples).unsqueeze(1) # shape (num_samples, 1, sampling_horizon)
+        gravity_compensation_F_samples[:,:,2,:] = ((self.robot_model.mass * 9.81) / number_of_leg_in_contact_samples).unsqueeze(1) # shape (num_samples, 1, sampling_horizon)->(num_samples, 4, sampling_horizon)
         
         # Prepare the reference sequence (at time t, t+dt, etc.)
         reference_seq_state = torch.cat((
@@ -946,7 +954,16 @@ class SamplingOptimizer():
         action_p_lw_samples  = p_lw_samples.flatten(2,3)      # Foot touch down position samples of shape(num_samples, num_legs, 3*p_param)
         action_F_lw_samples  = F_lw_samples.flatten(2,3)      # Ground Reaction Forces           of shape(num_samples, num_legs, 3*F_param)
 
-
+        # global count
+        # count +=1
+        # # print(count)
+        # if count == 20:
+        #     torch.save({'initial_state': initial_state, 
+        #                 'reference_seq_state': reference_seq_state,
+        #                 'reference_seq_input_samples': reference_seq_input_samples,
+        #                 'action_seq_c_samples':action_seq_c_samples,
+        #                 'action_p_lw_samples':action_p_lw_samples,
+        #                 'action_F_lw_samples':action_F_lw_samples,}, 'tensors.pth')
 
         # ----- Step 4 : Convert torch tensor to jax.array
         initial_state_jax               = torch_to_jax(initial_state)                          # of shape(state_dim)
@@ -989,27 +1006,34 @@ class SamplingOptimizer():
         return f_star, d_star, p_star_lw, F_star_lw
 
 
-    def find_best_actions(self, action_seq_samples, cost_samples) : 
+    def find_best_actions(self, action_seq_samples: jnp.array, cost_samples: jnp.array) -> tuple[jnp.array, int]: 
         """ Given action samples and associated cost, filter invalid values and retrieves the best cost and associated actions
         
         Args : 
-            action_seq_samples (TODO): Samples of actions   of shape(TODO)
-            cost_samples       (TODO): Associated cost      of shape(TODO)
+            action_seq_samples (jnp.array): Samples of actions   of shape(num_samples, time_horizon, num_legs)
+            cost_samples       (jnp.array): Associated cost      of shape(num_samples)
              
         Returns :
-            best_action_seq    (TODO):  Action with the smallest cost of shape(TODO)
+            best_action_seq    (jnp.array):  Action with the smallest cost of shape(time_horizon, num_legs)
             best_index          (int):
         """
+
+        # print('cost sample shape',cost_samples)
+
+        if jnp.isnan(cost_samples).all():print('all NaN')
 
         # Saturate the cost in case of NaN or inf
         cost_samples = jnp.where(jnp.isnan(cost_samples), 1000000, cost_samples)
         cost_samples = jnp.where(jnp.isinf(cost_samples), 1000000, cost_samples)
-        
+      
+        # print('cost sample shape',cost_samples)
 
         # Take the best found control parameters
         best_index = jnp.nanargmin(cost_samples)
         best_cost = cost_samples.take(best_index)
         best_action_seq = action_seq_samples[best_index]
+
+        # print('best_cost :',best_cost)
 
         if fake : best_index = jnp.int32(0)
 
@@ -1187,7 +1211,7 @@ class SamplingOptimizer():
             input_error = input[12:] - reference_seq_input_jax[n] # Input error computed only for GRF. Foot touch down pos is a state and an input, error is computed with the states
             input_cost  = input_error.T @ self.R @ input_error
 
-            step_cost = state_cost + input_cost
+            step_cost = state_cost #+ input_cost
 
             return (cost + step_cost, state_next)
 
@@ -1197,6 +1221,9 @@ class SamplingOptimizer():
 
         # Iterate the model over the time horizon and retrieve the cost
         cost, state = jax.lax.fori_loop(0, self.sampling_horizon, iterate_fun, carry)
+
+        # print('cost :', cost)
+        # print('state : ', state)
 
         cost_samples_jax = cost
 
@@ -1285,7 +1312,7 @@ class SamplingOptimizer():
         F_xy = jnp.sqrt(F_x**2 + F_y**2)    # shape(num_legs)
 
         # Compute the angle in the xy plane of the Force
-        alpha = jnp.arccos(F_x / F_xy)      # shape(num_legs)
+        alpha = jnp.arctan2(F_y, F_x)         # shape(num_legs)
 
         # Apply the constraint in the xy plane
         F_xy_clamped = jnp.minimum(F_xy, F_xy_max)  # shape(num_legs)
@@ -1344,3 +1371,25 @@ class SamplingOptimizer():
         p_lw_samples[:,:,2,:] = 0.0*torch.ones_like(p_lw_samples[:,:,2,:])
 
         return f_samples, d_samples, p_lw_samples, F_lw_samples
+
+
+    def from_zero_twopi_to_minuspi_pluspi(self, roll, pitch, yaw):
+        """ Change the function space from [0, 2pi[ to ]-pi, pi] 
+        
+        Args :
+            roll  (Tensor): roll in [0, 2pi[    shape(x)
+            pitch (Tensor): roll in [0, 2pi[    shape(x)
+            yaw   (Tensor): roll in [0, 2pi[    shape(x)
+        
+        Returns :   
+            roll  (Tensor): roll in ]-pi, pi]   shape(x)
+            pitch (Tensor): roll in ]-pi, pi]   shape(x)
+            yaw   (Tensor): roll in ]-pi, pi]   shape(x)    
+        """
+
+        # Apply the transformation
+        roll  = ((roll  - torch.pi) % (2*torch.pi)) - torch.pi
+        pitch = ((pitch - torch.pi) % (2*torch.pi)) - torch.pi 
+        yaw   = ((yaw   - torch.pi) % (2*torch.pi)) - torch.pi
+
+        return roll, pitch, yaw

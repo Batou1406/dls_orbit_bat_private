@@ -900,7 +900,7 @@ class ModelBaseAction(ActionTerm):
         F_z = F[:,:,1,:].unsqueeze(2).clamp(min=0)
 
         # Angle between vec_x and vec_F_xy
-        alpha = torch.atan2(F[:,:,1,:], F[:,:,0,:]).unsqueeze(2)
+        alpha = torch.atan2(F[:,:,1,:], F[:,:,0,:]).unsqueeze(2) # atan2(y,x) = arctan(y/x)
 
         # Compute the maximal Force in the xy plane
         F_xy_max = mu*F_z
