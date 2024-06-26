@@ -43,6 +43,8 @@ import omni.isaac.orbit_tasks.locomotion.model_based.mdp as mdp
 
 from omni.isaac.orbit.terrains.config.rough import ROUGH_TERRAINS_CFG  # isort: skip
 
+from omni.isaac.orbit.utils.assets import LOCAL_NUCLEUS_DIR,ISAAC_NUCLEUS_DIR
+
 ##
 # Scene definition
 ##
@@ -97,27 +99,33 @@ class MySceneCfg(InteractiveSceneCfg):
     # )
 
     # Spot Light
-    # sky_light = AssetBaseCfg(
-    #     prim_path="/World/spotLight",
-    #     spawn=sim_utils.DomeLightCfg(
-    #         intensity=750.0,
-    #         color=(0.81081, 0.44141, 0.44141),
-    #         texture_file="{NVIDIA_NUCLEUS_DIR}/Materials/Textures/Skies/PolyHaven/kloofendal_43d_clear_puresky_4k.hdr",
-    #     ),
-    # )
+    sky_light = AssetBaseCfg(
+        prim_path="/World/spotLight",
+        spawn=sim_utils.DomeLightCfg(
+            intensity=750.0,
+            # color=(0.81081, 0.44141, 0.44141),
+            color=(0.99, 0.8, 0.8),
+            # texture_file=f"{LOCAL_NUCLEUS_DIR}/NVIDIA/Assets/Skies/Clear/evening_road_01_4k.hdr",
+            texture_file=f"{LOCAL_NUCLEUS_DIR}/Library/skies/kloofendal_43d_clear_puresky_4k.hdr",
+            # texture_file=f"{LOCAL_NUCLEUS_DIR}/NVIDIA/Assets/Skies/Clear/evening_road_01_4k.hdr",
+        ),
+    )
 
-    # # colored light
+    # colored light
     colored_distant_light = AssetBaseCfg(
         prim_path="/World/coloredLight/distantLight",
-        spawn=sim_utils.DistantLightCfg(color=(0.33692, 0.76232, 0.89961), intensity=3000.0, color_temperature=6500, angle=5.0, exposure=0.2),
+        spawn=sim_utils.DistantLightCfg(color=(0.33692, 0.76232, 0.89961), intensity=3000.0, color_temperature=6500, exposure=0.2, angle=5.0),
+        init_state=AssetBaseCfg.InitialStateCfg(pos=(0.0, 0.0, 0.0),rot=(0.97, 0.26, 0, 0)), #rot=(-0.4581756, 0.8888617, 0, 0)
     )
     colored_distant_light1 = AssetBaseCfg(
         prim_path="/World/coloredLight/distantLight1",
-        spawn=sim_utils.DistantLightCfg(color=(0.81081, 0.44141, 0.44141), intensity=3000.0, color_temperature=6500, angle=10.0, exposure=0.0),
+        spawn=sim_utils.DistantLightCfg(color=(0.81081, 0.44141, 0.44141), intensity=3000.0, color_temperature=6500, exposure=0.0, angle=10.0),
+        init_state=AssetBaseCfg.InitialStateCfg(pos=(0.0, 0.0, 0.0),rot=(0.97, 0.00, 0.26, 0.0)) #rot=(-0.1044025, -0.0466693, -0.9069498, -0.4054185)
     )
     colored_distant_light2 = AssetBaseCfg(
         prim_path="/World/coloredLight/distantLight2",
-        spawn=sim_utils.DistantLightCfg(color=(0.89189, 0.55451, 0.28926), intensity=3000.0, color_temperature=6500, angle=10.0, exposure=0.0),
+        spawn=sim_utils.DistantLightCfg(color=(0.89189, 0.55451, 0.28926), intensity=3000.0, color_temperature=6500, exposure=0.0, angle=10.0),
+        init_state=AssetBaseCfg.InitialStateCfg(pos=(0.0, 0.0, 0.0),rot=(0.93, -0.25, -0.25, 0.0)) #rot=(-0.0457169, 0.0886908, 0.4558891, -0.8844258)
     )
 
     # # Grey Studio
@@ -362,7 +370,7 @@ class RewardsCfg:
 
 
     # -- Model based penalty : Positive weight -> penalty is already negative
-    penalty_leg_frequency        = RewTerm(func=mdp.penalize_large_leg_frequency_L1,  weight=1.0,  params={"action_name": "model_base_variable", "bound": (1.0,2.0)})
+    penalty_leg_frequency        = RewTerm(func=mdp.penalize_large_leg_frequency_L1,  weight=1.0,  params={"action_name": "model_base_variable", "bound": (0.2,2.0)})
     penalty_leg_duty_cycle       = RewTerm(func=mdp.penalize_large_leg_duty_cycle_L1, weight=2.0,  params={"action_name": "model_base_variable", "bound": (0.3,0.7)})
     penalty_large_force          = RewTerm(func=mdp.penalize_large_Forces_L1,         weight=0.1,  params={"action_name": "model_base_variable", "bound": (0.0,160.0)}) # [N]
     penalty_large_step           = RewTerm(func=mdp.penalize_large_steps_L1,          weight=1.0,  params={"action_name": "model_base_variable", "bound_x": (0.20,-0.05), "bound_y": (0.05,-0.05)})

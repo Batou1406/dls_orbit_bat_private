@@ -15,7 +15,7 @@ from omni.isaac.orbit_tasks.utils.wrappers.rsl_rl import (
 class UnitreeAliengoBasePPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
     max_iterations = 15000
-    save_interval = 50
+    save_interval = 250
     experiment_name = "aliengo_model_based_base"
     wandb_project = "model based"
     empirical_normalization = False
@@ -45,7 +45,7 @@ class UnitreeAliengoBasePPORunnerCfg(RslRlOnPolicyRunnerCfg):
 class UnitreeAliengoRoughPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
     max_iterations = 15000
-    save_interval = 50
+    save_interval = 250
     experiment_name = "aliengo_model_based_rough"
     wandb_project = "model based rough"
     empirical_normalization = False
@@ -75,7 +75,7 @@ class UnitreeAliengoRoughPPORunnerCfg(RslRlOnPolicyRunnerCfg):
 class UnitreeAliengoSpeedPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
     max_iterations = 15000
-    save_interval = 50
+    save_interval = 250
     experiment_name = "aliengo_model_based_speed"
     wandb_project = "model based speed"
     empirical_normalization = False
@@ -105,7 +105,7 @@ class UnitreeAliengoSpeedPPORunnerCfg(RslRlOnPolicyRunnerCfg):
 class UnitreeAliengoClimbPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
     max_iterations = 15000
-    save_interval = 50
+    save_interval = 250
     experiment_name = "aliengo_model_based_climb"
     wandb_project = "model based climb"
     empirical_normalization = False
