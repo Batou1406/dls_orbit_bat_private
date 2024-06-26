@@ -1018,18 +1018,22 @@ class SamplingOptimizer():
             best_index          (int):
         """
 
-        print('cost sample shape',cost_samples)
+        print('\ncost sample shape',cost_samples)
 
-        if jnp.isnan(cost_samples).all():print('all NaN')
+        # if jnp.isnan(cost_samples).all():print('all NaN')
 
         # Saturate the cost in case of NaN or inf
         cost_samples = jnp.where(jnp.isnan(cost_samples), 1000000, cost_samples)
         cost_samples = jnp.where(jnp.isinf(cost_samples), 1000000, cost_samples)
 
+        # print('cost sample shape',cost_samples)
+
         # Take the best found control parameters
         best_index = jnp.nanargmin(cost_samples)
         best_cost = cost_samples.take(best_index)
         best_action_seq = action_seq_samples[best_index]
+
+        print('Best cost :',best_cost)
 
         if fake : best_index = jnp.int32(0)
 
@@ -1072,6 +1076,10 @@ class SamplingOptimizer():
 
         # Set the foot height to the nominal foot height # TODO change
         p_lw_samples[:,:,2,:] = p_lw[0,:,2,:]
+        
+        # Deactivate foot sampling since there are no optimiation of foot hold : TODO changes this
+        p_lw_samples[:,:,0,:] = p_lw[0,:,0,:]
+        p_lw_samples[:,:,1,:] = p_lw[0,:,1,:]
 
         # Put the orignal actions as the first samples
         f_samples[0,:] = f[0,:]
