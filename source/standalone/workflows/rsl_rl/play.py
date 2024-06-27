@@ -1,18 +1,15 @@
-# Copyright (c) 2022-2024, The ORBIT Project Developers.
+# Copyright (c) 2022-2024, The Isaac Lab Project Developers.
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
 """Script to play a checkpoint if an RL agent from RSL-RL."""
 
-from __future__ import annotations
-
 """Launch Isaac Sim Simulator first."""
-
 
 import argparse
 
-from omni.isaac.orbit.app import AppLauncher
+from omni.isaac.lab.app import AppLauncher
 
 # local imports
 import cli_args  # isort: skip
@@ -44,12 +41,12 @@ import torch
 
 from rsl_rl.runners import OnPolicyRunner
 
-import omni.isaac.contrib_tasks  # noqa: F401
-import omni.isaac.orbit_tasks  # noqa: F401
-from omni.isaac.orbit_tasks.utils import get_checkpoint_path, parse_env_cfg
-from omni.isaac.orbit_tasks.utils.wrappers.rsl_rl import (
+import omni.isaac.lab_tasks  # noqa: F401
+from omni.isaac.lab_tasks.utils import get_checkpoint_path, parse_env_cfg
+from omni.isaac.lab_tasks.utils.wrappers.rsl_rl import (
     RslRlOnPolicyRunnerCfg,
     RslRlVecEnvWrapper,
+    export_policy_as_jit,
     export_policy_as_onnx,
 )
 
@@ -84,7 +81,10 @@ def main():
 
     # export policy to onnx
     export_model_dir = os.path.join(os.path.dirname(resume_path), "exported")
-    export_policy_as_onnx(ppo_runner.alg.actor_critic, export_model_dir, filename="policy.onnx")
+    export_policy_as_jit(
+        ppo_runner.alg.actor_critic, ppo_runner.obs_normalizer, path=export_model_dir, filename="policy.pt"
+    )
+    export_policy_as_onnx(ppo_runner.alg.actor_critic, path=export_model_dir, filename="policy.onnx")
 
     # reset environment
     obs, _ = env.get_observations()

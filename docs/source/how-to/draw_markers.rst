@@ -1,7 +1,7 @@
 Creating Visualization Markers
 ==============================
 
-.. currentmodule:: omni.isaac.orbit
+.. currentmodule:: omni.isaac.lab
 
 Visualization markers are useful to debug the state of the environment. They can be used to visualize
 the frames, commands, and other information in the simulation.
@@ -10,14 +10,14 @@ While Isaac Sim provides its own :mod:`omni.isaac.debug_draw` extension, it is l
 points, lines and splines. For cases, where you need to render more complex shapes, you can use the
 :class:`markers.VisualizationMarkers` class.
 
-This guide is accompanied by a sample script ``markers.py`` in the ``orbit/source/standalone/demos`` directory.
+This guide is accompanied by a sample script ``markers.py`` in the ``IsaacLab/source/standalone/demos`` directory.
 
 .. dropdown:: Code for markers.py
    :icon: code
 
    .. literalinclude:: ../../../source/standalone/demos/markers.py
       :language: python
-      :emphasize-lines: 49-97, 112-113, 142-148
+      :emphasize-lines: 45-90, 106-107, 136-142
       :linenos:
 
 
@@ -43,7 +43,7 @@ configured from USD files.
 
 .. literalinclude:: ../../../source/standalone/demos/markers.py
    :language: python
-   :lines: 49-97
+   :lines: 45-90
    :dedent:
 
 
@@ -55,7 +55,7 @@ as arguments the pose of the markers and the corresponding marker prototypes to 
 
 .. literalinclude:: ../../../source/standalone/demos/markers.py
    :language: python
-   :lines: 142-148
+   :lines: 136-142
    :dedent:
 
 
@@ -66,7 +66,7 @@ To run the accompanying script, execute the following command:
 
 .. code-block:: bash
 
-  ./orbit.sh -p source/standalone/demos/markers.py
+  ./isaaclab.sh -p source/standalone/demos/markers.py
 
 The simulation should start, and you can observe the different types of markers arranged in a grid pattern.
 The markers will rotating around their respective axes. Additionally every few rotations, they will

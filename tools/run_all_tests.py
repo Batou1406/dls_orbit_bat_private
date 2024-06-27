@@ -1,4 +1,4 @@
-# Copyright (c) 2022-2024, The ORBIT Project Developers.
+# Copyright (c) 2022-2024, The Isaac Lab Project Developers.
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
@@ -7,25 +7,24 @@
 
 .. code-block:: bash
 
-    ./orbit.sh -p tools/run_all_tests.py
+    ./isaaclab.sh -p tools/run_all_tests.py
 
     # for dry run
-    ./orbit.sh -p tools/run_all_tests.py --discover_only
+    ./isaaclab.sh -p tools/run_all_tests.py --discover_only
 
     # for quiet run
-    ./orbit.sh -p tools/run_all_tests.py --quiet
+    ./isaaclab.sh -p tools/run_all_tests.py --quiet
 
     # for increasing timeout (default is 600 seconds)
-    ./orbit.sh -p tools/run_all_tests.py --timeout 1000
+    ./isaaclab.sh -p tools/run_all_tests.py --timeout 1000
 
 """
-
-from __future__ import annotations
 
 import argparse
 import logging
 import os
 import subprocess
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
@@ -34,8 +33,8 @@ from prettytable import PrettyTable
 # Tests to skip
 from tests_to_skip import TESTS_TO_SKIP
 
-ORBIT_PATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-"""Path to the root directory of Orbit repository."""
+ISAACLAB_PATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+"""Path to the root directory of the Isaac Lab repository."""
 
 
 def parse_args() -> argparse.Namespace:
@@ -51,22 +50,22 @@ def parse_args() -> argparse.Namespace:
     )
 
     # configure default test directory (source directory)
-    default_test_dir = os.path.join(ORBIT_PATH, "source")
+    default_test_dir = os.path.join(ISAACLAB_PATH, "source")
 
     parser.add_argument(
         "--test_dir", type=str, default=default_test_dir, help="Path to the directory containing the tests."
     )
 
     # configure default logging path based on time stamp
-    log_file_name = "test_results_" + datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + ".log"
-    default_log_path = os.path.join(ORBIT_PATH, "logs", log_file_name)
+    log_file_name = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + ".log"
+    default_log_path = os.path.join(ISAACLAB_PATH, "logs", "test_results", log_file_name)
 
     parser.add_argument(
         "--log_path", type=str, default=default_log_path, help="Path to the log file to store the results in."
     )
     parser.add_argument("--discover_only", action="store_true", help="Only discover and print tests, don't run them.")
     parser.add_argument("--quiet", action="store_true", help="Don't print to console, only log to file.")
-    parser.add_argument("--timeout", type=int, default=600, help="Timeout for each test in seconds.")
+    parser.add_argument("--timeout", type=int, default=1200, help="Timeout for each test in seconds.")
     # parse arguments
     args = parser.parse_args()
     return args
@@ -76,7 +75,7 @@ def test_all(
     test_dir: str,
     tests_to_skip: list[str],
     log_path: str,
-    timeout: float = 600.0,
+    timeout: float = 1200.0,
     discover_only: bool = False,
     quiet: bool = False,
 ) -> bool:
@@ -137,7 +136,7 @@ def test_all(
 
     # Print tests to be run
     logging.info("\n" + "=" * 60 + "\n")
-    logging.info(f"The following {len(all_test_paths)} tests will be run:")
+    logging.info(f"The following {len(all_test_paths)} tests were found:")
     for i, test_path in enumerate(all_test_paths):
         logging.info(f"{i + 1:02d}: {test_path}")
     logging.info("\n" + "=" * 60 + "\n")
@@ -153,8 +152,6 @@ def test_all(
 
     results = {}
 
-    # Resolve python executable to use
-    orbit_shell_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "orbit.sh")
     # Run each script and store results
     for test_path in test_paths:
         results[test_path] = {}
@@ -163,19 +160,28 @@ def test_all(
         logging.info(f"[INFO] Running '{test_path}'\n")
         try:
             completed_process = subprocess.run(
-                ["bash", orbit_shell_path, "-p", test_path], check=True, capture_output=True, timeout=timeout
+                [sys.executable, test_path], check=True, capture_output=True, timeout=timeout
             )
         except subprocess.TimeoutExpired as e:
             logging.error(f"Timeout occurred: {e}")
             result = "TIMEDOUT"
             stdout = e.stdout
             stderr = e.stderr
+        except subprocess.CalledProcessError as e:
+            # When check=True is passed to subprocess.run() above, CalledProcessError is raised if the process returns a
+            # non-zero exit code. The caveat is returncode is not correctly updated in this case, so we simply
+            # catch the exception and set this test as FAILED
+            result = "FAILED"
+            stdout = e.stdout
+            stderr = e.stderr
         except Exception as e:
-            logging.error(f"Exception {e}!")
+            logging.error(f"Unexpected exception {e}. Please report this issue on the repository.")
             result = "FAILED"
             stdout = e.stdout
             stderr = e.stderr
         else:
+            # Should only get here if the process ran successfully, e.g. no exceptions were raised
+            # but we still check the returncode just in case
             result = "PASSED" if completed_process.returncode == 0 else "FAILED"
             stdout = completed_process.stdout
             stderr = completed_process.stderr

@@ -1,4 +1,4 @@
-# Copyright (c) 2022-2024, The ORBIT Project Developers.
+# Copyright (c) 2022-2024, The Isaac Lab Project Developers.
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
@@ -8,18 +8,16 @@
 .. code-block:: bash
 
     # Usage
-    ./orbit.sh -p source/standalone/tutorials/01_assets/run_articulation.py
+    ./isaaclab.sh -p source/standalone/tutorials/01_assets/run_articulation.py
 
 """
-
-from __future__ import annotations
 
 """Launch Isaac Sim Simulator first."""
 
 
 import argparse
 
-from omni.isaac.orbit.app import AppLauncher
+from omni.isaac.lab.app import AppLauncher
 
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Tutorial on spawning and interacting with an articulation.")
@@ -38,14 +36,14 @@ import torch
 
 import omni.isaac.core.utils.prims as prim_utils
 
-import omni.isaac.orbit.sim as sim_utils
-from omni.isaac.orbit.assets import Articulation
-from omni.isaac.orbit.sim import SimulationContext
+import omni.isaac.lab.sim as sim_utils
+from omni.isaac.lab.assets import Articulation
+from omni.isaac.lab.sim import SimulationContext
 
 ##
 # Pre-defined configs
 ##
-from omni.isaac.orbit_assets import CARTPOLE_CFG  # isort:skip
+from omni.isaac.lab_assets import CARTPOLE_CFG  # isort:skip
 
 
 def design_scene() -> tuple[dict, list[list[float]]]:
