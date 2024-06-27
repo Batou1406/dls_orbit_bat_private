@@ -1,21 +1,18 @@
-# Copyright (c) 2022-2024, The ORBIT Project Developers.
+# Copyright (c) 2022-2024, The Isaac Lab Project Developers.
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Script to collect demonstrations with Orbit environments."""
-
-from __future__ import annotations
+"""Script to collect demonstrations with Isaac Lab environments."""
 
 """Launch Isaac Sim Simulator first."""
 
-
 import argparse
 
-from omni.isaac.orbit.app import AppLauncher
+from omni.isaac.lab.app import AppLauncher
 
 # add argparse arguments
-parser = argparse.ArgumentParser(description="Collect demonstrations for Orbit environments.")
+parser = argparse.ArgumentParser(description="Collect demonstrations for Isaac Lab environments.")
 parser.add_argument("--cpu", action="store_true", default=False, help="Use CPU pipeline.")
 parser.add_argument("--num_envs", type=int, default=1, help="Number of environments to simulate.")
 parser.add_argument("--task", type=str, default=None, help="Name of the task.")
@@ -38,15 +35,14 @@ import gymnasium as gym
 import os
 import torch
 
-from omni.isaac.orbit.devices import Se3Keyboard, Se3SpaceMouse
-from omni.isaac.orbit.managers import TerminationTermCfg as DoneTerm
-from omni.isaac.orbit.utils.io import dump_pickle, dump_yaml
+from omni.isaac.lab.devices import Se3Keyboard, Se3SpaceMouse
+from omni.isaac.lab.managers import TerminationTermCfg as DoneTerm
+from omni.isaac.lab.utils.io import dump_pickle, dump_yaml
 
-import omni.isaac.contrib_tasks  # noqa: F401
-import omni.isaac.orbit_tasks  # noqa: F401
-from omni.isaac.orbit_tasks.manipulation.lift import mdp
-from omni.isaac.orbit_tasks.utils.data_collector import RobomimicDataCollector
-from omni.isaac.orbit_tasks.utils.parse_cfg import parse_env_cfg
+import omni.isaac.lab_tasks  # noqa: F401
+from omni.isaac.lab_tasks.manager_based.manipulation.lift import mdp
+from omni.isaac.lab_tasks.utils.data_collector import RobomimicDataCollector
+from omni.isaac.lab_tasks.utils.parse_cfg import parse_env_cfg
 
 
 def pre_process_actions(delta_pose: torch.Tensor, gripper_command: bool) -> torch.Tensor:
@@ -140,12 +136,14 @@ def main():
                 collector_interface.add(f"obs/{key}", value)
             # -- actions
             collector_interface.add("actions", actions)
+
             # perform action on environment
             obs_dict, rewards, terminated, truncated, info = env.step(actions)
             dones = terminated | truncated
             # check that simulation is stopped or not
             if env.unwrapped.sim.is_stopped():
                 break
+
             # robomimic only cares about policy observations
             # store signals from the environment
             # -- next_obs
@@ -162,6 +160,10 @@ def main():
             # flush data from collector for successful environments
             reset_env_ids = dones.nonzero(as_tuple=False).squeeze(-1)
             collector_interface.flush(reset_env_ids)
+
+            # check if enough data is collected
+            if collector_interface.is_stopped():
+                break
 
     # close the simulator
     collector_interface.close()

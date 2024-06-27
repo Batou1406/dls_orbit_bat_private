@@ -1,6 +1,6 @@
-# Orbit Developers and Contributors
+# Isaac Lab Developers and Contributors
 
-This is the official list of Orbit Project developers and contributors.
+This is the official list of Isaac Lab Project developers and contributors.
 
 To see the full list of contributors, please check the revision history in the source control.
 
@@ -23,7 +23,9 @@ Guidelines for modifications:
 * Farbod Farshidian
 * Hunter Hansen
 * James Smith
-* **Mayank Mittal** (maintainer)
+* James Tigue
+* Kelly Guo
+* Mayank Mittal
 * Nikita Rudin
 * Pascal Roth
 
@@ -39,12 +41,17 @@ Guidelines for modifications:
 * Jia Lin Yuan
 * Jingzhou Liu
 * Kourosh Darvish
+* Lorenz Wellhausen
+* Muhong Guo
+* Nuralem Abizov
+* Özhan Özen
 * Qinxi Yu
 * René Zurbrügg
 * Ritvik Singh
 * Rosario Scalise
 * Shafeef Omar
 * Vladimir Fokow
+* Zhengyu Zhang
 
 ## Acknowledgements
 
