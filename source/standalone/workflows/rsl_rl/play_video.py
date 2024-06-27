@@ -120,10 +120,10 @@ def main():
     video_kwargs = {
         "video_folder": "videos",
         "name_prefix" : args_cli.task,
-        "step_trigger": lambda step: step == 101,
-        "video_length": 400,
+        "step_trigger": lambda step: step == 81,
+        "video_length": 600,
     }
-    # env = gym.wrappers.RecordVideo(env, **video_kwargs)
+    env = gym.wrappers.RecordVideo(env, **video_kwargs)
 
     # wrap around environment for rsl-rl
     env = RslRlVecEnvWrapper(env)
@@ -166,7 +166,7 @@ def main():
             move_camera(env=env.unwrapped, w=w)
             
             update_target += 1
-            if update_target == 100:
+            if update_target == 80:
                 update_target = 0
                 change_camera_target(env=env.unwrapped)
 

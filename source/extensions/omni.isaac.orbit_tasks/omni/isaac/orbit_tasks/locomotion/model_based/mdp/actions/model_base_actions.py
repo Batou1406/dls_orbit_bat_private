@@ -34,6 +34,9 @@ from omni.isaac.orbit.markers import VisualizationMarkers, VisualizationMarkersC
 from omni.isaac.orbit.sim import SimulationContext
 from omni.isaac.orbit.utils.assets import ISAAC_NUCLEUS_DIR, ISAAC_ORBIT_NUCLEUS_DIR
 from omni.isaac.orbit.utils.math import quat_from_angle_axis
+
+import omni.kit.app
+import weakref
 ## <<<Visualization
 
 import matplotlib.pyplot as plt
@@ -49,9 +52,9 @@ plt_i = 0
 # def torch_to_jax(x):
 #     return jax.dlpack.from_dlpack(torch.utils.dlpack.to_dlpack(x))
 
-verbose_mb = False
+verbose_mb = True
 verbose_loop = 40
-vizualise_debug = {'foot': False, 'jacobian': False, 'foot_traj': True, 'lift-off': False, 'touch-down': True, 'GRF': False, 'touch-down polygon': False}
+vizualise_debug = {'foot': False, 'jacobian': False, 'foot_traj': False, 'lift-off': False, 'touch-down': False, 'GRF': False, 'touch-down polygon': False}
 torch.set_printoptions(precision=4, linewidth=200, sci_mode=False)
 if verbose_mb: import omni.isaac.debug_draw._debug_draw as omni_debug_draw
 
@@ -308,6 +311,11 @@ class ModelBaseAction(ActionTerm):
             self.my_visualizer['GRF']= define_markers('arrow_x', {'scale':(0.1,0.1,1.0), 'color': (0.196,0.804,0.196)})#'scale':(0.03,0.03,0.15), 
             self.my_visualizer['touch-down polygon'] = omni_debug_draw.acquire_debug_draw_interface()
 
+        # add handle for debug visualization (this is set to a valid handle inside set_debug_vis)
+        self._debug_vis_handle = None
+        # set initial state of debug visualization
+        self.set_debug_vis(self.cfg.debug_vis)
+
 
     """
     Properties.
@@ -335,7 +343,10 @@ class ModelBaseAction(ActionTerm):
         f_raw, d_raw, p_raw, F_raw = self. inverse_normalization(f=f, d=d, p=p_h, F=F_h)
         return  torch.cat((f_raw.flatten(1,-1), d_raw.flatten(1,-1), p_raw.flatten(1,-1), F_raw.flatten(1,-1)),dim=1)
 
-
+    @property
+    def has_debug_vis_implementation(self) -> bool:
+        """Whether the command generator has a debug visualization implemented."""
+        return True
 
     """
     Operations.
@@ -1168,6 +1179,105 @@ class ModelBaseAction(ActionTerm):
             # line_thicknesses = [2.0] * source_pos.shape[0]
 
             # self.my_visualizer['touch-down polygon'].draw_lines(source_pos.tolist(), target_pos.tolist(), lines_colors, line_thicknesses)
+
+
+    def set_debug_vis(self, debug_vis: bool) -> bool:
+        """Sets whether to visualize the command data.
+
+        Args:
+            debug_vis: Whether to visualize the command data.
+
+        Returns:
+            Whether the debug visualization was successfully set. False if the command
+            generator does not support debug visualization.
+        """
+
+        # toggle debug visualization objects
+        self._set_debug_vis_impl(debug_vis)
+
+        # toggle debug visualization handles
+        if debug_vis:
+            # create a subscriber for the post update event if it doesn't exist
+            if self._debug_vis_handle is None:
+                app_interface = omni.kit.app.get_app_interface()
+                self._debug_vis_handle = app_interface.get_post_update_event_stream().create_subscription_to_pop(
+                    lambda event, obj=weakref.proxy(self): obj._debug_vis_callback(event)
+                )
+        else:
+            # remove the subscriber if it exists
+            if self._debug_vis_handle is not None:
+                self._debug_vis_handle.unsubscribe()
+                self._debug_vis_handle = None
+        # return success
+        return True
+    
+    def _set_debug_vis_impl(self, debug_vis: bool):
+        # set visibility of markers
+        # note: parent only deals with callbacks. not their visibility
+        if debug_vis:
+            # create markers if necessary for the first tome
+            if not hasattr(self, "foot_traj_visualizer"):
+                # -- foot traj
+                self.foot_traj_visualizer = define_markers('sphere', {'radius': 0.01, 'color': (0.0,1.0,0.0)})
+                self.foot_GRF_visualizer = define_markers('arrow_x', {'scale':(0.1,0.1,1.0), 'color': (0.804,0.196,0.196)})#'scale':(0.03,0.03,0.15), 
+
+            # set their visibility to true
+            self.foot_traj_visualizer.set_visibility(True)
+            self.foot_GRF_visualizer.set_visibility(True)
+        else:
+            if hasattr(self, "foot_traj_visualizer"):
+                self.foot_traj_visualizer.set_visibility(False)
+                self.foot_GRF_visualizer.set_visibility(False)
+
+
+    def _debug_vis_callback(self, event):
+        # --- Update foot trajectory
+        full_pt_lw_ = self.full_pt_lw.clone().detach()  # shape (batch_size, num_legs, 9, 22) (9=px,py,pz,vx,vy,vz,ax,ay,az)
+        full_pt_lw_ = full_pt_lw_[:,:,0:3,:] # -> shape (batch_size, num_legs, 3, 22)
+        full_pt_lw_ = full_pt_lw_.permute(0,1,3,2).flatten(1,2) # -> shape (batch_size, num_legs, 22, 3) -> (batch_size, num_legs*22, 3)
+        full_pt_w_ = full_pt_lw_ + self._env.scene.env_origins.unsqueeze(1) 
+        full_pt_w_ = full_pt_w_.flatten(0,1) # -> shape (batch_size*num_legs*22, 3)
+        marker_locations = full_pt_w_
+
+        # Visualize the traj only if it is used (ie. the foot is in swing -> c==0)
+        marker_indices = ((self.c_star[:,:,0].unsqueeze(-1).expand(self.num_envs,self._num_legs,22)).flatten(1,2).flatten(0,1))       
+
+        self.foot_traj_visualizer.visualize(translations=marker_locations, marker_indices=marker_indices)
+
+
+        # --- Update foot force GRF
+        p_w = self._asset.data.body_pos_w[:, self.foot_idx,:]
+        p_lw = p_w - self._env.scene.env_origins.unsqueeze(1).expand(p_w.shape)
+
+        # GRF location are the feet position
+        p3_w = p_lw + self._env.scene.env_origins.unsqueeze(1) # (batch, num_legs, 3)
+        # marker_locations = p3_w[0,...]
+        marker_locations = p3_w.flatten(0,1) # (batch*num_legs, 3)
+
+        # From GRF, retrieve orientation (angle and axis representation)
+        F = self.F_star_lw[:,:,:,0].clone().detach()[0,:] # (batch, num_legs, 3) -> (num_legs, 3)
+        F = self.F_star_lw[:,:,:,0].clone().detach().flatten(0,1) # (batch*num_legs, 3)
+        normalize_F = torch.nn.functional.normalize(F, p=2, dim=1) # Transform GRF to unit vectors # (batch*num_legs, 3)
+        # angle : u dot v = cos(angle) -> angle = acos(u*v) : for unit vector # Need to take the opposite angle in order to make appropriate rotation
+        angle = -torch.acos(torch.tensordot(normalize_F, torch.tensor([1.0,0.0,0.0], device=self.device), dims=1)) # shape(batch*num_legs, 3) -> (batch*num_legs)
+        # Axis : Cross product between u^v (for unit vectors)
+        axis = torch.cross(normalize_F, torch.tensor([1.0,0.0,0.0], device=self.device).unsqueeze(0).expand(normalize_F.shape))
+        marker_orientations = quat_from_angle_axis(angle=angle, axis=axis)
+
+        # Scale GRF
+        scale = torch.linalg.vector_norm(F, dim=1).unsqueeze(-1).expand(F.shape) / 250 # 150
+
+        # The arrow point is define at its center. So to avoid having the arrow in the middle of the feet, we translate it by a factor along its pointing direction
+        translation = scale*torch.tensor([0.25, 0.0, 0.0], device=self.device).unsqueeze(0).expand(marker_locations.shape)
+        translation = math_utils.transform_points(points=translation.unsqueeze(1), pos=marker_locations, quat=marker_orientations).squeeze(1)
+        marker_locations = translation
+
+        # Visualize the force only if it is used (ie. the foot is in contact -> c==1)
+        # marker_indices = ~self.c_star[:,:,0][0,...]
+        marker_indices = ~self.c_star[:,:,0].flatten(0,1)
+
+        self.foot_GRF_visualizer.visualize(translations=marker_locations, orientations=marker_orientations, scales=scale, marker_indices=marker_indices)
+        
 
 
 def define_markers(marker_type, param_dict) -> VisualizationMarkers:

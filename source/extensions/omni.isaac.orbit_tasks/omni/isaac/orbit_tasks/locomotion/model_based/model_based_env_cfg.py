@@ -420,6 +420,7 @@ class CurriculumCfg:
 # Environment configuration
 ##
 
+from omni.isaac.orbit.envs.ui.rl_task_env_window import BatRLTaskEnvWindow
 
 @configclass
 class LocomotionModelBasedEnvCfg(RLTaskEnvCfg):
@@ -442,6 +443,8 @@ class LocomotionModelBasedEnvCfg(RLTaskEnvCfg):
     terminations: TerminationsCfg = TerminationsCfg()
     events: EventCfg = EventCfg()
     curriculum: CurriculumCfg = CurriculumCfg()
+
+    ui_window_class_type: type = BatRLTaskEnvWindow
 
     def __post_init__(self):
         """Post initialization."""
@@ -472,9 +475,11 @@ class LocomotionModelBasedEnvCfg(RLTaskEnvCfg):
         self.viewer.lookat          = (0.0, 0.0, 0.0)
         self.viewer.cam_prim_path   = "/OmniverseKit_Persp"
         # self.viewer.resolution      = (1280, 720)     # 720p
-        self.viewer.resolution      = (1920, 1080)    # 1080p
+        # self.viewer.resolution      = (1920, 1080)    # 1080p
         # self.viewer.resolution      = (2560, 1440)      # 2k
         # self.viewer.resolution      = (3840, 2160)      # 4k
+        # self.viewer.resolution      = (1024, 1024)      # Square
+        self.viewer.resolution      = (2048, 2048)      # 2K Square
         self.viewer.origin_type     = "asset_root"
         self.viewer.env_index       = 0
         self.viewer.asset_name      = "robot"
