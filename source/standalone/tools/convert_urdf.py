@@ -1,4 +1,4 @@
-# Copyright (c) 2022-2024, The ORBIT Project Developers.
+# Copyright (c) 2022-2024, The Isaac Lab Project Developers.
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
@@ -27,14 +27,11 @@ optional arguments:
 
 """
 
-from __future__ import annotations
-
 """Launch Isaac Sim Simulator first."""
-
 
 import argparse
 
-from omni.isaac.orbit.app import AppLauncher
+from omni.isaac.lab.app import AppLauncher
 
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Utility to convert a URDF into USD format.")
@@ -71,9 +68,9 @@ import carb
 import omni.isaac.core.utils.stage as stage_utils
 import omni.kit.app
 
-from omni.isaac.orbit.sim.converters import UrdfConverter, UrdfConverterCfg
-from omni.isaac.orbit.utils.assets import check_file_path
-from omni.isaac.orbit.utils.dict import print_dict
+from omni.isaac.lab.sim.converters import UrdfConverter, UrdfConverterCfg
+from omni.isaac.lab.utils.assets import check_file_path
+from omni.isaac.lab.utils.dict import print_dict
 
 
 def main():
