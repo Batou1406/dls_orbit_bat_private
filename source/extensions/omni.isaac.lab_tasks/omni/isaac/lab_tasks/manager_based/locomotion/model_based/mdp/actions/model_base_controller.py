@@ -6,13 +6,13 @@ from torch.distributions.constraints import real
 import jax.numpy as jnp
 # import numpy as np
 
-import omni.isaac.orbit.utils.math as math_utils
+import omni.isaac.lab.utils.math as math_utils
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     pass
-from omni.isaac.orbit.assets.articulation import Articulation
-from omni.isaac.orbit.envs import RLTaskEnv
+from omni.isaac.lab.assets.articulation import Articulation
+from omni.isaac.lab.envs import ManagerBasedRLEnv
 
 
 import jax
@@ -788,7 +788,7 @@ class SamplingOptimizer():
         self.R = self.R.at[11,11].set(0.001)    #foot_force_z_RR
 
 
-    def optimize_latent_variable(self, env: RLTaskEnv, f:torch.Tensor, d:torch.Tensor, p_lw:torch.Tensor, F_lw:torch.Tensor, phase:torch.Tensor, c_prev:torch.Tensor, height_map) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    def optimize_latent_variable(self, env: ManagerBasedRLEnv, f:torch.Tensor, d:torch.Tensor, p_lw:torch.Tensor, F_lw:torch.Tensor, phase:torch.Tensor, c_prev:torch.Tensor, height_map) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """ Given latent variable f,d,F,p, returns f*,d*,F*,p*, optimized with a sampling optimization 
         
         Args :
@@ -830,7 +830,7 @@ class SamplingOptimizer():
         return f_star, d_star, p_star_lw, F_star_lw
 
 
-    def prepare_variable_for_compute_rollout(self, env: RLTaskEnv, c_samples:torch.Tensor, p_lw_samples:torch.Tensor, F_lw_samples:torch.Tensor, feet_in_contact:torch.Tensor) -> tuple[jnp.array, jnp.array, jnp.array, jnp.array, jnp.array, jnp.array]:
+    def prepare_variable_for_compute_rollout(self, env: ManagerBasedRLEnv, c_samples:torch.Tensor, p_lw_samples:torch.Tensor, F_lw_samples:torch.Tensor, feet_in_contact:torch.Tensor) -> tuple[jnp.array, jnp.array, jnp.array, jnp.array, jnp.array, jnp.array]:
         """ Helper function to modify the embedded state, reference and action to be used with the 'compute_rollout' function
 
         Note :

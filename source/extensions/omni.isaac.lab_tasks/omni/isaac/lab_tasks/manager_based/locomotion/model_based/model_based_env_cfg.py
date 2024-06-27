@@ -1,4 +1,4 @@
-# Copyright (c) 2022-2024, The ORBIT Project Developers.
+# Copyright (c) 2022-2024, The lab Project Developers.
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
@@ -22,28 +22,28 @@ from __future__ import annotations
 import math
 from dataclasses import MISSING
 
-from omni.isaac.orbit.controllers.differential_ik_cfg import DifferentialIKControllerCfg
-import omni.isaac.orbit.sim as sim_utils
-from omni.isaac.orbit.assets import ArticulationCfg, AssetBaseCfg
-from omni.isaac.orbit.envs import RLTaskEnvCfg
-from omni.isaac.orbit.managers import CurriculumTermCfg as CurrTerm
-from omni.isaac.orbit.managers import EventTermCfg as EventTerm
-from omni.isaac.orbit.managers import ObservationGroupCfg as ObsGroup
-from omni.isaac.orbit.managers import ObservationTermCfg as ObsTerm
-from omni.isaac.orbit.managers import RewardTermCfg as RewTerm
-from omni.isaac.orbit.managers import SceneEntityCfg
-from omni.isaac.orbit.managers import TerminationTermCfg as DoneTerm
-from omni.isaac.orbit.scene import InteractiveSceneCfg
-from omni.isaac.orbit.sensors import ContactSensorCfg, RayCasterCfg, patterns
-from omni.isaac.orbit.terrains import TerrainImporterCfg
-from omni.isaac.orbit.utils import configclass
-from omni.isaac.orbit.utils.noise import AdditiveUniformNoiseCfg as Unoise
+from omni.isaac.lab.controllers.differential_ik_cfg import DifferentialIKControllerCfg
+import omni.isaac.lab.sim as sim_utils
+from omni.isaac.lab.assets import ArticulationCfg, AssetBaseCfg
+from omni.isaac.lab.envs import ManagerBasedRLEnv
+from omni.isaac.lab.managers import CurriculumTermCfg as CurrTerm
+from omni.isaac.lab.managers import EventTermCfg as EventTerm
+from omni.isaac.lab.managers import ObservationGroupCfg as ObsGroup
+from omni.isaac.lab.managers import ObservationTermCfg as ObsTerm
+from omni.isaac.lab.managers import RewardTermCfg as RewTerm
+from omni.isaac.lab.managers import SceneEntityCfg
+from omni.isaac.lab.managers import TerminationTermCfg as DoneTerm
+from omni.isaac.lab.scene import InteractiveSceneCfg
+from omni.isaac.lab.sensors import ContactSensorCfg, RayCasterCfg, patterns
+from omni.isaac.lab.terrains import TerrainImporterCfg
+from omni.isaac.lab.utils import configclass
+from omni.isaac.lab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
-import omni.isaac.orbit_tasks.locomotion.model_based.mdp as mdp
+import omni.isaac.lab_tasks.locomotion.model_based.mdp as mdp
 
-from omni.isaac.orbit.terrains.config.rough import ROUGH_TERRAINS_CFG  # isort: skip
+from omni.isaac.lab.terrains.config.rough import ROUGH_TERRAINS_CFG  # isort: skip
 
-from omni.isaac.orbit.utils.assets import LOCAL_NUCLEUS_DIR,ISAAC_NUCLEUS_DIR
+from omni.isaac.lab.utils.assets import LOCAL_NUCLEUS_DIR,ISAAC_NUCLEUS_DIR
 
 ##
 # Scene definition
@@ -420,10 +420,10 @@ class CurriculumCfg:
 # Environment configuration
 ##
 
-from omni.isaac.orbit.envs.ui.rl_task_env_window import BatRLTaskEnvWindow
+from omni.isaac.lab.envs.ui.manager_based_rl_env_window import BatManagerBasedRLEnvWindow
 
 @configclass
-class LocomotionModelBasedEnvCfg(RLTaskEnvCfg):
+class LocomotionModelBasedEnvCfg(ManagerBasedRLEnv):
     """Configuration for the locomotion velocity-tracking environment with model based control.
     - num_envs          : default 4096
     - env_spacing       : default 2.5
@@ -444,7 +444,7 @@ class LocomotionModelBasedEnvCfg(RLTaskEnvCfg):
     events: EventCfg = EventCfg()
     curriculum: CurriculumCfg = CurriculumCfg()
 
-    ui_window_class_type: type = BatRLTaskEnvWindow
+    ui_window_class_type: type = BatManagerBasedRLEnvWindow
 
     def __post_init__(self):
         """Post initialization."""

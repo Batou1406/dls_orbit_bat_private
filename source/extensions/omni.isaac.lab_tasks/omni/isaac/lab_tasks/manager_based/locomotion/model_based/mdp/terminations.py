@@ -1,11 +1,11 @@
-# Copyright (c) 2022-2024, The ORBIT Project Developers.
+# Copyright (c) 2022-2024, The lab Project Developers.
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
 """Common functions that can be used to activate certain terminations.
 
-The functions can be passed to the :class:`omni.isaac.orbit.managers.TerminationTermCfg` object to enable
+The functions can be passed to the :class:`omni.isaac.lab.managers.TerminationTermCfg` object to enable
 the termination introduced by the function.
 """
 
@@ -14,16 +14,16 @@ from __future__ import annotations
 import torch
 from typing import TYPE_CHECKING
 
-from omni.isaac.orbit.assets import Articulation, RigidObject
-from omni.isaac.orbit.managers import SceneEntityCfg
-from omni.isaac.orbit.sensors import ContactSensor
+from omni.isaac.lab.assets import Articulation, RigidObject
+from omni.isaac.lab.managers import SceneEntityCfg
+from omni.isaac.lab.sensors import ContactSensor
 
 if TYPE_CHECKING:
-    from omni.isaac.orbit.envs import RLTaskEnv
-    from omni.isaac.orbit.managers.command_manager import CommandTerm
+    from omni.isaac.lab.envs import ManagerBasedRLEnv
+    from omni.isaac.lab.managers.command_manager import CommandTerm
 
 
-def base_height_bounded(env: RLTaskEnv, height_bound: tuple[float, float], asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+def base_height_bounded(env: ManagerBasedRLEnv, height_bound: tuple[float, float], asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
     """Terminate when the asset's height is outside the provided height bound.
 
     Note:

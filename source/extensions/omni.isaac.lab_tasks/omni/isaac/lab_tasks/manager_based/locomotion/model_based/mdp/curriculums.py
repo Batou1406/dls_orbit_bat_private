@@ -1,10 +1,10 @@
-# Copyright (c) 2022-2024, The ORBIT Project Developers.
+# Copyright (c) 2022-2024, The lab Project Developers.
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
 """Common functions that can be used to create curriculum for the learning environment.
 
-The functions can be passed to the :class:`omni.isaac.orbit.managers.CurriculumTermCfg` object to enable
+The functions can be passed to the :class:`omni.isaac.lab.managers.CurriculumTermCfg` object to enable
 the curriculum introduced by the function.
 Copied from locomotion.mdp module
 """
@@ -15,17 +15,17 @@ import torch
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
-from omni.isaac.orbit.assets import Articulation
-from omni.isaac.orbit.managers import SceneEntityCfg
-from omni.isaac.orbit.terrains import TerrainImporter, TerrainImporterUniformDifficulty
-from omni.isaac.orbit_tasks.locomotion.model_based.mdp import CurriculumUniformVelocityCommand
+from omni.isaac.lab.assets import Articulation
+from omni.isaac.lab.managers import SceneEntityCfg
+from omni.isaac.lab.terrains import TerrainImporter, TerrainImporterUniformDifficulty
+from omni.isaac.lab_tasks.manager_based.locomotion.model_based.mdp import CurriculumUniformVelocityCommand
 
 if TYPE_CHECKING:
-    from omni.isaac.orbit.envs import RLTaskEnv
+    from omni.isaac.lab.envs import ManagerBasedRLEnv
 
 
 def terrain_levels_vel(
-    env: RLTaskEnv, env_ids: Sequence[int], asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+    env: ManagerBasedRLEnv, env_ids: Sequence[int], asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
 ) -> torch.Tensor:
     """Curriculum based on the distance the robot walked when commanded to move at a desired velocity.
 
@@ -34,7 +34,7 @@ def terrain_levels_vel(
 
     .. note::
         It is only possible to use this term with the terrain type ``generator``. For further information
-        on different terrain types, check the :class:`omni.isaac.orbit.terrains.TerrainImporter` class.
+        on different terrain types, check the :class:`omni.isaac.lab.terrains.TerrainImporter` class.
 
     Returns:
         The mean terrain level for the given environment ids.
@@ -57,7 +57,7 @@ def terrain_levels_vel(
 
 
 def improved_terrain_levels_vel(
-    env: RLTaskEnv, env_ids: Sequence[int], asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+    env: ManagerBasedRLEnv, env_ids: Sequence[int], asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
 ) -> torch.Tensor:
     """Curriculum based on the distance the robot walked when commanded to move at a desired velocity.
 
@@ -66,7 +66,7 @@ def improved_terrain_levels_vel(
 
     .. note::
         It is only possible to use this term with the terrain type ``generator``. For further information
-        on different terrain types, check the :class:`omni.isaac.orbit.terrains.TerrainImporter` class.
+        on different terrain types, check the :class:`omni.isaac.lab.terrains.TerrainImporter` class.
 
     Returns:
         The mean terrain level for the given environment ids.
@@ -104,7 +104,7 @@ def improved_terrain_levels_vel(
  
 
 def climb_terrain_curriculum(
-    env: RLTaskEnv, env_ids: Sequence[int], asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+    env: ManagerBasedRLEnv, env_ids: Sequence[int], asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
 ) -> torch.Tensor:
     """Curriculum based on the number of steps cleared by the robot
 
@@ -116,7 +116,7 @@ def climb_terrain_curriculum(
 
     .. note::
         It is only possible to use this term with the terrain type ``generator``. For further information
-        on different terrain types, check the :class:`omni.isaac.orbit.terrains.TerrainImporter` class.
+        on different terrain types, check the :class:`omni.isaac.lab.terrains.TerrainImporter` class.
 
     Returns:
         The mean terrain level for the given environment ids.
@@ -159,7 +159,7 @@ def climb_terrain_curriculum(
     return torch.mean(terrain.terrain_levels.float())
 
 
-def speed_command_levels_walked_distance(env: RLTaskEnv, env_ids: Sequence[int], commandTermName: str, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+def speed_command_levels_walked_distance(env: ManagerBasedRLEnv, env_ids: Sequence[int], commandTermName: str, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
     """ Curriculum based on the distance the robot walken when commanded to move at a desired velocity.
     This curriculum term is called after an episodic reset, before all the other managers (eg. before the command update)
     
@@ -195,7 +195,7 @@ def speed_command_levels_walked_distance(env: RLTaskEnv, env_ids: Sequence[int],
     return new_difficulty
 
 
-def speed_command_levels_tracking_rewards(env: RLTaskEnv, env_ids: Sequence[int], commandTermName: str, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+def speed_command_levels_tracking_rewards(env: ManagerBasedRLEnv, env_ids: Sequence[int], commandTermName: str, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
     """ Curriculum based on the tracking reward achieved by the robot when commanded to move at a desired velocity.
     This curriculum term is called after an episodic reset, before all the other managers (eg. before the command update)
     
@@ -232,7 +232,7 @@ def speed_command_levels_tracking_rewards(env: RLTaskEnv, env_ids: Sequence[int]
     return new_difficulty
 
 
-def speed_command_levels_fast_walked_distance(env: RLTaskEnv, env_ids: Sequence[int], commandTermName: str, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) :
+def speed_command_levels_fast_walked_distance(env: ManagerBasedRLEnv, env_ids: Sequence[int], commandTermName: str, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) :
     """ Curriculum based on the distance the robot walken when commanded to move at a desired velocity.
     This curriculum term is called after an episodic reset, before all the other managers (eg. before the command update)
     

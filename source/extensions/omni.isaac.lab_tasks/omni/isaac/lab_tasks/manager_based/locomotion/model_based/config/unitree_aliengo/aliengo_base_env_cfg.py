@@ -4,18 +4,18 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 import math
-from omni.isaac.orbit.utils import configclass
+from omni.isaac.lab.utils import configclass
 
-from omni.isaac.orbit_tasks.locomotion.model_based.model_based_env_cfg import LocomotionModelBasedEnvCfg
+from omni.isaac.lab_tasks.manager_based.locomotion.model_based.model_based_env_cfg import LocomotionModelBasedEnvCfg
 
 
 ##
 # Pre-defined configs
 ##
-from omni.isaac.orbit_assets.unitree import UNITREE_ALIENGO_CFG, UNITREE_GO2_CFG, UNITREE_ALIENGO_TORQUE_CONTROL_CFG, UNITREE_ALIENGO_SELF_COLLISION_TORQUE_CONTROL_CFG  # isort: skip
-from omni.isaac.orbit_assets.anymal import ANYMAL_C_CFG  # isort: skip
+from omni.isaac.lab_assets.unitree import UNITREE_ALIENGO_CFG, UNITREE_GO2_CFG, UNITREE_ALIENGO_TORQUE_CONTROL_CFG, UNITREE_ALIENGO_SELF_COLLISION_TORQUE_CONTROL_CFG  # isort: skip
+from omni.isaac.lab_assets.anymal import ANYMAL_C_CFG  # isort: skip
 
-from omni.isaac.orbit.terrains.config.niceFlat import COBBLESTONE_ROAD_CFG
+from omni.isaac.lab.terrains.config.niceFlat import COBBLESTONE_ROAD_CFG
 
 @configclass
 class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):

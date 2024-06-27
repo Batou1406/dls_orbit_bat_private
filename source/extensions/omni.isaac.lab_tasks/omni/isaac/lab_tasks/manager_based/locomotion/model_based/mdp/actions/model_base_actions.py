@@ -1,8 +1,8 @@
-# Copyright (c) 2022-2024, The ORBIT Project Developers.
+# Copyright (c) 2022-2024, The lab Project Developers.
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
-# ./orbit.sh -p source/standalone/workflows/rsl_rl/train.py --task Isaac-Model-Based-Base-Aliengo-v0  --num_envs 32
+# ./lab.sh -p source/standalone/workflows/rsl_rl/train.py --task Isaac-Model-Based-Base-Aliengo-v0  --num_envs 32
 
 from __future__ import annotations
 
@@ -12,15 +12,15 @@ from typing import TYPE_CHECKING
 
 import carb
 
-import omni.isaac.orbit.utils.math as math_utils
-import omni.isaac.orbit.utils.string as string_utils
-from omni.isaac.orbit.assets.articulation import Articulation
-from omni.isaac.orbit.managers.action_manager import ActionTerm
+import omni.isaac.lab.utils.math as math_utils
+import omni.isaac.lab.utils.string as string_utils
+from omni.isaac.lab.assets.articulation import Articulation
+from omni.isaac.lab.managers.action_manager import ActionTerm
 
 import torch.distributions.constraints
 
 if TYPE_CHECKING:
-    from omni.isaac.orbit.envs import BaseEnv, RLTaskEnv
+    from omni.isaac.lab.envs import ManagerBasedEnv, ManagerBasedRLEnv
 
 from . import actions_cfg
 
@@ -29,11 +29,11 @@ from . import model_base_controller #import modelBaseController, samplingControl
 import numpy as np
 
 ## >>>Visualization
-import omni.isaac.orbit.sim as sim_utils
-from omni.isaac.orbit.markers import VisualizationMarkers, VisualizationMarkersCfg
-from omni.isaac.orbit.sim import SimulationContext
-from omni.isaac.orbit.utils.assets import ISAAC_NUCLEUS_DIR, ISAAC_ORBIT_NUCLEUS_DIR
-from omni.isaac.orbit.utils.math import quat_from_angle_axis
+import omni.isaac.lab.sim as sim_utils
+from omni.isaac.lab.markers import VisualizationMarkers, VisualizationMarkersCfg
+from omni.isaac.lab.sim import SimulationContext
+from omni.isaac.lab.utils.assets import ISAAC_NUCLEUS_DIR, ISAACLAB_NUCLEUS_DIR
+from omni.isaac.lab.utils.math import quat_from_angle_axis
 
 import omni.kit.app
 import weakref
@@ -155,7 +155,7 @@ class ModelBaseAction(ActionTerm):
     _asset: Articulation
     """The articulation asset on which the action term is applied. Asset is defined in ActionTerm base clase, here just the type is redefined"""
 
-    _env : RLTaskEnv
+    _env : ManagerBasedRLEnv
     """To enable type hinting"""
 
     controller: model_base_controller.modelBaseController
@@ -163,7 +163,7 @@ class ModelBaseAction(ActionTerm):
     """Model base controller that compute u: output torques from z: latent variable""" 
 
 
-    def __init__(self, cfg: actions_cfg.ModelBaseActionCfg, env: BaseEnv) -> None:
+    def __init__(self, cfg: actions_cfg.ModelBaseActionCfg, env: ManagerBasedEnv) -> None:
         # initialize the action term
         super().__init__(cfg, env)
 

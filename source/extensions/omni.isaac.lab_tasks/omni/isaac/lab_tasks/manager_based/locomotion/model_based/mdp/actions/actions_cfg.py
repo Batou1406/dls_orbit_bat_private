@@ -1,4 +1,4 @@
-# Copyright (c) 2022-2024, The ORBIT Project Developers.
+# Copyright (c) 2022-2024, The lab Project Developers.
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
@@ -7,8 +7,8 @@ from __future__ import annotations
 
 from dataclasses import MISSING
 
-from omni.isaac.orbit.managers.action_manager import ActionTerm, ActionTermCfg
-from omni.isaac.orbit.utils import configclass
+from omni.isaac.lab.managers.action_manager import ActionTerm, ActionTermCfg
+from omni.isaac.lab.utils import configclass
 
 import torch
 

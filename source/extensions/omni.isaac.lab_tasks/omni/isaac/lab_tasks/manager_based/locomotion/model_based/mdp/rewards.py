@@ -1,4 +1,4 @@
-# Copyright (c) 2022-2024, The ORBIT Project Developers.
+# Copyright (c) 2022-2024, The LAB Project Developers.
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
@@ -9,16 +9,16 @@ import torch
 import math
 from typing import TYPE_CHECKING
 
-from omni.isaac.orbit.managers import SceneEntityCfg
-from omni.isaac.orbit.sensors import ContactSensor
-from omni.isaac.orbit_tasks.locomotion.model_based.mdp.actions import ModelBaseAction
-from omni.isaac.orbit.assets.articulation import Articulation
+from omni.isaac.lab.managers import SceneEntityCfg
+from omni.isaac.lab.sensors import ContactSensor
+from omni.isaac.lab_tasks.locomotion.model_based.mdp.actions import ModelBaseAction
+from omni.isaac.lab.assets.articulation import Articulation
 
 if TYPE_CHECKING:
-    from omni.isaac.orbit.envs import RLTaskEnv
+    from omni.isaac.lab.envs import ManagerBasedRLEnv
 
 # TODO : This function needs a rework
-def feet_air_time(env: RLTaskEnv, command_name: str, sensor_cfg: SceneEntityCfg, threshold: float) -> torch.Tensor:
+def feet_air_time(env: ManagerBasedRLEnv, command_name: str, sensor_cfg: SceneEntityCfg, threshold: float) -> torch.Tensor:
     """Reward long steps taken by the feet using L2-kernel.
 
     This function rewards the agent for taking steps that are longer than a threshold. This helps ensure
@@ -38,7 +38,7 @@ def feet_air_time(env: RLTaskEnv, command_name: str, sensor_cfg: SceneEntityCfg,
     return reward
 
 
-def penalize_large_leg_frequency_L1(env: RLTaskEnv, action_name: str, bound: tuple[float, float]) -> torch.Tensor:
+def penalize_large_leg_frequency_L1(env: ManagerBasedRLEnv, action_name: str, bound: tuple[float, float]) -> torch.Tensor:
     """ Penalize leg frequency that are outside boundaries, penalty in ]-inf, 0]
     Penalize linearly with frequency violation
 
@@ -55,7 +55,7 @@ def penalize_large_leg_frequency_L1(env: RLTaskEnv, action_name: str, bound: tup
     return penalty
 
 
-def penalize_large_leg_duty_cycle_L1(env: RLTaskEnv, action_name: str, bound: tuple[float, float]) -> torch.Tensor:
+def penalize_large_leg_duty_cycle_L1(env: ManagerBasedRLEnv, action_name: str, bound: tuple[float, float]) -> torch.Tensor:
     """ Penalize leg duty cycle that are outside boundaries, penalty in ]-inf, 0]
     Penalize linearly with duty cycle violation
 
@@ -72,7 +72,7 @@ def penalize_large_leg_duty_cycle_L1(env: RLTaskEnv, action_name: str, bound: tu
     return penalty
 
 
-def penalize_large_steps_L1(env: RLTaskEnv, action_name: str, bound_x: tuple[float, float], bound_y: tuple[float, float]) -> torch.Tensor:
+def penalize_large_steps_L1(env: ManagerBasedRLEnv, action_name: str, bound_x: tuple[float, float], bound_y: tuple[float, float]) -> torch.Tensor:
     """ Penalize steps that are outside boundaries, penalty in ]-inf, 0]
     Penalize linearly with steps size violation
 
@@ -93,7 +93,7 @@ def penalize_large_steps_L1(env: RLTaskEnv, action_name: str, bound_x: tuple[flo
     return penalty
 
 
-def penalize_large_Forces_L1(env: RLTaskEnv, action_name: str, bound: tuple[float, float]) -> torch.Tensor:
+def penalize_large_Forces_L1(env: ManagerBasedRLEnv, action_name: str, bound: tuple[float, float]) -> torch.Tensor:
     """ Penalize Forces that are outside boundaries, penalty in ]-inf, 0]
     Penalize linearly with Forces violation
 
@@ -114,7 +114,7 @@ def penalize_large_Forces_L1(env: RLTaskEnv, action_name: str, bound: tuple[floa
     return penalty
 
 
-def penalize_frequency_variation_L2(env: RLTaskEnv, action_name: str) -> torch.Tensor:
+def penalize_frequency_variation_L2(env: ManagerBasedRLEnv, action_name: str) -> torch.Tensor:
     """ Penalize leg frequency variation quadraticaly with L2 kernel (penalty term in ]-inf, 0])
 
     Returns :
@@ -132,7 +132,7 @@ def penalize_frequency_variation_L2(env: RLTaskEnv, action_name: str) -> torch.T
     return penalty
 
 
-def penalize_duty_cycle_variation_L2(env: RLTaskEnv, action_name: str) -> torch.Tensor:
+def penalize_duty_cycle_variation_L2(env: ManagerBasedRLEnv, action_name: str) -> torch.Tensor:
     """ Penalize leg duty cycle variation quadraticaly with L2 kernel (penalty term in ]-inf, 0])
 
     Returns :
@@ -147,7 +147,7 @@ def penalize_duty_cycle_variation_L2(env: RLTaskEnv, action_name: str) -> torch.
     return penalty
 
 
-def penalize_steps_variation_L2(env: RLTaskEnv, action_name: str) -> torch.Tensor:
+def penalize_steps_variation_L2(env: ManagerBasedRLEnv, action_name: str) -> torch.Tensor:
     """ Penalize steps variation quadraticaly with L2 kernel (penalty term in ]-inf, 0])
 
     Returns :
@@ -162,7 +162,7 @@ def penalize_steps_variation_L2(env: RLTaskEnv, action_name: str) -> torch.Tenso
     return penalty
 
 
-def penalize_Forces_variation_L2(env: RLTaskEnv, action_name: str) -> torch.Tensor:
+def penalize_Forces_variation_L2(env: ManagerBasedRLEnv, action_name: str) -> torch.Tensor:
     """ Penalize Ground Reaction Forces variation quadraticaly with L2 kernel (penalty term in ]-inf, 0])
 
     Returns :
@@ -180,7 +180,7 @@ def penalize_Forces_variation_L2(env: RLTaskEnv, action_name: str) -> torch.Tens
     return penalty
 
 
-def friction_constraint(env: RLTaskEnv, sensor_cfg: SceneEntityCfg, mu: float = 0.8) -> torch.Tensor:
+def friction_constraint(env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg, mu: float = 0.8) -> torch.Tensor:
     """Penalize contact forces out of the friction cone
  
     Args:
@@ -203,7 +203,7 @@ def friction_constraint(env: RLTaskEnv, sensor_cfg: SceneEntityCfg, mu: float = 
     return penalty
 
 
-def penalize_foot_in_contact_displacement_l2(env: RLTaskEnv, actionName: str="model_base_variable", assetName: str="robot") -> torch.Tensor:
+def penalize_foot_in_contact_displacement_l2(env: ManagerBasedRLEnv, actionName: str="model_base_variable", assetName: str="robot") -> torch.Tensor:
     """ Penalize foot spliping by penalizing quadratically the distance the foot moved while in contact
 
     Args : 
@@ -229,7 +229,7 @@ def penalize_foot_in_contact_displacement_l2(env: RLTaskEnv, actionName: str="mo
     return penalty
 
 
-def reward_terrain_progress(env: RLTaskEnv, assetName: str="robot") -> torch.Tensor:
+def reward_terrain_progress(env: ManagerBasedRLEnv, assetName: str="robot") -> torch.Tensor:
     """ Reward for progress made in the terrain
     
     Returns :
@@ -244,7 +244,7 @@ def reward_terrain_progress(env: RLTaskEnv, assetName: str="robot") -> torch.Ten
     return reward
 
 
-def penalize_cost_of_transport(env: RLTaskEnv, assetName: str="robot", alpha: float=0.3) -> torch.Tensor:
+def penalize_cost_of_transport(env: ManagerBasedRLEnv, assetName: str="robot", alpha: float=0.3) -> torch.Tensor:
     """ Penalize for cost of transport : CoT = P/(m*g*v)
     Which is a dimensionless unit that measure the energy efficiency of the displacement
     The energy consumption of the robot is not accessible, and thus is estimated from the motor torque.
@@ -287,7 +287,7 @@ def penalize_cost_of_transport(env: RLTaskEnv, assetName: str="robot", alpha: fl
 
 
 def soft_track_lin_vel_xy_exp(
-    env: RLTaskEnv, std: float, command_name: str, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+    env: ManagerBasedRLEnv, std: float, command_name: str, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
 ) -> torch.Tensor:
     """Reward tracking of linear velocity commands (xy axes) using modified exponential kernel for soft tracking.
     Maximal reward is awarded for a plateau ranging from [v_cmd - epislon*difficulty, v_cmd]
@@ -338,7 +338,7 @@ def soft_track_lin_vel_xy_exp(
     return torch.exp(-error / std**2)
 
 
-def track_proprioceptive_height_exp(env: RLTaskEnv, target_height: float, height_bound: tuple[float,float]|None=None, std: float=math.sqrt(0.25), assetName: str="robot", footName: str=".*foot", method: str="Action", actionName: str="model_base_variable", sensorCfg:SceneEntityCfg|None=None) -> torch.Tensor:
+def track_proprioceptive_height_exp(env: ManagerBasedRLEnv, target_height: float, height_bound: tuple[float,float]|None=None, std: float=math.sqrt(0.25), assetName: str="robot", footName: str=".*foot", method: str="Action", actionName: str="model_base_variable", sensorCfg:SceneEntityCfg|None=None) -> torch.Tensor:
     """Penalize asset height from its target using exponential-kernel. The height is the proprioceptive height, which is the
     height distance between the CoM and the average position (z only) of the feet in contact.
 
@@ -406,7 +406,7 @@ def track_proprioceptive_height_exp(env: RLTaskEnv, target_height: float, height
     return reward
 
 
-def penalize_close_feet(env: RLTaskEnv, assetName: str="robot", threshold: float=0.05, footName: str=".*foot", kernel: str='constant'):
+def penalize_close_feet(env: ManagerBasedRLEnv, assetName: str="robot", threshold: float=0.05, footName: str=".*foot", kernel: str='constant'):
     """Penalize feet that are too close to each other (in the xy plane), with the XX kernel
     
     Args :
