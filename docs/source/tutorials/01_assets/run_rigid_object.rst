@@ -4,23 +4,23 @@
 Interacting with a rigid object
 ===============================
 
-.. currentmodule:: omni.isaac.orbit
+.. currentmodule:: omni.isaac.lab
 
 In the previous tutorials, we learned the essential workings of the standalone script and how to
 spawn different objects (or *prims*) into the simulation. This tutorial shows how to create and interact
-with a rigid object. For this, we will use the :class:`assets.RigidObject` class provided in Orbit.
+with a rigid object. For this, we will use the :class:`assets.RigidObject` class provided in Isaac Lab.
 
 The Code
 ~~~~~~~~
 
-The tutorial corresponds to the ``run_rigid_object.py`` script in the ``orbit/source/standalone/tutorials/01_assets`` directory.
+The tutorial corresponds to the ``run_rigid_object.py`` script in the ``source/standalone/tutorials/01_assets`` directory.
 
 .. dropdown:: Code for run_rigid_object.py
    :icon: code
 
    .. literalinclude:: ../../../../source/standalone/tutorials/01_assets/run_rigid_object.py
       :language: python
-      :emphasize-lines: 57-76, 78-80, 100-110, 113-114, 120-121, 134-136, 141-142
+      :emphasize-lines: 55-74, 76-78, 98-108, 111-112, 118-119, 132-134, 139-140
       :linenos:
 
 
@@ -135,7 +135,7 @@ Now that we have gone through the code, let's run the script and see the result:
 
 .. code-block:: bash
 
-   ./orbit.sh -p source/standalone/tutorials/01_assets/run_rigid_object.py
+   ./isaaclab.sh -p source/standalone/tutorials/01_assets/run_rigid_object.py
 
 
 This should open a stage with a ground plane, lights, and several green cones. The cones must be dropping from

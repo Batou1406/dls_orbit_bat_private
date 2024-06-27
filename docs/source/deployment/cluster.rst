@@ -5,14 +5,14 @@ Cluster Guide
 =============
 
 Clusters are a great way to speed up training and evaluation of learning algorithms.
-While the Orbit Docker image can be used to run jobs on a cluster, many clusters only
+While the Isaac Lab Docker image can be used to run jobs on a cluster, many clusters only
 support singularity images. This is because `singularity`_ is designed for
 ease-of-use on shared multi-user systems and high performance computing (HPC) environments.
 It does not require root privileges to run containers and can be used to run user-defined
 containers.
 
 Singularity is compatible with all Docker images. In this section, we describe how to
-convert the Orbit Docker image into a singularity image and use it to submit jobs to a cluster.
+convert the Isaac Lab Docker image into a singularity image and use it to submit jobs to a cluster.
 
 .. attention::
 
@@ -57,7 +57,7 @@ the user cluster password from being requested multiple times.
 Configuring the cluster parameters
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-First, you need to configure the cluster-specific parameters in ``docker/.env`` file.
+First, you need to configure the cluster-specific parameters in ``docker/.env.base`` file.
 The following describes the parameters that need to be configured:
 
 - ``CLUSTER_ISAAC_SIM_CACHE_DIR``:
@@ -65,9 +65,9 @@ The following describes the parameters that need to be configured:
   has to end on ``docker-isaac-sim``. This directory will be copied to the compute node
   and mounted into the singularity container. It should increase the speed of starting
   the simulation.
-- ``CLUSTER_ORBIT_DIR``:
-  The directory on the cluster where the orbit code is stored. This directory has to
-  end on ``orbit``. This directory will be copied to the compute node and mounted into
+- ``CLUSTER_ISAACLAB_DIR``:
+  The directory on the cluster where the Isaac Lab code is stored. This directory has to
+  end on ``isaaclab``. This directory will be copied to the compute node and mounted into
   the singularity container. When a job is submitted, the latest local changes will
   be copied to the cluster.
 - ``CLUSTER_LOGIN``:
@@ -77,7 +77,7 @@ The following describes the parameters that need to be configured:
   The path on the cluster where the singularity image will be stored. The image will be
   copied to the compute node but not uploaded again to the cluster when a job is submitted.
 - ``CLUSTER_PYTHON_EXECUTABLE``:
-  The path within orbit to the Python executable that should be executed in the submitted job.
+  The path within Isaac Lab to the Python executable that should be executed in the submitted job.
 
 Exporting to singularity image
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -91,11 +91,18 @@ To export to a singularity image, execute the following command:
 
 .. code:: bash
 
-    ./docker/container.sh push
+    ./docker/container.sh push [profile]
 
 This command will create a singularity image under ``docker/exports`` directory and
 upload it to the defined location on the cluster. Be aware that creating the singularity
 image can take a while.
+``[profile]`` is an optional argument that specifies the container profile to be used. If no profile is
+specified, the default profile ``base`` will be used.
+
+.. note::
+  By default, the singularity image is created without root access by providing the ``--fakeroot`` flag to
+  the ``apptainer build`` command. In case the image creation fails, you can try to create it with root
+  access by removing the flag in ``docker/container.sh``.
 
 
 Job Submission and Execution
@@ -136,32 +143,37 @@ To submit a job on the cluster, the following command can be used:
 
 .. code:: bash
 
-    ./docker/container.sh job "argument1" "argument2" ...
+    ./docker/container.sh job [profile] "argument1" "argument2" ...
 
 This command will copy the latest changes in your code to the cluster and submit a job. Please ensure that
-your Python executable's output is stored under ``orbit/logs`` as this directory will be copied again
-from the compute node to ``CLUSTER_ORBIT_DIR``.
+your Python executable's output is stored under ``isaaclab/logs`` as this directory will be copied again
+from the compute node to ``CLUSTER_ISAACLAB_DIR``.
 
-The training arguments anove are passed to the Python executable. As an example, the standard
+``[profile]`` is an optional argument that specifies which singularity image corresponding to the  container profile
+will be used. If no profile is specified, the default profile ``base`` will be used. The profile has be defined
+directlty after the ``job`` command. All other arguments are passed to the Python executable. If no profile is
+defined, all arguments are passed to the Python executable.
+
+The training arguments are passed to the Python executable. As an example, the standard
 ANYmal rough terrain locomotion training can be executed with the following command:
 
 .. code:: bash
 
-    ./docker/container.sh job --task Isaac-Velocity-Rough-Anymal-C-v0 --headless --video --offscreen_render
+    ./docker/container.sh job --task Isaac-Velocity-Rough-Anymal-C-v0 --headless --video --enable_cameras
 
-The above will, in addition, also render videos of the training progress and store them under ``orbit/logs`` directory.
+The above will, in addition, also render videos of the training progress and store them under ``isaaclab/logs`` directory.
 
 .. note::
 
     The ``./docker/container.sh job`` command will copy the latest changes in your code to the cluster. However,
     it will not delete any files that have been deleted locally. These files will still exist on the cluster
-    which can lead to issues. In this case, we recommend removing the ``CLUSTER_ORBIT_DIR`` directory on
+    which can lead to issues. In this case, we recommend removing the ``CLUSTER_ISAACLAB_DIR`` directory on
     the cluster and re-run the command.
 
 
 .. _Singularity: https://docs.sylabs.io/guides/2.6/user-guide/index.html
 .. _ETH Zurich Euler: https://scicomp.ethz.ch/wiki/Euler
 .. _apptainer: https://apptainer.org/
-.. _documentation: www.apptainer.org/docs/admin/main/installation.html#install-ubuntu-packages
-.. _SLURM documentation: www.slurm.schedmd.com/sbatch.html
+.. _documentation: https://www.apptainer.org/docs/admin/main/installation.html#install-ubuntu-packages
+.. _SLURM documentation: https://www.slurm.schedmd.com/sbatch.html
 .. _forum post: https://forums.docker.com/t/trouble-after-upgrade-to-docker-ce-25-0-1-on-debian-12/139613
