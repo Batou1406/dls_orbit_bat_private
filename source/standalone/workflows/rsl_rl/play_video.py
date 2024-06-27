@@ -41,6 +41,7 @@ simulation_app = app_launcher.app
 import gymnasium as gym
 import os
 import torch
+import random
 
 from rsl_rl.runners import OnPolicyRunner
 
@@ -71,6 +72,39 @@ def move_camera(env: RLTaskEnv, w: float):
 
     env.viewport_camera_controller.default_cam_eye = (pos_x, pos_y, pos_z)
 
+def change_camera_target(env: RLTaskEnv):
+    """ Change default cam target and keep the angle between the robot and the camera constant with the update"""
+
+    # Retrieve the robot index
+    robot_index = env.viewport_camera_controller.cfg.env_index
+
+    # Retrieve the angle made by the camera and the origin [rad]
+    (pos_x, pos_y, pos_z) = env.viewport_camera_controller.default_cam_eye 
+    hypothenuse = (pos_x**2 + pos_y**2)**0.5
+    alpha_camera = math.atan2(pos_y, pos_x)
+    
+    # Retrieve the angle made by the robot and the origin [rad]
+    alpha_robot = env.scene["robot"].data.heading_w[robot_index]
+
+    # Compute the relative angle
+    alpha_relative = (alpha_camera - alpha_robot) % (2*math.pi)
+
+    # sample new robot index
+    new_robot_index = random.randint(0, env.num_envs-1)
+
+    # Retrieve the new robot orientation with the origin [rad]
+    alpha_new_robot = env.scene["robot"].data.heading_w[new_robot_index]
+
+    # Compute the new angle required by the camera (relative angle + angle new robot with origin) [rad]
+    alpha = (alpha_relative + alpha_new_robot) % (2*math.pi)
+
+    # update the camera with the new angle 
+    pos_x = hypothenuse*math.cos(alpha)
+    pos_y = hypothenuse*math.sin(alpha)
+    env.viewport_camera_controller.default_cam_eye = (pos_x, pos_y, pos_z)
+    
+    # Update the target index of the camera
+    env.viewport_camera_controller.cfg.env_index = new_robot_index
 
 def main():
     """Play with RSL-RL agent."""
@@ -86,10 +120,10 @@ def main():
     video_kwargs = {
         "video_folder": "videos",
         "name_prefix" : args_cli.task,
-        "step_trigger": lambda step: step == 100,
+        "step_trigger": lambda step: step == 101,
         "video_length": 400,
     }
-    env = gym.wrappers.RecordVideo(env, **video_kwargs)
+    # env = gym.wrappers.RecordVideo(env, **video_kwargs)
 
     # wrap around environment for rsl-rl
     env = RslRlVecEnvWrapper(env)
@@ -113,6 +147,10 @@ def main():
     export_model_dir = os.path.join(os.path.dirname(resume_path), "exported")
     export_policy_as_onnx(ppo_runner.alg.actor_critic, export_model_dir, filename="policy.onnx")
 
+    # variable for moving target
+    update_target = 0
+    w = 0.5 # 1.0 # angular speed in [rad/s]
+
     # reset environment
     obs, _ = env.get_observations()
     # simulate environment
@@ -124,10 +162,14 @@ def main():
             # env stepping
             obs, _, _, _ = env.step(actions)
 
-            # camera angular speed in radian per second
-            w = 1
+            # Update the camera tracking, camera angular speed in radian per second
+            move_camera(env=env.unwrapped, w=w)
+            
+            update_target += 1
+            if update_target == 100:
+                update_target = 0
+                change_camera_target(env=env.unwrapped)
 
-            move_camera(env.unwrapped, w)
 
     # close the simulator
     env.close()

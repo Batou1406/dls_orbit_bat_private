@@ -360,6 +360,10 @@ class ModelBaseAction(ActionTerm):
         self.p_norm_prev = self.p_norm
         self.F_norm_prev = self.F_norm
 
+        # store the raw actions
+        self._raw_actions[:] = actions
+
+        # Filter the invalid values
         if torch.isinf(self._raw_actions).any():
             print('Problem with Infinite value in raw actions')
             self._raw_actions[torch.nonzero(torch.isinf(self._raw_actions))] = 0
@@ -368,8 +372,6 @@ class ModelBaseAction(ActionTerm):
             print('Problem with NaN value in raw actions')
             self._raw_actions[torch.nonzero(~torch.distributions.constraints.real.check(self._raw_actions))] = 0
 
-        # store the raw actions
-        self._raw_actions[:] = actions
 
         # reconstruct the latent variable from the RL poliy actions
         self.f_raw = (self._raw_actions[:, 0                                    : self.f_len                                       ]).reshape_as(self.f_raw)
