@@ -360,12 +360,16 @@ class ModelBaseAction(ActionTerm):
         self.p_norm_prev = self.p_norm
         self.F_norm_prev = self.F_norm
 
-        # store the raw actions
-        self._raw_actions[:] = actions
-
         if torch.isinf(self._raw_actions).any():
             print('Problem with Infinite value in raw actions')
             self._raw_actions[torch.nonzero(torch.isinf(self._raw_actions))] = 0
+
+        if not torch.distributions.constraints.real.check(self._raw_actions).any():
+            print('Problem with NaN value in raw actions')
+            self._raw_actions[torch.nonzero(~torch.distributions.constraints.real.check(self._raw_actions))] = 0
+
+        # store the raw actions
+        self._raw_actions[:] = actions
 
         # reconstruct the latent variable from the RL poliy actions
         self.f_raw = (self._raw_actions[:, 0                                    : self.f_len                                       ]).reshape_as(self.f_raw)
@@ -944,6 +948,7 @@ class ModelBaseAction(ActionTerm):
         p = torch.zeros_like(self.p_lw)
 
         return f, d, p
+
 
     def debug_apply_action(self, p_lw, p_dot_lw, q_dot, jacobian_lw, jacobian_dot_lw, mass_matrix, h, F0_star_lw, c0_star, pt_i_star_lw):
         global verbose_loop
