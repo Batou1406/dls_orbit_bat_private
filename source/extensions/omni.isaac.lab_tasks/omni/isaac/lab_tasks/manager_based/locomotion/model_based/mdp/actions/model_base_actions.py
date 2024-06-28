@@ -56,7 +56,8 @@ verbose_mb = False
 verbose_loop = 40
 vizualise_debug = {'foot': False, 'jacobian': False, 'foot_traj': False, 'lift-off': False, 'touch-down': False, 'GRF': False, 'touch-down polygon': False}
 torch.set_printoptions(precision=4, linewidth=200, sci_mode=False)
-if verbose_mb: import omni.isaac.debug_draw._debug_draw as omni_debug_draw
+# if verbose_mb: import omni.isaac.debug_draw._debug_draw as omni_debug_draw
+import omni.isaac.debug_draw._debug_draw as omni_debug_draw
 
 class ModelBaseAction(ActionTerm):
     """Base class for model base actions.
@@ -1212,6 +1213,7 @@ class ModelBaseAction(ActionTerm):
         return True
     
     def _set_debug_vis_impl(self, debug_vis: bool):
+        global verbose_mb
         # set visibility of markers
         # note: parent only deals with callbacks. not their visibility
         if debug_vis:
@@ -1224,10 +1226,18 @@ class ModelBaseAction(ActionTerm):
             # set their visibility to true
             self.foot_traj_visualizer.set_visibility(True)
             self.foot_GRF_visualizer.set_visibility(True)
+
+            verbose_mb = True
+            try:self.controller.verbose_md=True
+            except:pass
         else:
             if hasattr(self, "foot_traj_visualizer"):
                 self.foot_traj_visualizer.set_visibility(False)
                 self.foot_GRF_visualizer.set_visibility(False)
+
+            verbose_mb = False
+            try:self.controller.verbose_md=False
+            except:pass
 
 
     def _debug_vis_callback(self, event):
