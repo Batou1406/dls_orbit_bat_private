@@ -56,8 +56,8 @@ verbose_mb = False
 verbose_loop = 40
 vizualise_debug = {'foot': False, 'jacobian': False, 'foot_traj': False, 'lift-off': False, 'touch-down': False, 'GRF': False, 'touch-down polygon': False}
 torch.set_printoptions(precision=4, linewidth=200, sci_mode=False)
-# if verbose_mb: import omni.isaac.debug_draw._debug_draw as omni_debug_draw
-import omni.isaac.debug_draw._debug_draw as omni_debug_draw
+if verbose_mb: import omni.isaac.debug_draw._debug_draw as omni_debug_draw
+# import omni.isaac.debug_draw._debug_draw as omni_debug_draw
 
 class ModelBaseAction(ActionTerm):
     """Base class for model base actions.
