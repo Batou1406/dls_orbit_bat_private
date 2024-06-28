@@ -6,7 +6,7 @@
 import math
 from omni.isaac.lab.utils import configclass
 
-from omni.isaac.lab_tasks.locomotion.model_based.model_based_env_cfg import LocomotionModelBasedEnvCfg
+from omni.isaac.lab_tasks.manager_based.locomotion.model_based.model_based_env_cfg import LocomotionModelBasedEnvCfg
 
 ##
 # Pre-defined configs
@@ -104,7 +104,7 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
 
         # --- startup
         if Event['Base Mass'] : 
-            self.events.add_base_mass.params["mass_range"] = (-1.5, 1.5) #(0.0, 0.0)                                     # Default was 0
+            self.events.add_base_mass.params["mass_distribution_params"] = (-1.5, 1.5) #(0.0, 0.0)                                     # Default was 0
 
         # --- Reset
         if Event['External Force'] :

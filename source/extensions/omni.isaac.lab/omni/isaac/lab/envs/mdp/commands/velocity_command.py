@@ -315,7 +315,7 @@ class CurriculumUniformVelocityCommand(CommandTerm):
     cfg: CurriculumUniformVelocityCommandCfg
     """The configuration of the command generator."""
 
-    def __init__(self, cfg: CurriculumUniformVelocityCommandCfg, env: RLTaskEnv):
+    def __init__(self, cfg: CurriculumUniformVelocityCommandCfg, env: ManagerBasedRLEnv):
         """Initialize the command generator.
 
         Args:
@@ -514,7 +514,7 @@ class CurriculumNormalVelocityCommand(CurriculumUniformVelocityCommand):
     cfg: CurriculumNormalVelocityCommandCfg
     """The configuration of the command generator."""
 
-    def __init__(self, cfg: CurriculumUniformVelocityCommandCfg, env: RLTaskEnv):
+    def __init__(self, cfg: CurriculumUniformVelocityCommandCfg, env: ManagerBasedRLEnv):
         super().__init__(cfg, env)
 
 

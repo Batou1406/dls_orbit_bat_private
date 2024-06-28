@@ -25,7 +25,7 @@ from dataclasses import MISSING
 from omni.isaac.lab.controllers.differential_ik_cfg import DifferentialIKControllerCfg
 import omni.isaac.lab.sim as sim_utils
 from omni.isaac.lab.assets import ArticulationCfg, AssetBaseCfg
-from omni.isaac.lab.envs import ManagerBasedRLEnv
+from omni.isaac.lab.envs import ManagerBasedRLEnvCfg
 from omni.isaac.lab.managers import CurriculumTermCfg as CurrTerm
 from omni.isaac.lab.managers import EventTermCfg as EventTerm
 from omni.isaac.lab.managers import ObservationGroupCfg as ObsGroup
@@ -39,7 +39,7 @@ from omni.isaac.lab.terrains import TerrainImporterCfg
 from omni.isaac.lab.utils import configclass
 from omni.isaac.lab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
-import omni.isaac.lab_tasks.locomotion.model_based.mdp as mdp
+import omni.isaac.lab_tasks.manager_based.locomotion.model_based.mdp as mdp
 
 from omni.isaac.lab.terrains.config.rough import ROUGH_TERRAINS_CFG  # isort: skip
 
@@ -89,44 +89,44 @@ class MySceneCfg(InteractiveSceneCfg):
     contact_forces = ContactSensorCfg(prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=3, track_air_time=False)
 
     # lights
-    # light = AssetBaseCfg(
-    #     prim_path="/World/light",
-    #     spawn=sim_utils.DistantLightCfg(color=(0.75, 0.75, 0.75), intensity=3000.0),
-    # )
-    # sky_light = AssetBaseCfg(
-    #     prim_path="/World/skyLight",
-    #     spawn=sim_utils.DomeLightCfg(color=(0.13, 0.13, 0.13), intensity=1000.0),
-    # )
+    light = AssetBaseCfg(
+        prim_path="/World/light",
+        spawn=sim_utils.DistantLightCfg(color=(0.75, 0.75, 0.75), intensity=3000.0),
+    )
+    sky_light = AssetBaseCfg(
+        prim_path="/World/skyLight",
+        spawn=sim_utils.DomeLightCfg(color=(0.13, 0.13, 0.13), intensity=1000.0),
+    )
 
     # Spot Light
-    sky_light = AssetBaseCfg(
-        prim_path="/World/spotLight",
-        spawn=sim_utils.DomeLightCfg(
-            intensity=750.0,
-            # color=(0.81081, 0.44141, 0.44141),
-            color=(0.99, 0.8, 0.8),
-            # texture_file=f"{LOCAL_NUCLEUS_DIR}/NVIDIA/Assets/Skies/Clear/evening_road_01_4k.hdr",
-            texture_file=f"{LOCAL_NUCLEUS_DIR}/Library/skies/kloofendal_43d_clear_puresky_4k.hdr",
-            # texture_file=f"{LOCAL_NUCLEUS_DIR}/NVIDIA/Assets/Skies/Clear/evening_road_01_4k.hdr",
-        ),
-    )
+    # sky_light = AssetBaseCfg(
+    #     prim_path="/World/spotLight",
+    #     spawn=sim_utils.DomeLightCfg(
+    #         intensity=750.0,
+    #         # color=(0.81081, 0.44141, 0.44141),
+    #         color=(0.99, 0.8, 0.8),
+    #         # texture_file=f"{LOCAL_NUCLEUS_DIR}/NVIDIA/Assets/Skies/Clear/evening_road_01_4k.hdr",
+    #         texture_file=f"{LOCAL_NUCLEUS_DIR}/Library/skies/kloofendal_43d_clear_puresky_4k.hdr",
+    #         # texture_file=f"{LOCAL_NUCLEUS_DIR}/NVIDIA/Assets/Skies/Clear/evening_road_01_4k.hdr",
+    #     ),
+    # )
 
     # colored light
-    colored_distant_light = AssetBaseCfg(
-        prim_path="/World/coloredLight/distantLight",
-        spawn=sim_utils.DistantLightCfg(color=(0.33692, 0.76232, 0.89961), intensity=3000.0, color_temperature=6500, exposure=0.2, angle=5.0),
-        init_state=AssetBaseCfg.InitialStateCfg(pos=(0.0, 0.0, 0.0),rot=(0.97, 0.26, 0, 0)), #rot=(-0.4581756, 0.8888617, 0, 0)
-    )
-    colored_distant_light1 = AssetBaseCfg(
-        prim_path="/World/coloredLight/distantLight1",
-        spawn=sim_utils.DistantLightCfg(color=(0.81081, 0.44141, 0.44141), intensity=3000.0, color_temperature=6500, exposure=0.0, angle=10.0),
-        init_state=AssetBaseCfg.InitialStateCfg(pos=(0.0, 0.0, 0.0),rot=(0.97, 0.00, 0.26, 0.0)) #rot=(-0.1044025, -0.0466693, -0.9069498, -0.4054185)
-    )
-    colored_distant_light2 = AssetBaseCfg(
-        prim_path="/World/coloredLight/distantLight2",
-        spawn=sim_utils.DistantLightCfg(color=(0.89189, 0.55451, 0.28926), intensity=3000.0, color_temperature=6500, exposure=0.0, angle=10.0),
-        init_state=AssetBaseCfg.InitialStateCfg(pos=(0.0, 0.0, 0.0),rot=(0.93, -0.25, -0.25, 0.0)) #rot=(-0.0457169, 0.0886908, 0.4558891, -0.8844258)
-    )
+    # colored_distant_light = AssetBaseCfg(
+    #     prim_path="/World/coloredLight/distantLight",
+    #     spawn=sim_utils.DistantLightCfg(color=(0.33692, 0.76232, 0.89961), intensity=3000.0, color_temperature=6500, exposure=0.2, angle=5.0),
+    #     init_state=AssetBaseCfg.InitialStateCfg(pos=(0.0, 0.0, 0.0),rot=(0.97, 0.26, 0, 0)), #rot=(-0.4581756, 0.8888617, 0, 0)
+    # )
+    # colored_distant_light1 = AssetBaseCfg(
+    #     prim_path="/World/coloredLight/distantLight1",
+    #     spawn=sim_utils.DistantLightCfg(color=(0.81081, 0.44141, 0.44141), intensity=3000.0, color_temperature=6500, exposure=0.0, angle=10.0),
+    #     init_state=AssetBaseCfg.InitialStateCfg(pos=(0.0, 0.0, 0.0),rot=(0.97, 0.00, 0.26, 0.0)) #rot=(-0.1044025, -0.0466693, -0.9069498, -0.4054185)
+    # )
+    # colored_distant_light2 = AssetBaseCfg(
+    #     prim_path="/World/coloredLight/distantLight2",
+    #     spawn=sim_utils.DistantLightCfg(color=(0.89189, 0.55451, 0.28926), intensity=3000.0, color_temperature=6500, exposure=0.0, angle=10.0),
+    #     init_state=AssetBaseCfg.InitialStateCfg(pos=(0.0, 0.0, 0.0),rot=(0.93, -0.25, -0.25, 0.0)) #rot=(-0.0457169, 0.0886908, 0.4558891, -0.8844258)
+    # )
 
     # # Grey Studio
     # grey_distant_light = AssetBaseCfg(
@@ -277,7 +277,7 @@ class EventCfg:
     add_base_mass = EventTerm(
         func=mdp.add_body_mass,
         mode="startup",
-        params={"asset_cfg": SceneEntityCfg("robot", body_names="base"), "mass_range": (-0.0, 0.0)},
+        params={"asset_cfg": SceneEntityCfg("robot", body_names="base"), "mass_distribution_params": (-0.0, 0.0)},
     )
 
     # ---- reset ----
@@ -423,7 +423,7 @@ class CurriculumCfg:
 from omni.isaac.lab.envs.ui.manager_based_rl_env_window import BatManagerBasedRLEnvWindow
 
 @configclass
-class LocomotionModelBasedEnvCfg(ManagerBasedRLEnv):
+class LocomotionModelBasedEnvCfg(ManagerBasedRLEnvCfg):
     """Configuration for the locomotion velocity-tracking environment with model based control.
     - num_envs          : default 4096
     - env_spacing       : default 2.5
@@ -474,12 +474,12 @@ class LocomotionModelBasedEnvCfg(ManagerBasedRLEnv):
         self.viewer.eye             = (1.5, 1.5, 0.9)
         self.viewer.lookat          = (0.0, 0.0, 0.0)
         self.viewer.cam_prim_path   = "/OmniverseKit_Persp"
-        # self.viewer.resolution      = (1280, 720)     # 720p
+        self.viewer.resolution      = (1280, 720)     # 720p
         # self.viewer.resolution      = (1920, 1080)    # 1080p
         # self.viewer.resolution      = (2560, 1440)      # 2k
         # self.viewer.resolution      = (3840, 2160)      # 4k
         # self.viewer.resolution      = (1024, 1024)      # Square
-        self.viewer.resolution      = (2048, 2048)      # 2K Square
+        # self.viewer.resolution      = (2048, 2048)      # 2K Square
         self.viewer.origin_type     = "asset_root"
         self.viewer.env_index       = 0
         self.viewer.asset_name      = "robot"

@@ -1,4 +1,4 @@
-# Copyright (c) 2022-2024, The ORBIT Project Developers.
+# Copyright (c) 2022-2024, The lab Project Developers.
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import argparse
 
-from omni.isaac.orbit.app import AppLauncher
+from omni.isaac.lab.app import AppLauncher
 
 # local imports
 import cli_args  # isort: skip
@@ -45,18 +45,18 @@ import random
 
 from rsl_rl.runners import OnPolicyRunner
 
-import omni.isaac.contrib_tasks  # noqa: F401
-import omni.isaac.orbit_tasks  # noqa: F401
-from omni.isaac.orbit_tasks.utils import get_checkpoint_path, parse_env_cfg
-from omni.isaac.orbit_tasks.utils.wrappers.rsl_rl import (
+# import omni.isaac.contrib_tasks  # noqa: F401
+import omni.isaac.lab_tasks  # noqa: F401
+from omni.isaac.lab_tasks.utils import get_checkpoint_path, parse_env_cfg
+from omni.isaac.lab_tasks.utils.wrappers.rsl_rl import (
     RslRlOnPolicyRunnerCfg,
     RslRlVecEnvWrapper,
     export_policy_as_onnx,
 )
 
-from omni.isaac.orbit.envs import RLTaskEnv
+from omni.isaac.lab.envs import ManagerBasedRLEnv
 import math
-def move_camera(env: RLTaskEnv, w: float):
+def move_camera(env: ManagerBasedRLEnv, w: float):
     """ Update default cam eye to rotate arround the target"""
 
     (pos_x, pos_y, pos_z) = env.viewport_camera_controller.default_cam_eye 
@@ -72,7 +72,7 @@ def move_camera(env: RLTaskEnv, w: float):
 
     env.viewport_camera_controller.default_cam_eye = (pos_x, pos_y, pos_z)
 
-def change_camera_target(env: RLTaskEnv):
+def change_camera_target(env: ManagerBasedRLEnv):
     """ Change default cam target and keep the angle between the robot and the camera constant with the update"""
 
     # Retrieve the robot index

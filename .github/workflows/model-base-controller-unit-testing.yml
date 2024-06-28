@@ -39,4 +39,4 @@ jobs:
 #        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
     - name: Test Model Base Controller with unit testing
       run: |
-        python ./source/extensions/omni.isaac.orbit_tasks/omni/isaac/orbit_tasks/locomotion/model_based/mdp/actions/test.py
+        python ./source/extensions/omni.isaac.lab_tasks/omni/isaac/lab_tasks/manager_based/locomotion/model_based/mdp/actions/test.py

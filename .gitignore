@@ -63,3 +63,5 @@ _build
 
 dataset/*
 model/*
+
+**/quadrupedpympc/*

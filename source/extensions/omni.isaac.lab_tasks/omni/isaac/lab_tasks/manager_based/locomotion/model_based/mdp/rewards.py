@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 
 from omni.isaac.lab.managers import SceneEntityCfg
 from omni.isaac.lab.sensors import ContactSensor
-from omni.isaac.lab_tasks.locomotion.model_based.mdp.actions import ModelBaseAction
+from omni.isaac.lab_tasks.manager_based.locomotion.model_based.mdp.actions import ModelBaseAction
 from omni.isaac.lab.assets.articulation import Articulation
 
 if TYPE_CHECKING:
@@ -273,8 +273,7 @@ def penalize_cost_of_transport(env: ManagerBasedRLEnv, assetName: str="robot", a
     q_dot = robot.data.joint_vel
 
     # Retrieve the robot speed, clamp to minimum 0.1 to avoid division by 0 and CoT that tends to infinity with low speed
-    speed = torch.clamp_min(torch.norm(robot.data.root_vel_b[:,:3], dim=1) , min=0.1) 
-
+    speed = torch.clamp_min(torch.norm(robot.data.root_lin_vel_b, dim=1) , min=0.1) 
     # Compute the Robot's power [W] : T*q_dot : mechanical power, alpha*T^2 : stalk torque power dissipation, no negative value : no regenerative breaking
     power = torch.sum((torque*q_dot + alpha*torque*torque).clamp(min=0.0), dim=1)
 

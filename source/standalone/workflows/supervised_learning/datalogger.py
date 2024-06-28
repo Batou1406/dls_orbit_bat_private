@@ -1,9 +1,9 @@
-# Copyright (c) 2022-2024, The ORBIT Project Developers.
+# Copyright (c) 2022-2024, The LAB Project Developers.
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-# ./orbit.sh -p source/standalone/workflows/supervised_learning/datalogger.py --task Isaac-Model-Based-Base-Aliengo-v0  --num_envs 64 --load_run test --checkpoint model_14999.pt --dataset_name mcQueenFour
+# ./lab.sh -p source/standalone/workflows/supervised_learning/datalogger.py --task Isaac-Model-Based-Base-Aliengo-v0  --num_envs 64 --load_run test --checkpoint model_14999.pt --dataset_name mcQueenFour
 
 """Script to generate a dataset for supervised learning with RL agent from RSL-RL."""
 
@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import argparse
 
-from omni.isaac.orbit.app import AppLauncher
+from omni.isaac.lab.app import AppLauncher
 
 # local imports
 import cli_args  # isort: skip
@@ -47,9 +47,9 @@ import torch
 from rsl_rl.runners import OnPolicyRunner
 
 import omni.isaac.contrib_tasks  # noqa: F401
-import omni.isaac.orbit_tasks  # noqa: F401
-from omni.isaac.orbit_tasks.utils import get_checkpoint_path, parse_env_cfg
-from omni.isaac.orbit_tasks.utils.wrappers.rsl_rl import (
+import omni.isaac.lab_tasks  # noqa: F401
+from omni.isaac.lab_tasks.utils import get_checkpoint_path, parse_env_cfg
+from omni.isaac.lab_tasks.utils.wrappers.rsl_rl import (
     RslRlOnPolicyRunnerCfg,
     RslRlVecEnvWrapper,
     export_policy_as_onnx,

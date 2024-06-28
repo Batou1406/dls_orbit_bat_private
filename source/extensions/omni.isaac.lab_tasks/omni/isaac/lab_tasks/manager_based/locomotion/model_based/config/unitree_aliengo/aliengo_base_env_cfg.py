@@ -1,4 +1,4 @@
-# Copyright (c) 2022-2024, The ORBIT Project Developers.
+# Copyright (c) 2022-2024, The LAB Project Developers.
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
@@ -81,7 +81,7 @@ class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
 
         # --- startup
         if Event['Base Mass'] : 
-            self.events.add_base_mass.params["mass_range"] = (-3.0, 3.0) #(0.0, 0.0)                                    # Default was 0
+            self.events.add_base_mass.params["mass_distribution_params"] = (-3.0, 3.0) #(0.0, 0.0)                                    # Default was 0
 
         # --- Reset
         if Event['External Force'] :

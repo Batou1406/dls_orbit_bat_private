@@ -30,7 +30,7 @@ class ModelBaseActionCfg(ActionTermCfg):
 
     class_type: type[ActionTerm] = model_base_actions.ModelBaseAction
 
-    debug_vis: bool = True
+    debug_vis: bool = False
 
     joint_names: list[str] = MISSING
     """List of joint names or regex expressions that the action will be mapped to."""

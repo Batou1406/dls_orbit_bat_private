@@ -1,4 +1,4 @@
-# Copyright (c) 2022-2024, The ORBIT Project Developers.
+# Copyright (c) 2022-2024, The lab Project Developers.
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-import omni.isaac.orbit.terrains as terrain_gen
+import omni.isaac.lab.terrains as terrain_gen
 
 from ..terrain_generator_cfg import TerrainGeneratorCfg
 
