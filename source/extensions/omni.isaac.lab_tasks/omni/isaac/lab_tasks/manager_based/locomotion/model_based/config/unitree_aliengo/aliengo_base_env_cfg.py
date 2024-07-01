@@ -60,9 +60,8 @@ class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
             self.scene.terrain.terrain_generator.sub_terrains["random_rough"].noise_range = (0.01, 0.06)
             self.scene.terrain.terrain_generator.sub_terrains["random_rough"].noise_step = 0.01
         else :
-            # self.curriculum.terrain_levels = None                                                                       # By default activated
+            self.curriculum.terrain_levels = None                                                                       # By default activated
             # self.scene.terrain.terrain_type = 'plane'
-            pass
 
         if Speed_curriculum :
             self.commands.base_velocity.initial_difficulty = 0.2

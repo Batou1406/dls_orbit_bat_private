@@ -472,11 +472,11 @@ class LocomotionModelBasedEnvCfg(ManagerBasedRLEnvCfg):
             if self.scene.terrain.terrain_generator is not None:
                 self.scene.terrain.terrain_generator.curriculum = False
 
-        self.viewer.eye             = (1.5, 1.5, 0.9)
+        self.viewer.eye             = (1.5, 1.5, 0.4) #(1.5, 1.5, 0.9)
         self.viewer.lookat          = (0.0, 0.0, 0.0)
         self.viewer.cam_prim_path   = "/OmniverseKit_Persp"
-        self.viewer.resolution      = (1280, 720)     # 720p
-        # self.viewer.resolution      = (1920, 1080)    # 1080p
+        # self.viewer.resolution      = (1280, 720)     # 720p
+        self.viewer.resolution      = (1920, 1080)    # 1080p
         # self.viewer.resolution      = (2560, 1440)      # 2k
         # self.viewer.resolution      = (3840, 2160)      # 4k
         # self.viewer.resolution      = (1024, 1024)      # Square

@@ -971,13 +971,13 @@ class ModelBaseAction(ActionTerm):
         verbose_loop+=1
         if verbose_loop>=50:
             verbose_loop=0
-            print()
+            # print()
             # print('Contact sequence : ', c0_star[0,...].flatten())
             # print('  Leg  frequency : ', self.f[0,:])
             # print('   duty   cycle  : ', self.d[0,...].flatten())
             # print('terrain dificulty: ', torch.mean(self._env.scene.terrain.terrain_levels.float()))
-            print('  Max dificulty  : ', self._env.scene.terrain.difficulty.float()[:])
-            print('terrain dificulty: ', self._env.scene.terrain.terrain_levels.float()[:])
+            # print('  Max dificulty  : ', self._env.scene.terrain.difficulty.float()[:])
+            # print('terrain dificulty: ', self._env.scene.terrain.terrain_levels.float()[:])
             # print('Terrain Progress : ', self._env.command_manager.get_term("base_velocity").metrics['cumulative_distance'][:4]/(self._env.scene.terrain.cfg.terrain_generator.size[0] / 2))
             # print('speed difficulty : ', self._env.command_manager.get_term("base_velocity").difficulty)
             # print('speed command    : ', self._env.command_manager.get_command("base_velocity")[:,0])
