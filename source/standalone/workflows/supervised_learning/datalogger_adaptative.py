@@ -159,7 +159,7 @@ def main():
     print('\n----- Simulation -----')
 
     # simulate environment
-    while simulation_app.is_running() and len(observations_list) < (num_samples + buffer_size):
+    while simulation_app.is_running() and len(observations_list) < (num_samples):
 
         count +=1
         # print(len(observations_list))
@@ -167,7 +167,7 @@ def main():
         # print()
 
         # Printing
-        if len(observations_list) % 100 == 0:
+        if len(observations_list) % 10 == 0:
             progress = 100 * float(len(observations_list)) / num_samples
             iteration = len(observations_list)
             time_remaining = (time.time() - t) * ((num_samples - len(observations_list)))
