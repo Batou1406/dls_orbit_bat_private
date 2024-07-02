@@ -23,7 +23,7 @@ parser.add_argument("--num_envs", type=int,         default=1,                  
 parser.add_argument("--task", type=str,             default='Isaac-Model-Based-Base-Aliengo-v0',    help="Name of the task.")
 parser.add_argument("--seed", type=int,             default=None,                                   help="Seed used for the environment")
 parser.add_argument("--controller_name", type=str,  default='aliengo_model_based_base',             help="Name of the controller")
-parser.add_argument("--model_name", type=str,       default='baseTaskNoiseInTrain15Act25HzGood1/model1',   help="Name of the model to load (in /model/controller/)")
+parser.add_argument("--model_name", type=str,       default='baseTaskNoise5ActGood1/model1',   help="Name of the model to load (in /model/controller/)")
 
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
@@ -51,6 +51,10 @@ from omni.isaac.lab_tasks.utils.wrappers.rsl_rl import RslRlVecEnvWrapper
 from train import Model
 
 import matplotlib.pyplot as plt
+
+# Jax prealoccate memory
+import os
+os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 
 def infer_input_output_sizes(state_dict):
     # Find the first layer's weight (input size)
@@ -90,7 +94,7 @@ def main():
 
     # From model output and env actions, retrieve the buffer size
     # buffer_size = output_size // env.num_actions 
-    buffer_size = 15
+    buffer_size = (output_size - 8) // 20
 
     # Print
     print('\nModel : ',args_cli.model_name)

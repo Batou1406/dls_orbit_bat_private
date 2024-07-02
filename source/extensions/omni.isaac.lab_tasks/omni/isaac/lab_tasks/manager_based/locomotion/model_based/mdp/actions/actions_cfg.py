@@ -48,10 +48,10 @@ class ModelBaseActionCfg(ActionTermCfg):
         optimizerType:str = 'sampling'
         """ Different type of optimizer. For now, only 'sampling' is implemented """
 
-        prevision_horizon: int = 15
+        prevision_horizon: int = 5 # 15
         """ Prevision horizon for predictive optimization (in number of time steps) """
 
-        discretization_time: float = 0.04
+        discretization_time: float = 0.02 # 0.04
         """ Duration of a time step in seconds for the predicitve optimization """
 
         num_samples: int = 10000

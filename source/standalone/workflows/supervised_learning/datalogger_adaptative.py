@@ -28,6 +28,7 @@ parser.add_argument("--seed",         type=int, default=None, help="Seed used fo
 parser.add_argument("--dataset_name", type=str, default=None, help="Folder where to log the generated dataset (in /dataset/task/)")
 parser.add_argument("--buffer_size",  type=int, default=5,    help="Number of prediction steps")
 parser.add_argument("--testing_flag", action="store_true",default=False,help="Flag to generate testing data, default is training data")
+parser.add_argument("--freq_reduction",type=int,default=2,    help="Factor of reduction of the recording frequency compare to playing frequency")
 
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
@@ -113,8 +114,9 @@ def main():
     num_samples = args_cli.num_step
     buffer_size =  args_cli.buffer_size
     t = time.time()
+    printing_freq = 10
     count = 0
-    frequency_reduction = 2
+    frequency_reduction = args_cli.freq_reduction
     f_len, d_len, p_len, F_len = 4, 4, 8, 12
 
     # reset environment
@@ -167,11 +169,11 @@ def main():
         # print()
 
         # Printing
-        if len(observations_list) % 10 == 0:
+        if len(observations_list) % printing_freq == 0:
             progress = 100 * float(len(observations_list)) / num_samples
             iteration = len(observations_list)
-            time_remaining = (time.time() - t) * ((num_samples - len(observations_list)))
-            print(f'\rProgression {progress:6.2f}%, Iteration: {iteration:6d}, Time remaining: {time_remaining:6.2f}s', end='\n')
+            time_remaining = (time.time() - t) * ((num_samples - len(observations_list))) / printing_freq
+            print(f'\rProgression {progress:6.2f}%, Iteration: {iteration:6d}, Time remaining: {time_remaining:6.0f}s', end='\n')
             print('\033[F', end='')
             t = time.time()
 
@@ -183,7 +185,7 @@ def main():
             # Log data into the rolling buffer Log
 
             # To save at variable frequency and not policy frequency
-            if count%frequency_reduction :
+            if count%frequency_reduction == 0 :
                 buffer_obs.append(obs)
                 buffer_act.append(actions)         
 
@@ -195,7 +197,7 @@ def main():
                 continue
 
             # To save at variable frequency and not policy frequency
-            if count%frequency_reduction :
+            if count%frequency_reduction == 0:
                 # Datalogging for Dataset generation - save observation at time i and action at time i, i+1,...,i+buffer_size
                 observations_list.append(buffer_obs[0].cpu())                                   # shape(batch_size, obs_dim)
 

@@ -34,6 +34,8 @@ def torch_to_jax(x_torch):
 
 from .quadrupedpympc.sampling.centroidal_model_jax import Centroidal_Model_JAX
 
+import time
+
 # import numpy as np
 # import matplotlib.pyplot as plt
 # np.set_printoptions(precision=2, linewidth=200)
@@ -806,6 +808,9 @@ class SamplingOptimizer():
             p_star_lw (Tensor): Foot touch down position     of shape(batch_size, num_leg, 3, p_param)
             F_star_lw (Tensor): ground Reaction Forces       of shape(batch_size, num_leg, 3, F_param)
         """
+        print()
+        torch.cuda.synchronize(device=self.device)
+        start_time = time.time()
 
         # --- Step 1 : Generate the samples and bound them to valid input
         f_samples, d_samples, p_lw_samples, F_lw_samples = self.generate_samples(f=f, d=d, p_lw=p_lw, F_lw=F_lw, height_map=height_map)
@@ -817,15 +822,29 @@ class SamplingOptimizer():
         initial_state_jax, reference_seq_state_jax, reference_seq_input_samples_jax, \
         action_seq_c_samples_jax, action_p_lw_samples_jax, action_F_lw_samples_jax = self.prepare_variable_for_compute_rollout(env=env, c_samples=c_samples, p_lw_samples=p_lw_samples, F_lw_samples=F_lw_samples, feet_in_contact=c_prev[0,])
 
+        torch.cuda.synchronize(device=self.device)
+        start_time2 = time.time()
+
         # --- Step 3 : Compute the rollouts to find the rollout cost : can't used named argument with VMAP...
         cost_samples_jax = self.jit_parallel_compute_rollout(initial_state_jax, reference_seq_state_jax, reference_seq_input_samples_jax,
                                                              action_seq_c_samples_jax, action_p_lw_samples_jax, action_F_lw_samples_jax)
         
+        torch.cuda.synchronize(device=self.device)
+        stop_time2 = time.time()
+        elapsed_time2_ms = (stop_time2 - start_time2) * 1000
+        print(f"Compute rollout time: {elapsed_time2_ms:.2f} ms")
+
         # --- Step 4 : Given the samples cost, find the best control action
         best_action_seq_jax, best_index = self.find_best_actions(action_seq_c_samples_jax, cost_samples_jax)
 
         # --- Step 4 : Convert the optimal value back to torch.Tensor
         f_star, d_star, p_star_lw, F_star_lw = self.retrieve_z_from_action_seq(best_index, f_samples, d_samples, p_lw_samples, F_lw_samples)
+
+        torch.cuda.synchronize(device=self.device)
+        stop_time = time.time()
+
+        elapsed_time_ms = (stop_time - start_time) * 1000
+        print(f"Execution time: {elapsed_time_ms:.2f} ms")
 
         return f_star, d_star, p_star_lw, F_star_lw
 
@@ -966,13 +985,20 @@ class SamplingOptimizer():
         #                 'action_F_lw_samples':action_F_lw_samples,}, 'tensors.pth')
 
         # ----- Step 4 : Convert torch tensor to jax.array
+        start_time3 = time.time()
+        torch.cuda.synchronize(device=self.device)
+
         initial_state_jax               = torch_to_jax(initial_state)                          # of shape(state_dim)
         reference_seq_state_jax         = torch_to_jax(reference_seq_state)                    # of shape(sampling_horizon, state_dim)
         reference_seq_input_samples_jax = torch_to_jax(reference_seq_input_samples)            # of shape(num_samples,      sampling_horizon, input_dim)
         action_seq_c_samples_jax        = torch_to_jax(action_seq_c_samples)                   # of shape(num_samples,      sampling_horizon, num_legs)
         action_p_lw_samples_jax         = torch_to_jax(action_p_lw_samples)                    # of shape(num_samples,      num_legs,         3*p_param)
         action_F_lw_samples_jax         = torch_to_jax(action_F_lw_samples)                    # of shape(num_samples,      num_legs,         3*F_param)
-
+        
+        torch.cuda.synchronize(device=self.device)
+        stop_time3 = time.time()
+        elapsed_time3_ms = (stop_time3 - start_time3) * 1000
+        print(f"Jax conversion time: {elapsed_time3_ms:.2f} ms")
 
         return initial_state_jax, reference_seq_state_jax, reference_seq_input_samples_jax, action_seq_c_samples_jax, action_p_lw_samples_jax, action_F_lw_samples_jax
 
@@ -995,13 +1021,21 @@ class SamplingOptimizer():
             F_star_lw (Tensor): Best ground Reaction Forces             of shape(1, num_leg, 3, F_param)            
         """
 
-        f_star = f_samples[best_index.item()].unsqueeze(0)
-        d_star = d_samples[best_index.item()].unsqueeze(0)
-        p_star_lw = p_lw_samples[best_index.item()].unsqueeze(0)
+        # f_star = f_samples[best_index.item()].unsqueeze(0)
+        # d_star = d_samples[best_index.item()].unsqueeze(0)
+        # p_star_lw = p_lw_samples[best_index.item()].unsqueeze(0)
+        # F_star_lw = F_lw_samples[best_index.item()].unsqueeze(0)
+
+        # # Since Foot touch down position aren't optimized yet, get the nominal one # TODO Change this
+        # p_star_lw = p_lw_samples[0].unsqueeze(0)
+
+
+        f_star = f_samples[0].unsqueeze(0)
+        d_star = d_samples[0].unsqueeze(0)
+        p_star_lw = p_lw_samples[0].unsqueeze(0)
         F_star_lw = F_lw_samples[best_index.item()].unsqueeze(0)
 
-        # Since Foot touch down position aren't optimized yet, get the nominal one # TODO Change this
-        p_star_lw = p_lw_samples[0].unsqueeze(0)
+        # print('Force diff ', F_star_lw - F_lw_samples[0].unsqueeze(0))
 
         return f_star, d_star, p_star_lw, F_star_lw
 
@@ -1018,22 +1052,19 @@ class SamplingOptimizer():
             best_index          (int):
         """
 
-        print('\ncost sample shape',cost_samples)
-
-        # if jnp.isnan(cost_samples).all():print('all NaN')
+        # print('\ncost sample ',cost_samples)
+        if jnp.isnan(cost_samples).all():print('all NaN')
 
         # Saturate the cost in case of NaN or inf
         cost_samples = jnp.where(jnp.isnan(cost_samples), 1000000, cost_samples)
         cost_samples = jnp.where(jnp.isinf(cost_samples), 1000000, cost_samples)
-
-        # print('cost sample shape',cost_samples)
 
         # Take the best found control parameters
         best_index = jnp.nanargmin(cost_samples)
         best_cost = cost_samples.take(best_index)
         best_action_seq = action_seq_samples[best_index]
 
-        print('Best cost :',best_cost)
+        # print('Best cost :', best_cost, ', best index :', best_index)
 
         if fake : best_index = jnp.int32(0)
 
@@ -1086,6 +1117,11 @@ class SamplingOptimizer():
         d_samples[0,:] = d[0,:]
         p_lw_samples[0,:,:,:] = p_lw[0,:,:,:]
         F_lw_samples[0,:,:,:] = F_lw[0,:,:,:]
+
+        # TODO Change : remove f, d and p sampling
+        f_samples[:,:] = f
+        d_samples[:,:] = d
+        p_lw_samples[:,:,:,:] = p_lw
 
         return f_samples, d_samples, p_lw_samples, F_lw_samples
 
