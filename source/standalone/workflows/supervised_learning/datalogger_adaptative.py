@@ -123,7 +123,7 @@ def main():
 
     # Printing
     print('\n---------------------------------------------------------------------')
-    print('\nDatalogger Configuration\n')
+    print('\n----- Datalogger Configuration -----\n')
 
     print(f"\nLoading experiment from directory: {log_root_path}")
     print(f"Loading model checkpoint from: {resume_path}")
@@ -199,11 +199,11 @@ def main():
                 # Datalogging for Dataset generation - save observation at time i and action at time i, i+1,...,i+buffer_size
                 observations_list.append(buffer_obs[0].cpu())                                   # shape(batch_size, obs_dim)
 
-                raw_actions = torch.stack(buffer_act).permute(1,0,2) # shape (batch_size, buffer_size, act_dim)
-                f = raw_actions[:,0,  0                 : f_len]                                # shape (batch_size, f_len)
-                d = raw_actions[:,0,  f_len             :(f_len+d_len)]                         # shape (batch_size, d_len)
-                p = raw_actions[:,:, (f_len+d_len)      :(f_len+d_len+p_len)].flatten(1,2)      # shape (batch_size, buffer_size*p_len)
-                F = raw_actions[:,:, (f_len+d_len+p_len):(f_len+d_len+p_len+F_len)].flatten(1,2)# shape (batch_size, buffer_size*F_len)
+                raw_actions = torch.stack(buffer_act).permute(1,2,0)                            # shape (batch_size, act_dim, buffer_size)
+                f = raw_actions[:, 0                 : f_len                   , 0]             # shape (batch_size, f_len)
+                d = raw_actions[:, f_len             :(f_len+d_len)            , 0]             # shape (batch_size, d_len)
+                p = raw_actions[:,(f_len+d_len)      :(f_len+d_len+p_len)      , :].flatten(1,2)# shape (batch_size, buffer_size*p_len) /!\ Transpose to store the data with the right format
+                F = raw_actions[:,(f_len+d_len+p_len):(f_len+d_len+p_len+F_len), :].flatten(1,2)# shape (batch_size, buffer_size*F_len)
                 action_to_store = torch.cat((f,d,p,F),dim=1)                                    # shape (batch_size, f_len+d_len+buffer_size*(p_len+F_len))
                 actions_list.append(action_to_store.cpu())                                      # shape (batch_size, f_len+d_len+buffer_size*(p_len+F_len))
 
@@ -216,7 +216,8 @@ def main():
     observations_tensor = torch.cat(observations_list).view(-1, obs.shape[-1])                  # shape(len_list*num_envs, obs_dim)
     actions_tensor      = torch.cat(actions_list).view(-1,f_len+d_len+buffer_size*(p_len+F_len))# shape(len_list*num_envs, f_len+d_len+buffer_size*(p_len+F_len))
 
-    print('\n\n\nobservations_tensor shape ', observations_tensor.shape[-1])
+    print('\n\n\n----- Saving -----')
+    print('\nobservations_tensor shape ', observations_tensor.shape[-1])
     print('   actions_tensor   shape ', actions_tensor.shape[-1])
 
     # Save the Generated dataset

@@ -218,8 +218,8 @@ class ModelBaseAction(ActionTerm):
 
         
         # raw RL output
-        self.f_raw  = 1.0*torch.ones( self.num_envs, self._num_legs,                       device=self.device) 
-        self.d_raw  = 0.6*torch.ones( self.num_envs, self._num_legs,                       device=self.device)
+        self.f_raw  = 1.0*torch.ones( self.num_envs, self._num_legs,                   device=self.device) 
+        self.d_raw  = 0.6*torch.ones( self.num_envs, self._num_legs,                   device=self.device)
         self.p_raw  =     torch.zeros(self.num_envs, self._num_legs, 2, self._p_param, device=self.device)
         self.F_raw  =     torch.zeros(self.num_envs, self._num_legs, 3, self._F_param, device=self.device)
 
@@ -376,14 +376,13 @@ class ModelBaseAction(ActionTerm):
         self._raw_actions[:] = actions
 
         # Filter the invalid values
-        if torch.isinf(self._raw_actions).any():
-            print('Problem with Infinite value in raw actions')
-            self._raw_actions[torch.nonzero(torch.isinf(self._raw_actions))] = 0
+        # if torch.isinf(self._raw_actions).any():
+        #     print('Problem with Infinite value in raw actions')
+        #     self._raw_actions[torch.nonzero(torch.isinf(self._raw_actions))] = 0
 
-        if not torch.distributions.constraints.real.check(self._raw_actions).any():
-            print('Problem with NaN value in raw actions')
-            self._raw_actions[torch.nonzero(~torch.distributions.constraints.real.check(self._raw_actions))] = 0
-
+        # if not torch.distributions.constraints.real.check(self._raw_actions).any():
+        #     print('Problem with NaN value in raw actions')
+        #     self._raw_actions = torch.nan_to_num(self._raw_actions)
 
         # reconstruct the latent variable from the RL poliy actions
         self.f_raw = (self._raw_actions[:, 0                                    : self.f_len                                       ]).reshape_as(self.f_raw)

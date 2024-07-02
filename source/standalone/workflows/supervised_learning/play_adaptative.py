@@ -23,7 +23,7 @@ parser.add_argument("--num_envs", type=int,         default=1,                  
 parser.add_argument("--task", type=str,             default='Isaac-Model-Based-Base-Aliengo-v0',    help="Name of the task.")
 parser.add_argument("--seed", type=int,             default=None,                                   help="Seed used for the environment")
 parser.add_argument("--controller_name", type=str,  default='aliengo_model_based_base',             help="Name of the controller")
-parser.add_argument("--model_name", type=str,       default='baseTaskNoise15Act25HzGoodOld1/modelWithNoise1',   help="Name of the model to load (in /model/controller/)")
+parser.add_argument("--model_name", type=str,       default='baseTaskNoiseInTrain15Act25HzGood1/model1',   help="Name of the model to load (in /model/controller/)")
 
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
@@ -40,15 +40,17 @@ simulation_app = app_launcher.app
 import gymnasium as gym
 import os
 import torch
+import torch.distributions.constraints
 
 from rsl_rl.runners import OnPolicyRunner
 
-# import omni.isaac.contrib_tasks  # noqa: F401
 import omni.isaac.lab_tasks  # noqa: F401
 from omni.isaac.lab_tasks.utils import get_checkpoint_path, parse_env_cfg
 from omni.isaac.lab_tasks.utils.wrappers.rsl_rl import RslRlVecEnvWrapper
 
 from train import Model
+
+import matplotlib.pyplot as plt
 
 def infer_input_output_sizes(state_dict):
     # Find the first layer's weight (input size)
@@ -103,31 +105,47 @@ def main():
     # reset environment
     obs, _ = env.get_observations()
 
+    abs_list = []
     # simulate environment
     while simulation_app.is_running():
         # run everything in inference mode
         with torch.inference_mode():
             # agent stepping
             actions = policy(obs)
+            # if not (torch.distributions.constraints.real.check(actions).all()):
+            if not (torch.isfinite(actions).all()):
+                print('Problem with NaN value in actions')
+                actions = torch.nan_to_num(actions)
 
-            # Reshape the actions correctly : shape(num_envs, buffer_size, actions_size)
-            # actions = actions.view(env.num_envs, buffer_size, env.num_actions)
-            actions = actions.view(env.num_envs, buffer_size, 28)
+            # if (actions > 1e25).any() or (actions < -1e25).any():
+            #     print('very large values')   
+            # else:
+            #     print('ok')
 
-            # Select only actions at next step
-            # actions = actions[:,0,:] 
+            # abs_list.append(torch.sum(actions[0,256].abs()).cpu())
 
-            # Select every acions only for p and F
-            f_and_d = actions[:,0,:8] # shape(env, 8)
-            p = actions[:,:,8:16]     # shape(env, 15, 8)
-            F = actions[:,:,16:]      # shape(env, 15, 12)
-            p = p.permute(0,2,1).flatten(1,2) # shape(env, 15*8)
-            F = F.permute(0,2,1).flatten(1,2) # shape(env, 15*12)
+            # if(len(abs_list)>80):
+            #     plt.plot(abs_list)
+            #     plt.yscale("log")
+            #     plt.show()
+            #     return 
 
-            actions = torch.concatenate((f_and_d, p, F),dim=1)
+            # # Select every acions only for p and F
+            # f_and_d = actions[:,:8] # shape(env, 8)
+            # p = actions[:,8:16]     # shape(env, 15, 8)
+            # F = actions[:,128:128+12]      # shape(env, 15, 12)
+            # # p = p.permute(0,2,1).flatten(1,2) # shape(env, 15*8)
+            # # F = F.permute(0,2,1).flatten(1,2) # shape(env, 15*12)
+            # actions = torch.concatenate((f_and_d, p, F),dim=1)
 
             # env stepping
             obs, _, _, _ = env.step(actions) 
+
+            if not (torch.isfinite(obs).all()):
+                print('Problem with NaN value in observation')
+                obs = torch.nan_to_num(obs)
+
+
 
     # close the simulator
     env.close()
