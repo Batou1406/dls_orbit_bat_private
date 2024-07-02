@@ -663,8 +663,9 @@ class samplingController(modelBaseController):
         """
 
         # Call the optimizer
-        f_star, d_star, p_star_lw, F_star_lw = self.samplingOptimizer.optimize_latent_variable(env=env, f=f, d=d, p_lw=p_lw, F_lw=F_lw, phase=self.phase, c_prev=self.c_prev, height_map=height_map)
-        # f_star, d_star, F_star_lw, p_star_lw = f, d, F_lw, p_lw
+        if not self.verbose_md:
+            f_star, d_star, p_star_lw, F_star_lw = self.samplingOptimizer.optimize_latent_variable(env=env, f=f, d=d, p_lw=p_lw, F_lw=F_lw, phase=self.phase, c_prev=self.c_prev, height_map=height_map)
+        else : f_star, d_star, F_star_lw, p_star_lw = f, d, F_lw, p_lw
 
         # Compute the contact sequence and update the phase
         c_star, self.phase = self.gait_generator(f=f_star, d=d_star, phase=self.phase, horizon=1, dt=self._dt_out)
@@ -789,6 +790,11 @@ class SamplingOptimizer():
         self.R = self.R.at[10,10].set(0.1)      #foot_force_y_RR
         self.R = self.R.at[11,11].set(0.001)    #foot_force_z_RR
 
+        self.f_best = torch.zeros((1,4), device=device)
+        self.d_best = torch.ones((1,4), device=device)
+        self.p_best = torch.zeros((1,4,3,5), device=device)
+        self.F_best = torch.zeros((1,4,3,5), device=device)
+
 
     def optimize_latent_variable(self, env: ManagerBasedRLEnv, f:torch.Tensor, d:torch.Tensor, p_lw:torch.Tensor, F_lw:torch.Tensor, phase:torch.Tensor, c_prev:torch.Tensor, height_map) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """ Given latent variable f,d,F,p, returns f*,d*,F*,p*, optimized with a sampling optimization 
@@ -809,8 +815,8 @@ class SamplingOptimizer():
             F_star_lw (Tensor): ground Reaction Forces       of shape(batch_size, num_leg, 3, F_param)
         """
         print()
-        torch.cuda.synchronize(device=self.device)
-        start_time = time.time()
+        # torch.cuda.synchronize(device=self.device)
+        # start_time = time.time()
 
         # --- Step 1 : Generate the samples and bound them to valid input
         f_samples, d_samples, p_lw_samples, F_lw_samples = self.generate_samples(f=f, d=d, p_lw=p_lw, F_lw=F_lw, height_map=height_map)
@@ -822,17 +828,17 @@ class SamplingOptimizer():
         initial_state_jax, reference_seq_state_jax, reference_seq_input_samples_jax, \
         action_seq_c_samples_jax, action_p_lw_samples_jax, action_F_lw_samples_jax = self.prepare_variable_for_compute_rollout(env=env, c_samples=c_samples, p_lw_samples=p_lw_samples, F_lw_samples=F_lw_samples, feet_in_contact=c_prev[0,])
 
-        torch.cuda.synchronize(device=self.device)
-        start_time2 = time.time()
+        # torch.cuda.synchronize(device=self.device)
+        # start_time2 = time.time()
 
         # --- Step 3 : Compute the rollouts to find the rollout cost : can't used named argument with VMAP...
         cost_samples_jax = self.jit_parallel_compute_rollout(initial_state_jax, reference_seq_state_jax, reference_seq_input_samples_jax,
                                                              action_seq_c_samples_jax, action_p_lw_samples_jax, action_F_lw_samples_jax)
         
-        torch.cuda.synchronize(device=self.device)
-        stop_time2 = time.time()
-        elapsed_time2_ms = (stop_time2 - start_time2) * 1000
-        print(f"Compute rollout time: {elapsed_time2_ms:.2f} ms")
+        # torch.cuda.synchronize(device=self.device)
+        # stop_time2 = time.time()
+        # elapsed_time2_ms = (stop_time2 - start_time2) * 1000
+        # print(f"Compute rollout time: {elapsed_time2_ms:.2f} ms")
 
         # --- Step 4 : Given the samples cost, find the best control action
         best_action_seq_jax, best_index = self.find_best_actions(action_seq_c_samples_jax, cost_samples_jax)
@@ -840,11 +846,11 @@ class SamplingOptimizer():
         # --- Step 4 : Convert the optimal value back to torch.Tensor
         f_star, d_star, p_star_lw, F_star_lw = self.retrieve_z_from_action_seq(best_index, f_samples, d_samples, p_lw_samples, F_lw_samples)
 
-        torch.cuda.synchronize(device=self.device)
-        stop_time = time.time()
+        # torch.cuda.synchronize(device=self.device)
+        # stop_time = time.time()
 
-        elapsed_time_ms = (stop_time - start_time) * 1000
-        print(f"Execution time: {elapsed_time_ms:.2f} ms")
+        # elapsed_time_ms = (stop_time - start_time) * 1000
+        # print(f"Execution time: {elapsed_time_ms:.2f} ms")
 
         return f_star, d_star, p_star_lw, F_star_lw
 
@@ -892,6 +898,8 @@ class SamplingOptimizer():
         # Compute proprioceptive height
         if (feet_in_contact == 0).all() : feet_in_contact = torch.ones_like(feet_in_contact) # if no feet in contact : robot is in the air, we use all feet to compute the height, not correct but avoid div by zero
         com_pos_lw[2] = robot.data.root_pos_w[:,2] - (torch.sum(((robot.data.body_pos_w[:, foot_idx,2]).squeeze(0)) * feet_in_contact)) / (torch.sum(feet_in_contact)) # height is proprioceptive
+
+        print('robot\'s height :',com_pos_lw[2])
 
         # Retrieve the robot orientation in lw as euler angle ZXY of shape(3)
         roll, pitch, yaw = math_utils.euler_xyz_from_quat(robot.data.root_quat_w) # TODO Check the angles !
@@ -985,8 +993,8 @@ class SamplingOptimizer():
         #                 'action_F_lw_samples':action_F_lw_samples,}, 'tensors.pth')
 
         # ----- Step 4 : Convert torch tensor to jax.array
-        start_time3 = time.time()
-        torch.cuda.synchronize(device=self.device)
+        # start_time3 = time.time()
+        # torch.cuda.synchronize(device=self.device)
 
         initial_state_jax               = torch_to_jax(initial_state)                          # of shape(state_dim)
         reference_seq_state_jax         = torch_to_jax(reference_seq_state)                    # of shape(sampling_horizon, state_dim)
@@ -995,10 +1003,10 @@ class SamplingOptimizer():
         action_p_lw_samples_jax         = torch_to_jax(action_p_lw_samples)                    # of shape(num_samples,      num_legs,         3*p_param)
         action_F_lw_samples_jax         = torch_to_jax(action_F_lw_samples)                    # of shape(num_samples,      num_legs,         3*F_param)
         
-        torch.cuda.synchronize(device=self.device)
-        stop_time3 = time.time()
-        elapsed_time3_ms = (stop_time3 - start_time3) * 1000
-        print(f"Jax conversion time: {elapsed_time3_ms:.2f} ms")
+        # torch.cuda.synchronize(device=self.device)
+        # stop_time3 = time.time()
+        # elapsed_time3_ms = (stop_time3 - start_time3) * 1000
+        # print(f"Jax conversion time: {elapsed_time3_ms:.2f} ms")
 
         return initial_state_jax, reference_seq_state_jax, reference_seq_input_samples_jax, action_seq_c_samples_jax, action_p_lw_samples_jax, action_F_lw_samples_jax
 
@@ -1037,6 +1045,11 @@ class SamplingOptimizer():
 
         # print('Force diff ', F_star_lw - F_lw_samples[0].unsqueeze(0))
 
+        self.f_best = f_star
+        self.d_best = d_star
+        self.p_best = p_star_lw
+        self.F_best = F_star_lw
+
         return f_star, d_star, p_star_lw, F_star_lw
 
 
@@ -1052,7 +1065,7 @@ class SamplingOptimizer():
             best_index          (int):
         """
 
-        # print('\ncost sample ',cost_samples)
+        print('\ncost sample ',cost_samples)
         if jnp.isnan(cost_samples).all():print('all NaN')
 
         # Saturate the cost in case of NaN or inf
@@ -1064,11 +1077,19 @@ class SamplingOptimizer():
         best_cost = cost_samples.take(best_index)
         best_action_seq = action_seq_samples[best_index]
 
-        # print('Best cost :', best_cost, ', best index :', best_index)
+        print('Best cost :', best_cost, ', best index :', best_index)
 
         if fake : best_index = jnp.int32(0)
 
         return best_action_seq, best_index
+
+
+    def best_solution(self):
+        return self.f_best, self.d_best, self.p_best, self.F_best
+
+    def shift_solution(self):
+        pass
+
 
 
     def generate_samples(self, f:torch.Tensor, d:torch.Tensor, p_lw:torch.Tensor, F_lw:torch.Tensor, height_map:torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -1093,10 +1114,17 @@ class SamplingOptimizer():
         if self.num_samples == 1:
             return f, d, p_lw, F_lw
 
-        f_samples = self.normal_sampling(num_samples=self.num_samples, mean=f[0], var=torch.tensor((0.05), device=self.device))
-        d_samples = self.normal_sampling(num_samples=self.num_samples, mean=d[0], var=torch.tensor((0.02), device=self.device))
-        p_lw_samples = self.normal_sampling(num_samples=self.num_samples, mean=p_lw[0], var=torch.tensor((0.01), device=self.device))
-        F_lw_samples = self.normal_sampling(num_samples=self.num_samples, mean=F_lw[0], var=torch.tensor((1.0), device=self.device))
+        f_best, d_best, p_best, F_best = self.best_solution()
+
+        # f_samples = self.normal_sampling(num_samples=self.num_samples, mean=f_best[0], var=torch.tensor((0.20), device=self.device))
+        # d_samples = self.normal_sampling(num_samples=self.num_samples, mean=d_best[0], var=torch.tensor((0.10), device=self.device))
+        # p_lw_samples = self.normal_sampling(num_samples=self.num_samples, mean=p_best[0], var=torch.tensor((0.05), device=self.device))
+        # F_lw_samples = self.normal_sampling(num_samples=self.num_samples, mean=F_best[0], var=torch.tensor((20.0), device=self.device))
+
+        f_samples = self.normal_sampling(num_samples=self.num_samples, mean=f[0], var=torch.tensor((0.20), device=self.device))
+        d_samples = self.normal_sampling(num_samples=self.num_samples, mean=d[0], var=torch.tensor((0.10), device=self.device))
+        p_lw_samples = self.normal_sampling(num_samples=self.num_samples, mean=p_lw[0], var=torch.tensor((0.05), device=self.device))
+        F_lw_samples = self.normal_sampling(num_samples=self.num_samples, mean=F_lw[0], var=torch.tensor((30.0), device=self.device))
         # f_samples = self.normal_sampling(num_samples=self.num_samples, mean=f[0], var=torch.tensor((0.0000001), device=self.device))
         # d_samples = self.normal_sampling(num_samples=self.num_samples, mean=d[0], var=torch.tensor((0.0000001), device=self.device))
         # p_lw_samples = self.normal_sampling(num_samples=self.num_samples, mean=p_lw[0], var=torch.tensor((0.0000001), device=self.device))
@@ -1109,8 +1137,8 @@ class SamplingOptimizer():
         p_lw_samples[:,:,2,:] = p_lw[0,:,2,:]
         
         # Deactivate foot sampling since there are no optimiation of foot hold : TODO changes this
-        p_lw_samples[:,:,0,:] = p_lw[0,:,0,:]
-        p_lw_samples[:,:,1,:] = p_lw[0,:,1,:]
+        # p_lw_samples[:,:,0,:] = p_lw[0,:,0,:]
+        # p_lw_samples[:,:,1,:] = p_lw[0,:,1,:]
 
         # Put the orignal actions as the first samples
         f_samples[0,:] = f[0,:]
@@ -1121,7 +1149,7 @@ class SamplingOptimizer():
         # TODO Change : remove f, d and p sampling
         f_samples[:,:] = f
         d_samples[:,:] = d
-        p_lw_samples[:,:,:,:] = p_lw
+        # p_lw_samples[:,:,:,:] = p_lw
 
         return f_samples, d_samples, p_lw_samples, F_lw_samples
 
@@ -1227,6 +1255,9 @@ class SamplingOptimizer():
             # Compute the foot touch down position given the interpolation parameter and the point in the curve
             p_lw = self.interpolation_p(parameters=action_p_lw_jax, step=step, horizon=horizon)
 
+            # jax.debug.breakpoint()
+            # jax.debug.print("p_lw: {}", p_lw)
+
             # Apply Force constraints : Friction cone constraints and Force set to zero if foot not in contact
             F_lw = self.enforce_force_constraints(F=F_lw, c=current_contact)    # TODO Single spline for now : Implement multiple spline function
 
@@ -1236,6 +1267,9 @@ class SamplingOptimizer():
                 F_lw
             ])
 
+            # jax.debug.print("step      : {}", n)
+            # jax.debug.print("state[12:]: {}", state[12:18])
+            # jax.debug.print("input[:12]: {}", input[:6])
 
             # --- Step 3 : Integrate the dynamics with the centroidal model
             state_next = self.robot_model.integrate_jax(state, input, current_contact)
@@ -1266,6 +1300,14 @@ class SamplingOptimizer():
         # print('state : ', state)
 
         cost_samples_jax = cost
+
+        # jax.debug.print(" action_seq_c_jax: {}", action_seq_c_jax)
+        # jax.debug.print("~action_seq_c_jax: {}",~action_seq_c_jax)
+        # jax.debug.print(" jnp.invert(action_seq_c_jax): {}",jnp.invert(action_seq_c_jax))
+        # jax.debug.print(" jnp.logical_not(action_seq_c_jax): {}",jnp.logical_not(action_seq_c_jax))
+        # jax.debug.print(" jnp.logical_not(action_seq_c_jax): {}",jnp.logical_not(action_seq_c_jax))
+
+        # jax.debug.breakpoint()
 
         return cost_samples_jax
 

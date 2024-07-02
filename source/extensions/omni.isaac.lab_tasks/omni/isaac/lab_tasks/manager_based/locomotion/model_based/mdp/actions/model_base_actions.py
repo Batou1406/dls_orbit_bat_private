@@ -393,6 +393,9 @@ class ModelBaseAction(ActionTerm):
         # Normalize the actions
         self.f, self.d, self.p_norm, self.F_norm = self.normalization(f=self.f_raw, d=self.d_raw, p=self.p_raw, F=self.F_raw)
 
+        # self.p_norm = torch.zeros_like(self.p_norm)
+        # self.d = torch.ones_like(self.d)
+
         # Enforce friction cone constraints for GRF
         # self.F_norm_clipped = self.enforce_friction_cone_constraints(F=self.F_norm, mu=0.7)
 

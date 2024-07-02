@@ -119,7 +119,7 @@ def main():
     parser = argparse.ArgumentParser(description='Supervised Learning for model base RL controller')
     parser.add_argument('--verbose', type=str, default=True,                    help='Verbose parameter to print training loss')
     parser.add_argument('--load-experiement', type=str, default='aliengo_model_based_base')
-    parser.add_argument('--load-dataset', type=str, default='baseTaskNoise5ActGood1')
+    parser.add_argument('--load-dataset', type=str, default='baseGiulio2')
     parser.add_argument('--batch-size', type=int, default=64, metavar='N',      help='input batch size for training (default: 64)')
     parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N', help='input batch size for testing (default: 1000)')
     parser.add_argument('--epochs', type=int, default=20, metavar='N',          help='number of epochs to train (default: 14)')
@@ -185,6 +185,10 @@ def main():
     test_loss_list = []
 
     # train and evaluate the model
+    test_loss = test(model, device, test_loader, test_criterion)
+    test_loss_list.append(test_loss)
+    print('\nTest Epoch: 0 - Test set: Average loss: {:.4f}\n'.format(test_loss))
+
     for epoch in range(1, args.epochs + 1):
         train_loss = train(args, model, device, train_loader, optimizer, epoch, train_criterion)
         test_loss = test(model, device, test_loader, test_criterion)
