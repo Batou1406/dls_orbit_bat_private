@@ -43,6 +43,10 @@ class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
         self.commands.base_velocity.ranges.lat_vel_b = (-1.0, 1.0)
         self.commands.base_velocity.ranges.ang_vel_b = (-1.0, 1.0)
         self.commands.base_velocity.ranges.initial_heading_err = (-math.pi, math.pi)
+        # self.commands.base_velocity.ranges.for_vel_b = (-0.0, 0.0)
+        # self.commands.base_velocity.ranges.lat_vel_b = (-0.0, 0.0)
+        # self.commands.base_velocity.ranges.ang_vel_b = (-0.0, 0.0)
+        # self.commands.base_velocity.ranges.initial_heading_err = (-0.0, 0.0)
 
 
         """ ----- Observation ----- """
@@ -90,6 +94,7 @@ class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
 
         self.events.reset_base.params = {
             "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},                                   # Some randomization improve training speed
+            # "pose_range": {"x": (-0.0, 0.0), "y": (-0.0, 0.0), "yaw": (-0.0, 0.0)}, 
             "velocity_range": {                                                                                         # Default was ±0.5
                 "x": (0.0, 0.0),
                 "y": (0.0, 0.0),

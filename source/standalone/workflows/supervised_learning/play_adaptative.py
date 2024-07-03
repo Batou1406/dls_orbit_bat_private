@@ -118,38 +118,21 @@ def main():
         with torch.inference_mode():
             # agent stepping
             actions = policy(obs)
-            # if not (torch.distributions.constraints.real.check(actions).all()):
-            if not (torch.isfinite(actions).all()):
-                print('Problem with NaN value in actions')
-                actions = torch.nan_to_num(actions)
-
-            # if (actions > 1e25).any() or (actions < -1e25).any():
-            #     print('very large values')   
-            # else:
-            #     print('ok')
 
             # abs_list.append(torch.sum(actions[0,256].abs()).cpu())
-
             # if(len(abs_list)>80):
             #     plt.plot(abs_list)
             #     plt.yscale("log")
             #     plt.show()
             #     return 
 
-            # # Select every acions only for p and F
-            # f_and_d = actions[:,:8] # shape(env, 8)
-            # p = actions[:,8:16]     # shape(env, 15, 8)
-            # F = actions[:,128:128+12]      # shape(env, 15, 12)
-            # # p = p.permute(0,2,1).flatten(1,2) # shape(env, 15*8)
-            # # F = F.permute(0,2,1).flatten(1,2) # shape(env, 15*12)
-            # actions = torch.concatenate((f_and_d, p, F),dim=1)
-
             # env stepping
             obs, _, _, _ = env.step(actions) 
 
             if not (torch.isfinite(obs).all()):
                 print('Problem with NaN value in observation')
-                obs = torch.nan_to_num(obs)
+                obs, _ = env.reset()
+
 
 
 

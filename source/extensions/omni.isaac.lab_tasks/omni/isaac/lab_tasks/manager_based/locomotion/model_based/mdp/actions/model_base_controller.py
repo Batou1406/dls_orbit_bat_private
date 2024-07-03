@@ -642,6 +642,12 @@ class samplingController(modelBaseController):
         self.c_prev = torch.ones(num_envs, num_legs, device=device)
 
 
+    def reset(self, env_ids: Sequence[int] | None,  p_default_lw: torch.Tensor) -> None:
+        """ Reset the sampling optimizer internal values"""
+        super().reset(env_ids,  p_default_lw)
+        self.samplingOptimizer.reset()
+
+
     def process_latent_variable(self, f: torch.Tensor, d: torch.Tensor, p_lw: torch.Tensor, F_lw: torch.Tensor, env: ManagerBasedRLEnv, height_map: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """ Given the latent variable z=[f,d,p,F], return the process latent variable p*, F*, c*, pt*
         Note :
@@ -794,6 +800,14 @@ class SamplingOptimizer():
         self.d_best = torch.ones((1,4), device=device)
         self.p_best = torch.zeros((1,4,3,5), device=device)
         self.F_best = torch.zeros((1,4,3,5), device=device)
+        self.F_best[:,:,2,:] = 50.0
+
+    def reset(self):
+        self.f_best = torch.zeros((1,4), device=self.device)
+        self.d_best = torch.ones((1,4), device=self.device)
+        self.p_best = torch.zeros((1,4,3,5), device=self.device)
+        self.F_best = torch.zeros((1,4,3,5), device=self.device)
+        self.F_best[:,:,2,:] = 50.0
 
 
     def optimize_latent_variable(self, env: ManagerBasedRLEnv, f:torch.Tensor, d:torch.Tensor, p_lw:torch.Tensor, F_lw:torch.Tensor, phase:torch.Tensor, c_prev:torch.Tensor, height_map) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -846,9 +860,13 @@ class SamplingOptimizer():
         # --- Step 4 : Convert the optimal value back to torch.Tensor
         f_star, d_star, p_star_lw, F_star_lw = self.retrieve_z_from_action_seq(best_index, f_samples, d_samples, p_lw_samples, F_lw_samples)
 
+        # print('f - cum. diff. : %3.2f' % torch.sum(torch.abs(f_star - f)))
+        # print('d - cum. diff. : %3.2f' % torch.sum(torch.abs(d_star - d)))
+        # print('p - cum. diff. : %3.2f' % torch.sum(torch.abs(p_star_lw - p_lw)))
+        # print('F - cum. diff. : %5.1f' % torch.sum(torch.abs(F_star_lw - F_lw)))
+
         # torch.cuda.synchronize(device=self.device)
         # stop_time = time.time()
-
         # elapsed_time_ms = (stop_time - start_time) * 1000
         # print(f"Execution time: {elapsed_time_ms:.2f} ms")
 
@@ -899,7 +917,7 @@ class SamplingOptimizer():
         if (feet_in_contact == 0).all() : feet_in_contact = torch.ones_like(feet_in_contact) # if no feet in contact : robot is in the air, we use all feet to compute the height, not correct but avoid div by zero
         com_pos_lw[2] = robot.data.root_pos_w[:,2] - (torch.sum(((robot.data.body_pos_w[:, foot_idx,2]).squeeze(0)) * feet_in_contact)) / (torch.sum(feet_in_contact)) # height is proprioceptive
 
-        print('robot\'s height :',com_pos_lw[2])
+        # print('robot\'s height :',com_pos_lw[2])
 
         # Retrieve the robot orientation in lw as euler angle ZXY of shape(3)
         roll, pitch, yaw = math_utils.euler_xyz_from_quat(robot.data.root_quat_w) # TODO Check the angles !
@@ -907,11 +925,14 @@ class SamplingOptimizer():
         com_pose_w = torch.tensor((roll, pitch, yaw), device=self.device)
         com_pose_lw = com_pose_w
 
+
         # print('roll  %.3f, pitch %.3f, yaw %.3f'%(roll, pitch, yaw))
 
         # Retrieve the robot linear and angular velocity in base frame of shape(6)
-        com_ang_vel_b = (robot.data.root_ang_vel_b).squeeze(0)
         com_lin_vel_w = (robot.data.root_lin_vel_w).squeeze(0)
+        com_ang_vel_b = (robot.data.root_ang_vel_b).squeeze(0)
+        
+        # print('roll rate  %.3f, pitch rate %.3f, yaw rate %.3f'%(com_ang_vel_b[0], com_ang_vel_b[1], com_ang_vel_b[2]))
 
         # Retrieve the feet position in local world frame of shape(num_legs*3)
         p_w = (robot.data.body_pos_w[:, foot_idx,:]).squeeze(0) # shape(4,3) - foot position in w
@@ -1029,26 +1050,14 @@ class SamplingOptimizer():
             F_star_lw (Tensor): Best ground Reaction Forces             of shape(1, num_leg, 3, F_param)            
         """
 
-        # f_star = f_samples[best_index.item()].unsqueeze(0)
-        # d_star = d_samples[best_index.item()].unsqueeze(0)
-        # p_star_lw = p_lw_samples[best_index.item()].unsqueeze(0)
-        # F_star_lw = F_lw_samples[best_index.item()].unsqueeze(0)
-
-        # # Since Foot touch down position aren't optimized yet, get the nominal one # TODO Change this
-        # p_star_lw = p_lw_samples[0].unsqueeze(0)
-
-
-        f_star = f_samples[0].unsqueeze(0)
-        d_star = d_samples[0].unsqueeze(0)
-        p_star_lw = p_lw_samples[0].unsqueeze(0)
+        # Retrieve best sample, given the best index
+        f_star = f_samples[best_index.item()].unsqueeze(0)
+        d_star = d_samples[best_index.item()].unsqueeze(0)
+        p_star_lw = p_lw_samples[best_index.item()].unsqueeze(0)
         F_star_lw = F_lw_samples[best_index.item()].unsqueeze(0)
 
-        # print('Force diff ', F_star_lw - F_lw_samples[0].unsqueeze(0))
-
-        self.f_best = f_star
-        self.d_best = d_star
-        self.p_best = p_star_lw
-        self.F_best = F_star_lw
+        # Update previous best solution
+        self.f_best, self.d_best, self.p_best, self.F_best = f_star, d_star, p_star_lw, F_star_lw
 
         return f_star, d_star, p_star_lw, F_star_lw
 
@@ -1087,9 +1096,9 @@ class SamplingOptimizer():
     def best_solution(self):
         return self.f_best, self.d_best, self.p_best, self.F_best
 
+
     def shift_solution(self):
         pass
-
 
 
     def generate_samples(self, f:torch.Tensor, d:torch.Tensor, p_lw:torch.Tensor, F_lw:torch.Tensor, height_map:torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -1111,34 +1120,22 @@ class SamplingOptimizer():
             F_lw_samples (Tensor) : Ground Reaction forces samples      of shape(num_samples, 3, F_param)
         """
 
-        if self.num_samples == 1:
-            return f, d, p_lw, F_lw
-
-        f_best, d_best, p_best, F_best = self.best_solution()
-
+        # f_best, d_best, p_best, F_best = self.best_solution()
         # f_samples = self.normal_sampling(num_samples=self.num_samples, mean=f_best[0], var=torch.tensor((0.20), device=self.device))
         # d_samples = self.normal_sampling(num_samples=self.num_samples, mean=d_best[0], var=torch.tensor((0.10), device=self.device))
         # p_lw_samples = self.normal_sampling(num_samples=self.num_samples, mean=p_best[0], var=torch.tensor((0.05), device=self.device))
-        # F_lw_samples = self.normal_sampling(num_samples=self.num_samples, mean=F_best[0], var=torch.tensor((20.0), device=self.device))
+        # F_lw_samples = self.normal_sampling(num_samples=self.num_samples, mean=F_best[0], var=torch.tensor((5.0), device=self.device))
 
-        f_samples = self.normal_sampling(num_samples=self.num_samples, mean=f[0], var=torch.tensor((0.20), device=self.device))
-        d_samples = self.normal_sampling(num_samples=self.num_samples, mean=d[0], var=torch.tensor((0.10), device=self.device))
-        p_lw_samples = self.normal_sampling(num_samples=self.num_samples, mean=p_lw[0], var=torch.tensor((0.05), device=self.device))
-        F_lw_samples = self.normal_sampling(num_samples=self.num_samples, mean=F_lw[0], var=torch.tensor((30.0), device=self.device))
-        # f_samples = self.normal_sampling(num_samples=self.num_samples, mean=f[0], var=torch.tensor((0.0000001), device=self.device))
-        # d_samples = self.normal_sampling(num_samples=self.num_samples, mean=d[0], var=torch.tensor((0.0000001), device=self.device))
-        # p_lw_samples = self.normal_sampling(num_samples=self.num_samples, mean=p_lw[0], var=torch.tensor((0.0000001), device=self.device))
-        # F_lw_samples = self.normal_sampling(num_samples=self.num_samples, mean=F_lw[0], var=torch.tensor((0.0000001), device=self.device))
+        f_samples = self.normal_sampling(num_samples=self.num_samples, mean=f[0], var=torch.tensor((0.10), device=self.device))
+        d_samples = self.normal_sampling(num_samples=self.num_samples, mean=d[0], var=torch.tensor((0.05), device=self.device))
+        p_lw_samples = self.normal_sampling(num_samples=self.num_samples, mean=p_lw[0], var=torch.tensor((0.02), device=self.device))
+        F_lw_samples = self.normal_sampling(num_samples=self.num_samples, mean=F_lw[0], var=torch.tensor((20.0), device=self.device))
 
-        # Clamp the input to valid range and make sure p[2] is on the ground
+        # Clamp the input to valid range
         f_samples, d_samples, p_lw_samples, F_lw_samples = self.enforce_valid_input(f_samples=f_samples, d_samples=d_samples, p_lw_samples=p_lw_samples, F_lw_samples=F_lw_samples, height_map=height_map)
 
         # Set the foot height to the nominal foot height # TODO change
         p_lw_samples[:,:,2,:] = p_lw[0,:,2,:]
-        
-        # Deactivate foot sampling since there are no optimiation of foot hold : TODO changes this
-        # p_lw_samples[:,:,0,:] = p_lw[0,:,0,:]
-        # p_lw_samples[:,:,1,:] = p_lw[0,:,1,:]
 
         # Put the orignal actions as the first samples
         f_samples[0,:] = f[0,:]
@@ -1149,7 +1146,7 @@ class SamplingOptimizer():
         # TODO Change : remove f, d and p sampling
         f_samples[:,:] = f
         d_samples[:,:] = d
-        # p_lw_samples[:,:,:,:] = p_lw
+        p_lw_samples[:,:,:,:] = p_lw
 
         return f_samples, d_samples, p_lw_samples, F_lw_samples
 
@@ -1436,13 +1433,11 @@ class SamplingOptimizer():
         
         # Clip f
         f_samples = f_samples.clamp(min=0, max=3)
-        # f_samples = torch.zeros_like(f_samples)
 
         # Clip d
         d_samples = d_samples.clamp(min=0, max=1)
-        # d_samples = torch.ones_like(d_samples)
 
-        # Clip p
+        # Clip p is already in lw frame... can't change it
         # p_lw_samples[:,0] = p_lw_samples[:,0].clamp(min=-0.24,max=+0.36)
         # p_lw_samples[:,1] = p_lw_samples[:,1].clamp(min=-0.20,max=+0.20)
 
@@ -1450,7 +1445,7 @@ class SamplingOptimizer():
         F_lw_samples = F_lw_samples.clamp(min=0)
 
         # Ensure p on the ground TODO Implement
-        p_lw_samples[:,:,2,:] = 0.0*torch.ones_like(p_lw_samples[:,:,2,:])
+        # p_lw_samples[:,:,2,:] = 0.0*torch.ones_like(p_lw_samples[:,:,2,:])
 
         return f_samples, d_samples, p_lw_samples, F_lw_samples
 

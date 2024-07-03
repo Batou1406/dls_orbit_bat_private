@@ -21,6 +21,7 @@ import torch.distributions.constraints
 
 if TYPE_CHECKING:
     from omni.isaac.lab.envs import ManagerBasedEnv, ManagerBasedRLEnv
+    from typing import Literal
 
 from . import actions_cfg
 
@@ -393,14 +394,11 @@ class ModelBaseAction(ActionTerm):
         # Normalize the actions
         self.f, self.d, self.p_norm, self.F_norm = self.normalization(f=self.f_raw, d=self.d_raw, p=self.p_raw, F=self.F_raw)
 
-        # self.p_norm = torch.zeros_like(self.p_norm)
-        # self.d = torch.ones_like(self.d)
-
         # Enforce friction cone constraints for GRF
-        # self.F_norm_clipped = self.enforce_friction_cone_constraints(F=self.F_norm, mu=0.7)
+        # self.F_norm = self.enforce_friction_cone_constraints(F=self.F_norm, mu=0.55)
 
         # Disable Action : useful for debug
-        # self.f, self.d, self.p = self.debug_disable_action()
+        # self.f, self.d, self.p_norm = self.debug_disable_action(f=self.f, d=self.d, p_norm=self.p_norm, gait='trot')
 
         # Apply Transformation to have the Actions in the correct Frame
         self.f, self.d, self.p_lw, self.F_lw = self.transformation(f=self.f, d=self.d, p_h=self.p_norm, F_h=self.F_norm)
@@ -467,6 +465,55 @@ class ModelBaseAction(ActionTerm):
         # Reset the model base controller : expect default foot position in local world frame 
         self.controller.reset(env_ids, self.get_reset_foot_position())
 
+        # raw RL output
+        self.f_raw  = 1.0*torch.ones( self.num_envs, self._num_legs,                   device=self.device) 
+        self.d_raw  = 0.6*torch.ones( self.num_envs, self._num_legs,                   device=self.device)
+        self.p_raw  =     torch.zeros(self.num_envs, self._num_legs, 2, self._p_param, device=self.device)
+        self.F_raw  =     torch.zeros(self.num_envs, self._num_legs, 3, self._F_param, device=self.device)
+
+        # Normalized RL output
+        self.f      = self.f_raw.clone().detach() 
+        self.d      = self.d_raw.clone().detach()
+        self.p_norm = self.p_raw.clone().detach() 
+        self.F_norm = self.F_raw.clone().detach() 
+
+        # Previous output - used for derivative computation
+        self.f_prev      = self.f_raw.clone().detach() 
+        self.d_prev      = self.d_raw.clone().detach() 
+        self.p_norm_prev = self.p_raw.clone().detach() 
+        self.F_norm_prev = self.F_raw.clone().detach() 
+
+        # Normalized and transformed to frame RL output
+        self.p_lw   =     torch.zeros(self.num_envs, self._num_legs, 3, self._p_param, device=self.device) 
+        self.F_lw   =     torch.zeros(self.num_envs, self._num_legs, 3, self._F_param, device=self.device)
+
+        # For ease of reshaping variables
+        self.f_len = self.f_raw.shape[1:].numel()
+        self.d_len = self.d_raw.shape[1:].numel()
+        self.p_len = self.p_raw.shape[1:].numel()
+        self.F_len = self.F_raw.shape[1:].numel()
+
+        # create tensors for raw and processed actions
+        self._raw_actions = torch.zeros(self.num_envs, self.action_dim, device=self.device)
+        self._processed_actions = torch.zeros_like(self.raw_actions)   
+
+        # Model-based optimized latent variable
+        self.f_star     = torch.zeros(self.num_envs, self._num_legs,                     device=self.device)
+        self.d_star     = torch.zeros(self.num_envs, self._num_legs,                     device=self.device)
+        self.c_star     = torch.ones( self.num_envs, self._num_legs, 1,                  device=self.device)
+        self.p_star_lw  = torch.zeros(self.num_envs, self._num_legs, 3, self._p_param,   device=self.device)
+        self.F_star_lw  = torch.zeros(self.num_envs, self._num_legs, 3, self._F_param,   device=self.device)
+        self.pt_star_lw = torch.zeros(self.num_envs, self._num_legs, 9, self._decimation,device=self.device)
+        self.full_pt_lw = torch.zeros(self.num_envs, self._num_legs, 9, 22,              device=self.device)  # Used for plotting only
+
+        # Control input u : joint torques
+        self.u = torch.zeros(self.num_envs, self._num_joints, device=self.device)
+
+        # Intermediary variable - Hip variable for p centering
+        self.hip0_pos_lw = torch.zeros(self.num_envs, self._num_legs, 3, device=self.device)
+        self.hip0_yaw_quat_lw = torch.zeros(self.num_envs, self._num_legs, 4, device=self.device)
+        self.hip0_yaw_quat_lw[:,:,0] = 1 # initialize correctly the quaternion to avoid NaN in first operation
+
 
     def get_robot_state(self):
         """ Retrieve the Robot states from the simulator
@@ -491,6 +538,7 @@ class ModelBaseAction(ActionTerm):
         # shape(batch_size, num_legs, 3) : position is translation depend, thus : pos_lw = pos_w - env.scene.env_origin
         p_w = self._asset.data.body_pos_w[:, self.foot_idx,:]
         p_lw = p_w - self._env.scene.env_origins.unsqueeze(1).expand(p_w.shape)
+        p_lw = torch.nan_to_num(p_lw) # TODO solve this when sim reset get only NaN
 
         # Transformation to get feet position in body frame
         # p_orientation_w = self._asset.data.body_quat_w[:, self.foot_idx,:]
@@ -503,6 +551,7 @@ class ModelBaseAction(ActionTerm):
         # Retrieve Feet velocity in world frame : [num_instances, num_bodies, 3] select right indexes to get 
         # shape(batch_size, num_legs, 3) : Velocity is translation independant, thus p_dot_w = p_dot_lw
         p_dot_lw = self._asset.data.body_lin_vel_w[:, self.foot_idx,:]
+        p_dot_lw = torch.nan_to_num(p_dot_lw) # TODO solve this when sim reset get only NaN
 
         # Transformation to get feet velocity in body frame
         # p_dot_b_0, _ = math_utils.subtract_frame_transforms(robot_vel_w, robot_orientation_w, p_dot_w[:,0,:], p_orientation_w[:,0,:])
@@ -777,6 +826,7 @@ class ModelBaseAction(ActionTerm):
         # --- p : Transform from hip centered (xy plane only) with robot's heading orientation (roll_w, pitch_w, yaw_b) into local world frame 
         # Hip position in local world frame : shape(batch, num_legs, 3)
         p_hip_lw = self._asset.data.body_pos_w[:, self._hip_idx, :] - self._env.scene.env_origins.unsqueeze(1)
+        p_hip_lw = torch.nan_to_num(p_hip_lw) # TODO solve this when sim reset with NaN get only NaN afterwards
 
         # Project Hip position onto the xy plane : shape(batch, num_legs, 3)
         p_hip_lw[:,:,2] = 0
@@ -957,13 +1007,24 @@ class ModelBaseAction(ActionTerm):
         return height_scan_index.to(torch.int) 
 
 
-    def debug_disable_action(self):
-        """For debugging purposes, fix duty cycle, leg frequency and foot touch down position"""
-        f = 1.4 * torch.ones_like(self.f)
-        d = 0.6 * torch.ones_like(self.d)
-        p = torch.zeros_like(self.p_lw)
+    def debug_disable_action(self, f: torch.Tensor,d: torch.Tensor, p_norm: torch.Tensor, gait: Literal['full stance', 'trot']) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """For debugging purposes, fix duty cycle, leg frequency and foot touch down position
+        
+        Args:
+            gait (str) : The imposed gait, can be 'full stance' or 'trot'
+        """
 
-        return f, d, p
+        if   gait == 'full stance':
+            f = 0.0 * torch.ones_like(f)
+            d = 1.0 * torch.ones_like(d)
+            p_norm = torch.zeros_like(p_norm)
+
+        elif gait == 'trot':
+            f = 1.4 * torch.ones_like(f)
+            d = 0.6 * torch.ones_like(d)
+            p_norm = torch.zeros_like(p_norm)
+
+        return f, d, p_norm
 
 
     def debug_apply_action(self, p_lw, p_dot_lw, q_dot, jacobian_lw, jacobian_dot_lw, mass_matrix, h, F0_star_lw, c0_star, pt_i_star_lw):
@@ -1214,6 +1275,7 @@ class ModelBaseAction(ActionTerm):
         # return success
         return True
     
+
     def _set_debug_vis_impl(self, debug_vis: bool):
         global verbose_mb
         # set visibility of markers
