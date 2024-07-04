@@ -394,11 +394,8 @@ class ModelBaseAction(ActionTerm):
         # Normalize the actions
         self.f, self.d, self.p_norm, self.F_norm = self.normalization(f=self.f_raw, d=self.d_raw, p=self.p_raw, F=self.F_raw)
 
-        # Enforce friction cone constraints for GRF
-        # self.F_norm = self.enforce_friction_cone_constraints(F=self.F_norm, mu=0.55)
-
         # Disable Action : useful for debug
-        # self.f, self.d, self.p_norm = self.debug_disable_action(f=self.f, d=self.d, p_norm=self.p_norm, gait='trot')
+        # self.f, self.d, self.p_norm = self.debug_disable_action(f=self.f, d=self.d, p_norm=self.p_norm, gait='full stance')
 
         # Apply Transformation to have the Actions in the correct Frame
         self.f, self.d, self.p_lw, self.F_lw = self.transformation(f=self.f, d=self.d, p_h=self.p_norm, F_h=self.F_norm)
@@ -408,6 +405,9 @@ class ModelBaseAction(ActionTerm):
 
         # Optimize the latent variable with the model base controller
         self.f_star, self.d_star, self.c_star, self.p_star_lw, self.F_star_lw, self.pt_star_lw, self.full_pt_lw = self.controller.process_latent_variable(f=self.f, d=self.d, p_lw=self.p_lw, F_lw=self.F_lw, env=self._env, height_map=torch.zeros(17,11)) # TODO implement height map
+
+        # Enforce friction cone constraints for GRF
+        # self.F_star_lw = self.enforce_friction_cone_constraints(F=self.F_star_lw, mu=0.55)
 
         # Reset the inner loop counter
         self.inner_loop = 0      
