@@ -408,7 +408,7 @@ class TerrainImporterUniformDifficulty(TerrainImporter):
         # Sample 75% of the terrain with uniform law between [0,difficulty], and 25% of the terrain with difficulty
         self.terrain_levels[env_ids] = (uniform * proportion) + (maximum * ~proportion)
 
-        print('Max terrain difficulty : ',max(self.terrain_levels)
+        print('Max terrain difficulty : ',max(self.terrain_levels))
 
         # update the env origins
         self.env_origins[env_ids] = self.terrain_origins[self.terrain_levels[env_ids], self.terrain_types[env_ids]]
