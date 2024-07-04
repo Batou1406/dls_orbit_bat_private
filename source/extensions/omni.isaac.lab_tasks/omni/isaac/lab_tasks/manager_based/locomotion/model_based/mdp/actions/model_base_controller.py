@@ -769,10 +769,10 @@ class SamplingOptimizer():
         self.height_ref = height_ref
 
         # Define Variance for the sampling law
-        self.var_f = torch.tensor((0.05), device=device)
-        self.var_d = torch.tensor((0.05), device=device)
-        self.var_p = torch.tensor((0.02), device=device)
-        self.var_F = torch.tensor((5.00), device=device)
+        self.std_f = torch.tensor((0.05), device=device)
+        self.std_d = torch.tensor((0.05), device=device)
+        self.std_p = torch.tensor((0.02), device=device)
+        self.std_F = torch.tensor((5.00), device=device)
 
         # State weight matrix (JAX)
         self.Q = jnp.identity(self.state_dim, dtype=self.dtype_general)*0
@@ -823,8 +823,6 @@ class SamplingOptimizer():
         self.F_best =     torch.zeros((1,4,3,5), device=device)
         self.F_best[:,:,2,:] = 50.0
 
-        self.best_frequency_list = []
-        for i in range(10) : self.best_frequency_list.append(1.3)
 
     def reset(self):
         # Reset the best solution
@@ -1077,10 +1075,6 @@ class SamplingOptimizer():
         # Update previous best solution
         self.f_best, self.d_best, self.p_best, self.F_best = f_star, d_star, p_star_lw, F_star_lw
 
-        self.best_frequency_list.append(float(self.f_best[0,0]))
-        self.best_frequency_list.pop(0)
-        
-
         return f_star, d_star, p_star_lw, F_star_lw
 
 
@@ -1139,7 +1133,7 @@ class SamplingOptimizer():
             f_samples    (Tensor) : Leg frequency samples               of shape(num_samples, num_leg)
             d_samples    (Tensor) : Leg duty cycle samples              of shape(num_samples, num_leg)
             p_lw_samples (Tensor) : Foot touch down position samples    of shape(num_samples, num_leg, 3, p_param)
-            F_lw_samples (Tensor) : Ground Reaction forces samples      of shape(num_samples, 3, F_param)
+            F_lw_samples (Tensor) : Ground Reaction forces samples      of shape(num_samples, num_leg, 3, F_param)
         """
         # Define how much samples from the RL or from the previous solution we're going to sample
         num_samples_previous_best = int(self.num_samples * self.propotion_previous_solution)
@@ -1149,16 +1143,16 @@ class SamplingOptimizer():
         print('num samples RL',num_samples_RL)
 
         # Samples from the previous best solution
-        f_samples_best    = self.normal_sampling(num_samples=num_samples_previous_best, mean=self.f_best[0], var=self.var_f)
-        d_samples_best    = self.normal_sampling(num_samples=num_samples_previous_best, mean=self.d_best[0], var=self.var_d)
-        p_lw_samples_best = self.normal_sampling(num_samples=num_samples_previous_best, mean=self.p_best[0], var=self.var_p)
-        F_lw_samples_best = self.normal_sampling(num_samples=num_samples_previous_best, mean=self.F_best[0], var=self.var_F)
+        f_samples_best    = self.normal_sampling(num_samples=num_samples_previous_best, mean=self.f_best[0], std=self.std_f)
+        d_samples_best    = self.normal_sampling(num_samples=num_samples_previous_best, mean=self.d_best[0], std=self.std_d)
+        p_lw_samples_best = self.normal_sampling(num_samples=num_samples_previous_best, mean=self.p_best[0], std=self.std_p)
+        F_lw_samples_best = self.normal_sampling(num_samples=num_samples_previous_best, mean=self.F_best[0], std=self.std_F)
 
         # Samples from the provided guess
-        f_samples_rl    = self.normal_sampling(num_samples=num_samples_RL, mean=f[0],    var=self.var_f)
-        d_samples_rl    = self.normal_sampling(num_samples=num_samples_RL, mean=d[0],    var=self.var_d)
-        p_lw_samples_rl = self.normal_sampling(num_samples=num_samples_RL, mean=p_lw[0], var=self.var_p)
-        F_lw_samples_rl = self.normal_sampling(num_samples=num_samples_RL, mean=F_lw[0], var=self.var_F)
+        f_samples_rl    = self.normal_sampling(num_samples=num_samples_RL, mean=f[0],    std=self.std_f)
+        d_samples_rl    = self.normal_sampling(num_samples=num_samples_RL, mean=d[0],    std=self.std_d)
+        p_lw_samples_rl = self.normal_sampling(num_samples=num_samples_RL, mean=p_lw[0], std=self.std_p)
+        F_lw_samples_rl = self.normal_sampling(num_samples=num_samples_RL, mean=F_lw[0], std=self.std_F)
 
         # Concatenate the samples
         f_samples    = torch.cat((f_samples_rl,    f_samples_best),    dim=0)
@@ -1172,17 +1166,17 @@ class SamplingOptimizer():
         # Set the foot height to the nominal foot height # TODO change
         p_lw_samples[:,:,2,:] = p_lw[0,:,2,:]
 
-        # # Put the RL actions as the first samples
-        # f_samples[0,:]        = f[0,:]
-        # d_samples[0,:]        = d[0,:]
-        # p_lw_samples[0,:,:,:] = p_lw[0,:,:,:]
-        # F_lw_samples[0,:,:,:] = F_lw[0,:,:,:]
+        # Put the RL actions as the first samples
+        f_samples[0,:]        = f[0,:]
+        d_samples[0,:]        = d[0,:]
+        p_lw_samples[0,:,:,:] = p_lw[0,:,:,:]
+        F_lw_samples[0,:,:,:] = F_lw[0,:,:,:]
 
-        # # Put the Previous best actions as the second samples
-        # f_samples[1,:]        = self.f_best[0,:]
-        # d_samples[1,:]        = self.d_best[0,:]
-        # p_lw_samples[1,:,:,:] = self.p_best[0,:,:,:]
-        # F_lw_samples[1,:,:,:] = self.F_best[0,:,:,:]
+        # Put the Previous best actions as the second samples
+        f_samples[1,:]        = self.f_best[0,:]
+        d_samples[1,:]        = self.d_best[0,:]
+        p_lw_samples[1,:,:,:] = self.p_best[0,:,:,:]
+        F_lw_samples[1,:,:,:] = self.F_best[0,:,:,:]
 
         # If optimization is set to false, samples are feed with initial guess
         if not self.optimize_f : f_samples[:,:]        = f
@@ -1193,28 +1187,28 @@ class SamplingOptimizer():
         return f_samples, d_samples, p_lw_samples, F_lw_samples
 
 
-    def normal_sampling(self, num_samples:int, mean:torch.Tensor, var:torch.Tensor|None=None, seed:int|None=None) -> torch.Tensor:
-        """ Normal sampling law given mean and var -> return a samples
+    def normal_sampling(self, num_samples:int, mean:torch.Tensor, std:torch.Tensor|None=None, seed:int|None=None) -> torch.Tensor:
+        """ Normal sampling law given mean and std -> return a samples
         
         Args :
             mean     (Tensor): Mean of normal sampling law          of shape(num_dim1, num_dim2, etc.)
-            var      (Tensor): Varriance of normal sampling law     of shape(num_dim1, num_dim2, etc.)
+            std      (Tensor): Standard dev of normal sampling law  of shape(num_dim1, num_dim2, etc.)
             num_samples (int): Number of samples to generate
             seed        (int): seed to generate random numbers
 
         Return :
-            samples  (Tensor): Samples generated with mean and var  of shape(num_sammple, num_dim1, num_dim2, etc.)
+            samples  (Tensor): Samples generated with mean and std  of shape(num_sammple, num_dim1, num_dim2, etc.)
         """
 
         # Seed if provided
         if seed : 
             torch.manual_seed(seed)
 
-        if var is None :
-            var = torch.ones_like(mean)
+        if std is None :
+            std = torch.ones_like(mean)
 
         # Sample from a normal law with the provided parameters
-        samples = mean + torch.sqrt(var) * torch.randn((num_samples,) + mean.shape, device=self.device)
+        samples = mean + (std * torch.randn((num_samples,) + mean.shape, device=self.device))
 
         return samples
 

@@ -967,7 +967,7 @@ class ModelBaseAction(ActionTerm):
 
         F_x = F[:,:,0,:].unsqueeze(2)
         F_y = F[:,:,1,:].unsqueeze(2)
-        F_z = F[:,:,1,:].unsqueeze(2).clamp(min=0)
+        F_z = F[:,:,2,:].unsqueeze(2).clamp(min=0)
 
         # Angle between vec_x and vec_F_xy
         alpha = torch.atan2(F[:,:,1,:], F[:,:,0,:]).unsqueeze(2) # atan2(y,x) = arctan(y/x)

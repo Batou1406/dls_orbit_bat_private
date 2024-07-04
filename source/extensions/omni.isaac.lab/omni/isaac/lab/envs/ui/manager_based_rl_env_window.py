@@ -78,7 +78,7 @@ class BatManagerBasedRLEnvWindow(BaseEnvWindow):
                 try:          
                     self.modelBaseAction.controller.samplingOptimizer   
                     self._build_sampler_frame()
-                    self._build_plotting_frame()
+                    # self._build_plotting_frame()
                 except :
                     print('No \'samplingOptimizer\'provided : sampling controller frame not created ;')
             except : 
@@ -213,52 +213,52 @@ class BatManagerBasedRLEnvWindow(BaseEnvWindow):
                     )
                     omni.isaac.ui.ui_utils.add_line_rect_flourish()
 
-                f_var_cfg = {
-                    "label": "f variance",
+                f_std_cfg = {
+                    "label": "f std",
                     "type": "button",
-                    "default_val": float(self.modelBaseAction.controller.samplingOptimizer.var_f),
+                    "default_val": float(self.modelBaseAction.controller.samplingOptimizer.std_f),
                     "min": 0.0,
                     "max": 1.0,
                     "step": 0.05,
-                    "tooltip": "Set the variance of the leg frequency in the sampling law",
+                    "tooltip": "Set the standard deviation of the leg frequency in the sampling law",
                 }
-                self.ui_window_elements["f variance"] = omni.isaac.ui.ui_utils.float_builder(**f_var_cfg)
-                self.ui_window_elements["f variance"].add_value_changed_fn(self._update_f_var)
+                self.ui_window_elements["f std"] = omni.isaac.ui.ui_utils.float_builder(**f_std_cfg)
+                self.ui_window_elements["f std"].add_value_changed_fn(self._update_f_std)
 
-                d_var_cfg = {
-                    "label": "d variance",
+                d_std_cfg = {
+                    "label": "d std",
                     "type": "button",
-                    "default_val": float(self.modelBaseAction.controller.samplingOptimizer.var_d),
+                    "default_val": float(self.modelBaseAction.controller.samplingOptimizer.std_d),
                     "min": 0.0,
                     "max": 1.0,
                     "step": 0.05,
-                    "tooltip": "Set the variance of the leg duty cycle in the sampling law",
+                    "tooltip": "Set the standard deviation of the leg duty cycle in the sampling law",
                 }
-                self.ui_window_elements["d variance"] = omni.isaac.ui.ui_utils.float_builder(**d_var_cfg)
-                self.ui_window_elements["d variance"].add_value_changed_fn(self._update_d_var)
+                self.ui_window_elements["d std"] = omni.isaac.ui.ui_utils.float_builder(**d_std_cfg)
+                self.ui_window_elements["d std"].add_value_changed_fn(self._update_d_std)
 
-                p_var_cfg = {
-                    "label": "p variance",
+                p_std_cfg = {
+                    "label": "p std",
                     "type": "button",
-                    "default_val": float(self.modelBaseAction.controller.samplingOptimizer.var_p),
+                    "default_val": float(self.modelBaseAction.controller.samplingOptimizer.std_p),
                     "min": 0.0,
                     "max": 0.1,
                     "step": 0.005,
-                    "tooltip": "Set the variance of the foot step in the sampling law",
+                    "tooltip": "Set the standard deviation of the foot step in the sampling law",
                 }
-                self.ui_window_elements["p variance"] = omni.isaac.ui.ui_utils.float_builder(**p_var_cfg)
-                self.ui_window_elements["p variance"].add_value_changed_fn(self._update_p_var)
+                self.ui_window_elements["p std"] = omni.isaac.ui.ui_utils.float_builder(**p_std_cfg)
+                self.ui_window_elements["p std"].add_value_changed_fn(self._update_p_std)
 
-                F_var_cfg = {
-                    "label": "F variance",
+                F_std_cfg = {
+                    "label": "F std",
                     "type": "button",
-                    "default_val": float(self.modelBaseAction.controller.samplingOptimizer.var_F),
+                    "default_val": float(self.modelBaseAction.controller.samplingOptimizer.std_F),
                     "min": 0.0,
                     "max": 30.0,
-                    "tooltip": "Set the variance of the GRF in the sampling law",
+                    "tooltip": "Set the standard deviation of the GRF in the sampling law",
                 }
-                self.ui_window_elements["F variance"] = omni.isaac.ui.ui_utils.float_builder(**F_var_cfg)
-                self.ui_window_elements["F variance"].add_value_changed_fn(self._update_F_var)
+                self.ui_window_elements["F std"] = omni.isaac.ui.ui_utils.float_builder(**F_std_cfg)
+                self.ui_window_elements["F std"].add_value_changed_fn(self._update_F_std)
 
 
     def _build_plotting_frame(self):
@@ -323,14 +323,14 @@ class BatManagerBasedRLEnvWindow(BaseEnvWindow):
     def _update_proportion_best(self,model: omni.ui.SimpleFloatModel):
         self.modelBaseAction.controller.samplingOptimizer.propotion_previous_solution = model.as_float
 
-    def _update_f_var(self,model: omni.ui.SimpleFloatModel):
-        self.modelBaseAction.controller.samplingOptimizer.var_f = (model.as_float)*torch.ones_like(self.modelBaseAction.controller.samplingOptimizer.var_f)
+    def _update_f_std(self,model: omni.ui.SimpleFloatModel):
+        self.modelBaseAction.controller.samplingOptimizer.std_f = (model.as_float)*torch.ones_like(self.modelBaseAction.controller.samplingOptimizer.std_f)
 
-    def _update_d_var(self,model: omni.ui.SimpleFloatModel):
-        self.modelBaseAction.controller.samplingOptimizer.var_d = (model.as_float)*torch.ones_like(self.modelBaseAction.controller.samplingOptimizer.var_d)
+    def _update_d_std(self,model: omni.ui.SimpleFloatModel):
+        self.modelBaseAction.controller.samplingOptimizer.std_d = (model.as_float)*torch.ones_like(self.modelBaseAction.controller.samplingOptimizer.std_d)
 
-    def _update_p_var(self,model: omni.ui.SimpleFloatModel):
-        self.modelBaseAction.controller.samplingOptimizer.var_p = (model.as_float)*torch.ones_like(self.modelBaseAction.controller.samplingOptimizer.var_p)
+    def _update_p_std(self,model: omni.ui.SimpleFloatModel):
+        self.modelBaseAction.controller.samplingOptimizer.std_p = (model.as_float)*torch.ones_like(self.modelBaseAction.controller.samplingOptimizer.std_p)
 
-    def _update_F_var(self,model: omni.ui.SimpleFloatModel):
-        self.modelBaseAction.controller.samplingOptimizer.var_F = (model.as_float)*torch.ones_like(self.modelBaseAction.controller.samplingOptimizer.var_F)
+    def _update_F_std(self,model: omni.ui.SimpleFloatModel):
+        self.modelBaseAction.controller.samplingOptimizer.std_F = (model.as_float)*torch.ones_like(self.modelBaseAction.controller.samplingOptimizer.std_F)
