@@ -66,6 +66,21 @@ class ModelBaseActionCfg(ActionTermCfg):
         height_ref: float = 0.38
         """ Height reference for the optimization, defined as mean distance between legs in contact and base """
 
+        optimize_f: bool = False
+        """ If enabled, leg frequency will be optimized"""
+
+        optimize_d: bool = False
+        """ If enabled, duty cycle will be optimized"""
+
+        optimize_p: bool = False
+        """ If enabled, Foot step will be optimized"""
+
+        optimize_F: bool = True
+        """ If enabled, Ground Reaction Forces will be optimized"""
+
+        propotion_previous_solution: float = 0.2
+        """ Proportion of the previous solution that will be used to generate samples"""
+
     optimizerCfg: OptimizerCfg | None = None
     """ Must be provided if a controller with optimizer is selected (eg. 'samplingController')"""
 

@@ -638,8 +638,13 @@ class samplingController(modelBaseController):
 
         # Create the optimizer
         self.samplingOptimizer = SamplingOptimizer(device=device,num_legs=num_legs, num_samples=optimizerCfg.num_samples, sampling_horizon=optimizerCfg.prevision_horizon, discretization_time=optimizerCfg.discretization_time,
-                                                    interpolation_F_method=optimizerCfg.parametrization_F, interpolation_p_method=optimizerCfg.parametrization_p, height_ref=optimizerCfg.height_ref)  
+                                                   interpolation_F_method=optimizerCfg.parametrization_F, interpolation_p_method=optimizerCfg.parametrization_p, height_ref=optimizerCfg.height_ref,
+                                                   optimize_f=optimizerCfg.optimize_f, optimize_d=optimizerCfg.optimize_d, optimize_p=optimizerCfg.optimize_p, optimize_F=optimizerCfg.optimize_F,
+                                                   propotion_previous_solution=optimizerCfg.propotion_previous_solution)  
         self.c_prev = torch.ones(num_envs, num_legs, device=device)
+
+        # To enable or not the optimizer at run time
+        self.optimizer_active = True
 
 
     def reset(self, env_ids: Sequence[int] | None,  p_default_lw: torch.Tensor) -> None:
@@ -669,7 +674,7 @@ class samplingController(modelBaseController):
         """
 
         # Call the optimizer
-        if not self.verbose_md:
+        if self.optimizer_active:
             f_star, d_star, p_star_lw, F_star_lw = self.samplingOptimizer.optimize_latent_variable(env=env, f=f, d=d, p_lw=p_lw, F_lw=F_lw, phase=self.phase, c_prev=self.c_prev, height_map=height_map)
         else : f_star, d_star, F_star_lw, p_star_lw = f, d, F_lw, p_lw
 
@@ -690,7 +695,7 @@ fake = False
 class SamplingOptimizer():
     """ Model Based optimizer based on the centroidal model """
 
-    def __init__(self, device, num_legs, num_samples, sampling_horizon, discretization_time, interpolation_F_method, interpolation_p_method, height_ref):
+    def __init__(self, device, num_legs, num_samples, sampling_horizon, discretization_time, interpolation_F_method, interpolation_p_method, height_ref, optimize_f, optimize_d, optimize_p, optimize_F, propotion_previous_solution):
         """ 
         Args :
             device                 : 'cuda' or 'cpu' 
@@ -707,29 +712,29 @@ class SamplingOptimizer():
         # General variables
         self.device = device
         if device == 'cuda:0' : self.device_jax = jax.devices('gpu')[0]
-        else                : self.device_jax = jax.devices('cpu')[0]
+        else                  : self.device_jax = jax.devices('cpu')[0]
         self.dtype_general = 'float32'
         self.num_legs = num_legs
         
         # Optimizer configuration
-        self.num_samples = num_samples # set to 1 for fake sampling and taking directly the RL output
+        self.num_samples = num_samples
         self.sampling_horizon = sampling_horizon
         self.dt = discretization_time    
 
         # Define Interpolation method for GRF and interfer GRF input size 
-        if interpolation_F_method=='cubic spline' : 
+        if   interpolation_F_method == 'cubic spline' : 
             self.interpolation_F=self.compute_cubic_spline
             self.F_param = 4
-        elif interpolation_F_method=='discrete'     :
+        elif interpolation_F_method == 'discrete'     :
             self.interpolation_F=self.compute_discrete
             self.F_param = self.sampling_horizon
         else : raise NotImplementedError('Request interpolation method is not implemented yet')
 
         # Define Interpolation method for foot touch down position and interfer foot touch down position input size 
-        if interpolation_p_method=='cubic spline' : 
+        if   interpolation_p_method == 'cubic spline' : 
             self.interpolation_p=self.compute_cubic_spline
             self.p_param = 4
-        if interpolation_p_method=='discrete'     : 
+        elif interpolation_p_method == 'discrete'     : 
             self.interpolation_p=self.compute_discrete
             self.p_param = self.sampling_horizon
         else : raise NotImplementedError('Request interpolation method is not implemented yet')
@@ -751,8 +756,23 @@ class SamplingOptimizer():
         self.F_z_max = self.robot_model.mass*9.81
         self.mu = 0.5
 
+        # Boolean to enable variable optimization or not
+        self.optimize_f = optimize_f
+        self.optimize_d = optimize_d
+        self.optimize_p = optimize_p
+        self.optimize_F = optimize_F
+
+        # How much of the previous solution is used to generate samples compare to the provided guess (in [0,1])
+        self.propotion_previous_solution = propotion_previous_solution
+
         # Define the height reference for the tracking
         self.height_ref = height_ref
+
+        # Define Variance for the sampling law
+        self.var_f = torch.tensor((0.05), device=device)
+        self.var_d = torch.tensor((0.05), device=device)
+        self.var_p = torch.tensor((0.02), device=device)
+        self.var_F = torch.tensor((5.00), device=device)
 
         # State weight matrix (JAX)
         self.Q = jnp.identity(self.state_dim, dtype=self.dtype_general)*0
@@ -796,17 +816,22 @@ class SamplingOptimizer():
         self.R = self.R.at[10,10].set(0.1)      #foot_force_y_RR
         self.R = self.R.at[11,11].set(0.001)    #foot_force_z_RR
 
-        self.f_best = torch.zeros((1,4), device=device)
-        self.d_best = torch.ones((1,4), device=device)
-        self.p_best = torch.zeros((1,4,3,5), device=device)
-        self.F_best = torch.zeros((1,4,3,5), device=device)
+        # Initialize the best solution
+        self.f_best = 1.5*torch.ones( (1,4),     device=device)
+        self.d_best = 0.6*torch.ones( (1,4),     device=device)
+        self.p_best =     torch.zeros((1,4,3,5), device=device)
+        self.F_best =     torch.zeros((1,4,3,5), device=device)
         self.F_best[:,:,2,:] = 50.0
 
+        self.best_frequency_list = []
+        for i in range(10) : self.best_frequency_list.append(1.3)
+
     def reset(self):
-        self.f_best = torch.zeros((1,4), device=self.device)
-        self.d_best = torch.ones((1,4), device=self.device)
-        self.p_best = torch.zeros((1,4,3,5), device=self.device)
-        self.F_best = torch.zeros((1,4,3,5), device=self.device)
+        # Reset the best solution
+        self.f_best = 1.5*torch.ones( (1,4),     device=self.device)
+        self.d_best = 0.6*torch.ones( (1,4),     device=self.device)
+        self.p_best =     torch.zeros((1,4,3,5), device=self.device)
+        self.F_best =     torch.zeros((1,4,3,5), device=self.device)
         self.F_best[:,:,2,:] = 50.0
 
 
@@ -842,17 +867,9 @@ class SamplingOptimizer():
         initial_state_jax, reference_seq_state_jax, reference_seq_input_samples_jax, \
         action_seq_c_samples_jax, action_p_lw_samples_jax, action_F_lw_samples_jax = self.prepare_variable_for_compute_rollout(env=env, c_samples=c_samples, p_lw_samples=p_lw_samples, F_lw_samples=F_lw_samples, feet_in_contact=c_prev[0,])
 
-        # torch.cuda.synchronize(device=self.device)
-        # start_time2 = time.time()
-
         # --- Step 3 : Compute the rollouts to find the rollout cost : can't used named argument with VMAP...
         cost_samples_jax = self.jit_parallel_compute_rollout(initial_state_jax, reference_seq_state_jax, reference_seq_input_samples_jax,
                                                              action_seq_c_samples_jax, action_p_lw_samples_jax, action_F_lw_samples_jax)
-        
-        # torch.cuda.synchronize(device=self.device)
-        # stop_time2 = time.time()
-        # elapsed_time2_ms = (stop_time2 - start_time2) * 1000
-        # print(f"Compute rollout time: {elapsed_time2_ms:.2f} ms")
 
         # --- Step 4 : Given the samples cost, find the best control action
         best_action_seq_jax, best_index = self.find_best_actions(action_seq_c_samples_jax, cost_samples_jax)
@@ -860,15 +877,16 @@ class SamplingOptimizer():
         # --- Step 4 : Convert the optimal value back to torch.Tensor
         f_star, d_star, p_star_lw, F_star_lw = self.retrieve_z_from_action_seq(best_index, f_samples, d_samples, p_lw_samples, F_lw_samples)
 
-        # print('f - cum. diff. : %3.2f' % torch.sum(torch.abs(f_star - f)))
-        # print('d - cum. diff. : %3.2f' % torch.sum(torch.abs(d_star - d)))
-        # print('p - cum. diff. : %3.2f' % torch.sum(torch.abs(p_star_lw - p_lw)))
-        # print('F - cum. diff. : %5.1f' % torch.sum(torch.abs(F_star_lw - F_lw)))
 
         # torch.cuda.synchronize(device=self.device)
         # stop_time = time.time()
         # elapsed_time_ms = (stop_time - start_time) * 1000
         # print(f"Execution time: {elapsed_time_ms:.2f} ms")
+
+        print('f - cum. diff. : %3.2f' % torch.sum(torch.abs(f_star - f)))
+        print('d - cum. diff. : %3.2f' % torch.sum(torch.abs(d_star - d)))
+        print('p - cum. diff. : %3.2f' % torch.sum(torch.abs(p_star_lw - p_lw)))
+        print('F - cum. diff. : %5.1f' % torch.sum(torch.abs(F_star_lw - F_lw)))
 
         return f_star, d_star, p_star_lw, F_star_lw
 
@@ -1059,6 +1077,10 @@ class SamplingOptimizer():
         # Update previous best solution
         self.f_best, self.d_best, self.p_best, self.F_best = f_star, d_star, p_star_lw, F_star_lw
 
+        self.best_frequency_list.append(float(self.f_best[0,0]))
+        self.best_frequency_list.pop(0)
+        
+
         return f_star, d_star, p_star_lw, F_star_lw
 
 
@@ -1107,11 +1129,11 @@ class SamplingOptimizer():
         from these polices with equal proportions. TODO
         
         Args :
-            f    (Tensor): Leg frequency                of shape(batch_size, num_leg)
-            d    (Tensor): Leg duty cycle               of shape(batch_size, num_leg)
-            p_lw (Tensor): Foot touch down position     of shape(batch_size, num_leg, 3, p_param)
-            F_lw (Tensor): ground Reaction Forces       of shape(batch_size, num_leg, 3, F_param)
-            height_map   (torch.Tensor): Height map arround the robot        of shape(x, y)
+            f    (Tensor): Leg frequency                                of shape(batch_size, num_leg)
+            d    (Tensor): Leg duty cycle                               of shape(batch_size, num_leg)
+            p_lw (Tensor): Foot touch down position                     of shape(batch_size, num_leg, 3, p_param)
+            F_lw (Tensor): ground Reaction Forces                       of shape(batch_size, num_leg, 3, F_param)
+            height_map   (torch.Tensor): Height map arround the robot   of shape(x, y)
             
         Returns :
             f_samples    (Tensor) : Leg frequency samples               of shape(num_samples, num_leg)
@@ -1119,17 +1141,30 @@ class SamplingOptimizer():
             p_lw_samples (Tensor) : Foot touch down position samples    of shape(num_samples, num_leg, 3, p_param)
             F_lw_samples (Tensor) : Ground Reaction forces samples      of shape(num_samples, 3, F_param)
         """
+        # Define how much samples from the RL or from the previous solution we're going to sample
+        num_samples_previous_best = int(self.num_samples * self.propotion_previous_solution)
+        num_samples_RL = self.num_samples - num_samples_previous_best
 
-        # f_best, d_best, p_best, F_best = self.best_solution()
-        # f_samples = self.normal_sampling(num_samples=self.num_samples, mean=f_best[0], var=torch.tensor((0.20), device=self.device))
-        # d_samples = self.normal_sampling(num_samples=self.num_samples, mean=d_best[0], var=torch.tensor((0.10), device=self.device))
-        # p_lw_samples = self.normal_sampling(num_samples=self.num_samples, mean=p_best[0], var=torch.tensor((0.05), device=self.device))
-        # F_lw_samples = self.normal_sampling(num_samples=self.num_samples, mean=F_best[0], var=torch.tensor((5.0), device=self.device))
+        print('num samples best',num_samples_previous_best)
+        print('num samples RL',num_samples_RL)
 
-        f_samples = self.normal_sampling(num_samples=self.num_samples, mean=f[0], var=torch.tensor((0.10), device=self.device))
-        d_samples = self.normal_sampling(num_samples=self.num_samples, mean=d[0], var=torch.tensor((0.05), device=self.device))
-        p_lw_samples = self.normal_sampling(num_samples=self.num_samples, mean=p_lw[0], var=torch.tensor((0.02), device=self.device))
-        F_lw_samples = self.normal_sampling(num_samples=self.num_samples, mean=F_lw[0], var=torch.tensor((20.0), device=self.device))
+        # Samples from the previous best solution
+        f_samples_best    = self.normal_sampling(num_samples=num_samples_previous_best, mean=self.f_best[0], var=self.var_f)
+        d_samples_best    = self.normal_sampling(num_samples=num_samples_previous_best, mean=self.d_best[0], var=self.var_d)
+        p_lw_samples_best = self.normal_sampling(num_samples=num_samples_previous_best, mean=self.p_best[0], var=self.var_p)
+        F_lw_samples_best = self.normal_sampling(num_samples=num_samples_previous_best, mean=self.F_best[0], var=self.var_F)
+
+        # Samples from the provided guess
+        f_samples_rl    = self.normal_sampling(num_samples=num_samples_RL, mean=f[0],    var=self.var_f)
+        d_samples_rl    = self.normal_sampling(num_samples=num_samples_RL, mean=d[0],    var=self.var_d)
+        p_lw_samples_rl = self.normal_sampling(num_samples=num_samples_RL, mean=p_lw[0], var=self.var_p)
+        F_lw_samples_rl = self.normal_sampling(num_samples=num_samples_RL, mean=F_lw[0], var=self.var_F)
+
+        # Concatenate the samples
+        f_samples    = torch.cat((f_samples_rl,    f_samples_best),    dim=0)
+        d_samples    = torch.cat((d_samples_rl,    d_samples_best),    dim=0)
+        p_lw_samples = torch.cat((p_lw_samples_rl, p_lw_samples_best), dim=0)
+        F_lw_samples = torch.cat((F_lw_samples_rl, F_lw_samples_best), dim=0)
 
         # Clamp the input to valid range
         f_samples, d_samples, p_lw_samples, F_lw_samples = self.enforce_valid_input(f_samples=f_samples, d_samples=d_samples, p_lw_samples=p_lw_samples, F_lw_samples=F_lw_samples, height_map=height_map)
@@ -1137,16 +1172,23 @@ class SamplingOptimizer():
         # Set the foot height to the nominal foot height # TODO change
         p_lw_samples[:,:,2,:] = p_lw[0,:,2,:]
 
-        # Put the orignal actions as the first samples
-        f_samples[0,:] = f[0,:]
-        d_samples[0,:] = d[0,:]
-        p_lw_samples[0,:,:,:] = p_lw[0,:,:,:]
-        F_lw_samples[0,:,:,:] = F_lw[0,:,:,:]
+        # # Put the RL actions as the first samples
+        # f_samples[0,:]        = f[0,:]
+        # d_samples[0,:]        = d[0,:]
+        # p_lw_samples[0,:,:,:] = p_lw[0,:,:,:]
+        # F_lw_samples[0,:,:,:] = F_lw[0,:,:,:]
 
-        # TODO Change : remove f, d and p sampling
-        f_samples[:,:] = f
-        d_samples[:,:] = d
-        p_lw_samples[:,:,:,:] = p_lw
+        # # Put the Previous best actions as the second samples
+        # f_samples[1,:]        = self.f_best[0,:]
+        # d_samples[1,:]        = self.d_best[0,:]
+        # p_lw_samples[1,:,:,:] = self.p_best[0,:,:,:]
+        # F_lw_samples[1,:,:,:] = self.F_best[0,:,:,:]
+
+        # If optimization is set to false, samples are feed with initial guess
+        if not self.optimize_f : f_samples[:,:]        = f
+        if not self.optimize_d : d_samples[:,:]        = d
+        if not self.optimize_p : p_lw_samples[:,:,:,:] = p_lw
+        if not self.optimize_F : F_lw_samples[:,:,:,:] = F_lw
 
         return f_samples, d_samples, p_lw_samples, F_lw_samples
 
