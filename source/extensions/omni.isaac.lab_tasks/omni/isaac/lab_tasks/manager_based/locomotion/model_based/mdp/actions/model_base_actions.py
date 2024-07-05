@@ -377,13 +377,13 @@ class ModelBaseAction(ActionTerm):
         self._raw_actions[:] = actions
 
         # Filter the invalid values
-        # if torch.isinf(self._raw_actions).any():
-        #     print('Problem with Infinite value in raw actions')
-        #     self._raw_actions[torch.nonzero(torch.isinf(self._raw_actions))] = 0
+        if torch.isinf(self._raw_actions).any():
+            print('Problem with Infinite value in raw actions')
+            self._raw_actions[torch.nonzero(torch.isinf(self._raw_actions))] = 0
 
-        # if not torch.distributions.constraints.real.check(self._raw_actions).any():
-        #     print('Problem with NaN value in raw actions')
-        #     self._raw_actions = torch.nan_to_num(self._raw_actions)
+        if not torch.distributions.constraints.real.check(self._raw_actions).any():
+            print('Problem with NaN value in raw actions')
+            self._raw_actions = torch.nan_to_num(self._raw_actions)
 
         # reconstruct the latent variable from the RL poliy actions
         self.f_raw = (self._raw_actions[:, 0                                    : self.f_len                                       ]).reshape_as(self.f_raw)
@@ -465,54 +465,54 @@ class ModelBaseAction(ActionTerm):
         # Reset the model base controller : expect default foot position in local world frame 
         self.controller.reset(env_ids, self.get_reset_foot_position())
 
-        # raw RL output
-        self.f_raw  = 1.0*torch.ones( self.num_envs, self._num_legs,                   device=self.device) 
-        self.d_raw  = 0.6*torch.ones( self.num_envs, self._num_legs,                   device=self.device)
-        self.p_raw  =     torch.zeros(self.num_envs, self._num_legs, 2, self._p_param, device=self.device)
-        self.F_raw  =     torch.zeros(self.num_envs, self._num_legs, 3, self._F_param, device=self.device)
+        # # raw RL output
+        # self.f_raw  = 1.0*torch.ones( self.num_envs, self._num_legs,                   device=self.device) 
+        # self.d_raw  = 0.6*torch.ones( self.num_envs, self._num_legs,                   device=self.device)
+        # self.p_raw  =     torch.zeros(self.num_envs, self._num_legs, 2, self._p_param, device=self.device)
+        # self.F_raw  =     torch.zeros(self.num_envs, self._num_legs, 3, self._F_param, device=self.device)
 
-        # Normalized RL output
-        self.f      = self.f_raw.clone().detach() 
-        self.d      = self.d_raw.clone().detach()
-        self.p_norm = self.p_raw.clone().detach() 
-        self.F_norm = self.F_raw.clone().detach() 
+        # # Normalized RL output
+        # self.f      = self.f_raw.clone().detach() 
+        # self.d      = self.d_raw.clone().detach()
+        # self.p_norm = self.p_raw.clone().detach() 
+        # self.F_norm = self.F_raw.clone().detach() 
 
-        # Previous output - used for derivative computation
-        self.f_prev      = self.f_raw.clone().detach() 
-        self.d_prev      = self.d_raw.clone().detach() 
-        self.p_norm_prev = self.p_raw.clone().detach() 
-        self.F_norm_prev = self.F_raw.clone().detach() 
+        # # Previous output - used for derivative computation
+        # self.f_prev      = self.f_raw.clone().detach() 
+        # self.d_prev      = self.d_raw.clone().detach() 
+        # self.p_norm_prev = self.p_raw.clone().detach() 
+        # self.F_norm_prev = self.F_raw.clone().detach() 
 
-        # Normalized and transformed to frame RL output
-        self.p_lw   =     torch.zeros(self.num_envs, self._num_legs, 3, self._p_param, device=self.device) 
-        self.F_lw   =     torch.zeros(self.num_envs, self._num_legs, 3, self._F_param, device=self.device)
+        # # Normalized and transformed to frame RL output
+        # self.p_lw   =     torch.zeros(self.num_envs, self._num_legs, 3, self._p_param, device=self.device) 
+        # self.F_lw   =     torch.zeros(self.num_envs, self._num_legs, 3, self._F_param, device=self.device)
 
-        # For ease of reshaping variables
-        self.f_len = self.f_raw.shape[1:].numel()
-        self.d_len = self.d_raw.shape[1:].numel()
-        self.p_len = self.p_raw.shape[1:].numel()
-        self.F_len = self.F_raw.shape[1:].numel()
+        # # For ease of reshaping variables
+        # self.f_len = self.f_raw.shape[1:].numel()
+        # self.d_len = self.d_raw.shape[1:].numel()
+        # self.p_len = self.p_raw.shape[1:].numel()
+        # self.F_len = self.F_raw.shape[1:].numel()
 
-        # create tensors for raw and processed actions
-        self._raw_actions = torch.zeros(self.num_envs, self.action_dim, device=self.device)
-        self._processed_actions = torch.zeros_like(self.raw_actions)   
+        # # create tensors for raw and processed actions
+        # self._raw_actions = torch.zeros(self.num_envs, self.action_dim, device=self.device)
+        # self._processed_actions = torch.zeros_like(self.raw_actions)   
 
-        # Model-based optimized latent variable
-        self.f_star     = torch.zeros(self.num_envs, self._num_legs,                     device=self.device)
-        self.d_star     = torch.zeros(self.num_envs, self._num_legs,                     device=self.device)
-        self.c_star     = torch.ones( self.num_envs, self._num_legs, 1,                  device=self.device)
-        self.p_star_lw  = torch.zeros(self.num_envs, self._num_legs, 3, self._p_param,   device=self.device)
-        self.F_star_lw  = torch.zeros(self.num_envs, self._num_legs, 3, self._F_param,   device=self.device)
-        self.pt_star_lw = torch.zeros(self.num_envs, self._num_legs, 9, self._decimation,device=self.device)
-        self.full_pt_lw = torch.zeros(self.num_envs, self._num_legs, 9, 22,              device=self.device)  # Used for plotting only
+        # # Model-based optimized latent variable
+        # self.f_star     = torch.zeros(self.num_envs, self._num_legs,                     device=self.device)
+        # self.d_star     = torch.zeros(self.num_envs, self._num_legs,                     device=self.device)
+        # self.c_star     = torch.ones( self.num_envs, self._num_legs, 1,                  device=self.device)
+        # self.p_star_lw  = torch.zeros(self.num_envs, self._num_legs, 3, self._p_param,   device=self.device)
+        # self.F_star_lw  = torch.zeros(self.num_envs, self._num_legs, 3, self._F_param,   device=self.device)
+        # self.pt_star_lw = torch.zeros(self.num_envs, self._num_legs, 9, self._decimation,device=self.device)
+        # self.full_pt_lw = torch.zeros(self.num_envs, self._num_legs, 9, 22,              device=self.device)  # Used for plotting only
 
-        # Control input u : joint torques
-        self.u = torch.zeros(self.num_envs, self._num_joints, device=self.device)
+        # # Control input u : joint torques
+        # self.u = torch.zeros(self.num_envs, self._num_joints, device=self.device)
 
-        # Intermediary variable - Hip variable for p centering
-        self.hip0_pos_lw = torch.zeros(self.num_envs, self._num_legs, 3, device=self.device)
-        self.hip0_yaw_quat_lw = torch.zeros(self.num_envs, self._num_legs, 4, device=self.device)
-        self.hip0_yaw_quat_lw[:,:,0] = 1 # initialize correctly the quaternion to avoid NaN in first operation
+        # # Intermediary variable - Hip variable for p centering
+        # self.hip0_pos_lw = torch.zeros(self.num_envs, self._num_legs, 3, device=self.device)
+        # self.hip0_yaw_quat_lw = torch.zeros(self.num_envs, self._num_legs, 4, device=self.device)
+        # self.hip0_yaw_quat_lw[:,:,0] = 1 # initialize correctly the quaternion to avoid NaN in first operation
 
 
     def get_robot_state(self):

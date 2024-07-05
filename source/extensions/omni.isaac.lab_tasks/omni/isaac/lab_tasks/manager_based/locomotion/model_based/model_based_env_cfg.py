@@ -194,11 +194,11 @@ class ObservationsCfg:
         - Robot base angular velocity  - base frame     - uniform noise ±0.2    - dim=3
         - Robot base height            - world frame    -                       - dim=1
         - Gravity proj. on robot base  - base frame     - uniform noise ±0.05   - dim=3
-        - Robot base velocity commands                  - no noise              - dim=4
-        - Robot joint position                          - uniform noise ±0.01   - dim=12
-        - Robot joint velocity                          - uniform noise ±1.5    - dim=12
-        - Last action term (joint pos)                  - no noise              - dim=12
-        - height scan                                   - uniform noise ±0.1    - dim=...
+        - Robot base velocity commands              - no noise              - dim=4
+        - Robot joint position                      - uniform noise ±0.01   - dim=12
+        - Robot joint velocity                      - uniform noise ±1.5    - dim=12
+        - Last action term (joint pos)              - no noise              - dim=12
+        - height scan                               - uniform noise ±0.1    - dim=...
         """
 
         # ---- Robot's pose ----
@@ -449,17 +449,13 @@ class LocomotionModelBasedEnvCfg(ManagerBasedRLEnvCfg):
     def __post_init__(self):
         """Post initialization."""
         # general settings
-        self.decimation = 4             # 50 Hz control loop
-        # self.decimation = 2             # 100 Hz control loop
+        self.decimation = 4
         self.episode_length_s = 15.0
-
         # simulation settings
-        self.sim.dt = 0.005             # 200 Hz physical simulation
+        self.sim.dt = 0.005
         self.sim.disable_contact_processing = True
         self.sim.physics_material = self.scene.terrain.physics_material
-        # self.sim.render_interval = 4    # 50 Hz render
-        # self.sim.render_interval = 8    # 25 Hz render
-        
+        self.sim.render_interval = 4 #50Hz render
         # update sensor update periods
         # we tick all the sensors based on the smallest update period (physics update period)
         if self.scene.height_scanner is not None:
@@ -476,7 +472,7 @@ class LocomotionModelBasedEnvCfg(ManagerBasedRLEnvCfg):
             if self.scene.terrain.terrain_generator is not None:
                 self.scene.terrain.terrain_generator.curriculum = False
 
-        self.viewer.eye             = (1.5, 1.5, 0.4) #(1.5, 1.5, 0.9)
+        self.viewer.eye             = (1.5, 1.5, 0.9)
         self.viewer.lookat          = (0.0, 0.0, 0.0)
         self.viewer.cam_prim_path   = "/OmniverseKit_Persp"
         self.viewer.resolution      = (1280, 720)     # 720p
