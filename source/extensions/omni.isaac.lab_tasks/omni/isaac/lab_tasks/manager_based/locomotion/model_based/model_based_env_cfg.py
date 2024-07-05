@@ -458,7 +458,7 @@ class LocomotionModelBasedEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.disable_contact_processing = True
         self.sim.physics_material = self.scene.terrain.physics_material
         # self.sim.render_interval = 4    # 50 Hz render
-        self.sim.render_interval = 8    # 25 Hz render
+        # self.sim.render_interval = 8    # 25 Hz render
         
         # update sensor update periods
         # we tick all the sensors based on the smallest update period (physics update period)
