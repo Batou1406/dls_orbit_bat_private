@@ -375,8 +375,13 @@ class TerrainImporterUniformDifficulty(TerrainImporter):
     def __init__(self, cfg: TerrainImporterCfg):
         super().__init__(cfg)
 
+        num_rows, num_cols = self.terrain_origins.shape[:2]
+
         # maximum initial level possible for the terrains
-        max_init_level = max(1,min(self.cfg.max_init_terrain_level, 10))
+        if self.cfg.max_init_terrain_level is None:
+            max_init_level = num_rows - 1
+        else:
+            max_init_level = max(0, min(self.cfg.max_init_terrain_level, num_rows - 1)) #10))
 
         # Create new property : called difficulty
         self.difficulty = torch.randint(0, max_init_level, (self.cfg.num_envs,), device=self.device)
@@ -395,7 +400,7 @@ class TerrainImporterUniformDifficulty(TerrainImporter):
         self.difficulty[env_ids] += 1 * move_up - 1 * move_down
 
         # Clamp difficulty between valid range
-        self.difficulty[env_ids] = self.difficulty[env_ids].clamp(0, self.max_terrain_level-1)
+        self.difficulty[env_ids] = self.difficulty[env_ids].clamp(0, self.max_terrain_level-2)
 
         # Generate 75%-25% binomial law. (diffiuclty is of type 'int' thus we have to specify the float type for comparison)
         proportion = (torch.rand_like(self.difficulty[env_ids], dtype=torch.float) > 0.75)
