@@ -384,7 +384,7 @@ class TerrainImporterUniformDifficulty(TerrainImporter):
             max_init_level = max(0, min(self.cfg.max_init_terrain_level, num_rows - 1)) #10))
 
         # Create new property : called difficulty
-        self.difficulty = torch.randint(0, max_init_level, (self.cfg.num_envs,), device=self.device)
+        self.difficulty = torch.randint(0, max_init_level+1, (self.cfg.num_envs,), device=self.device)
 
     def update_env_origins(self, env_ids: torch.Tensor, move_up: torch.Tensor, move_down: torch.Tensor):
         """Update the environment origins based on the terrain levels."""
