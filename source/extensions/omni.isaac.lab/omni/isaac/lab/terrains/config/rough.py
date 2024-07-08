@@ -11,7 +11,7 @@ from ..terrain_generator_cfg import TerrainGeneratorCfg
 
 ROUGH_TERRAINS_CFG = TerrainGeneratorCfg(
     size=(8.0, 8.0),    # Sub-terrain size
-    border_width=20.0,  # Border around the main terrain (not around subterrains)
+    border_width=60.0,  # Border around the main terrain (not around subterrains)
     num_rows=10,        # Max difficulty : The difficulty is varied linearly over the number of rows (i.e. along x).
     num_cols=20,
     horizontal_scale=0.1,
