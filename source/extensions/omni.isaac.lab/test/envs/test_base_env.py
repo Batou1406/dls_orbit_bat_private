@@ -32,8 +32,8 @@ from omni.isaac.lab.utils import configclass
 
 
 @configclass
-class EmptyManagerCfg:
-    """Empty manager specifications for the environment."""
+class EmptyActionsCfg:
+    """Action specifications for the environment."""
 
     pass
 
@@ -55,8 +55,7 @@ def get_empty_base_env_cfg(device: str = "cuda:0", num_envs: int = 1, env_spacin
         # Scene settings
         scene: EmptySceneCfg = EmptySceneCfg(num_envs=num_envs, env_spacing=env_spacing)
         # Basic settings
-        actions: EmptyManagerCfg = EmptyManagerCfg()
-        observations: EmptyManagerCfg = EmptyManagerCfg()
+        actions: EmptyActionsCfg = EmptyActionsCfg()
 
         def __post_init__(self):
             """Post initialization."""
@@ -64,15 +63,14 @@ def get_empty_base_env_cfg(device: str = "cuda:0", num_envs: int = 1, env_spacin
             self.decimation = 4  # env step every 4 sim steps: 200Hz / 4 = 50Hz
             # simulation settings
             self.sim.dt = 0.005  # sim step every 5ms: 200Hz
-            self.sim.render_interval = self.decimation  # render every 4 sim steps
             # pass device down from test
             self.sim.device = device
 
     return EmptyEnvCfg()
 
 
-class TestManagerBasedEnv(unittest.TestCase):
-    """Test for manager-based env class"""
+class TestBaseEnv(unittest.TestCase):
+    """Test for base env class"""
 
     """
     Tests
