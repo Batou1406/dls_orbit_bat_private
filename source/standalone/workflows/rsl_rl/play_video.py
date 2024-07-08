@@ -1,11 +1,14 @@
-# Copyright (c) 2022-2024, The Isaac Lab Project Developers.
+# Copyright (c) 2022-2024, The lab Project Developers.
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
 """Script to play a checkpoint if an RL agent from RSL-RL."""
 
+from __future__ import annotations
+
 """Launch Isaac Sim Simulator first."""
+
 
 import argparse
 
@@ -38,18 +41,70 @@ simulation_app = app_launcher.app
 import gymnasium as gym
 import os
 import torch
+import random
 
 from rsl_rl.runners import OnPolicyRunner
 
+# import omni.isaac.contrib_tasks  # noqa: F401
 import omni.isaac.lab_tasks  # noqa: F401
 from omni.isaac.lab_tasks.utils import get_checkpoint_path, parse_env_cfg
 from omni.isaac.lab_tasks.utils.wrappers.rsl_rl import (
     RslRlOnPolicyRunnerCfg,
     RslRlVecEnvWrapper,
-    export_policy_as_jit,
     export_policy_as_onnx,
 )
 
+from omni.isaac.lab.envs import ManagerBasedRLEnv
+import math
+def move_camera(env: ManagerBasedRLEnv, w: float):
+    """ Update default cam eye to rotate arround the target"""
+
+    (pos_x, pos_y, pos_z) = env.viewport_camera_controller.default_cam_eye 
+
+    hypothenuse = (pos_x**2 + pos_y**2)**0.5
+
+    alpha = math.atan2(pos_y, pos_x)
+
+    alpha = alpha + (w*env.step_dt)
+
+    pos_x = hypothenuse*math.cos(alpha)
+    pos_y = hypothenuse*math.sin(alpha)
+
+    env.viewport_camera_controller.default_cam_eye = (pos_x, pos_y, pos_z)
+
+def change_camera_target(env: ManagerBasedRLEnv):
+    """ Change default cam target and keep the angle between the robot and the camera constant with the update"""
+
+    # Retrieve the robot index
+    robot_index = env.viewport_camera_controller.cfg.env_index
+
+    # Retrieve the angle made by the camera and the origin [rad]
+    (pos_x, pos_y, pos_z) = env.viewport_camera_controller.default_cam_eye 
+    hypothenuse = (pos_x**2 + pos_y**2)**0.5
+    alpha_camera = math.atan2(pos_y, pos_x)
+    
+    # Retrieve the angle made by the robot and the origin [rad]
+    alpha_robot = env.scene["robot"].data.heading_w[robot_index]
+
+    # Compute the relative angle
+    alpha_relative = (alpha_camera - alpha_robot) % (2*math.pi)
+
+    # sample new robot index
+    new_robot_index = random.randint(0, env.num_envs-1)
+
+    # Retrieve the new robot orientation with the origin [rad]
+    alpha_new_robot = env.scene["robot"].data.heading_w[new_robot_index]
+
+    # Compute the new angle required by the camera (relative angle + angle new robot with origin) [rad]
+    alpha = (alpha_relative + alpha_new_robot) % (2*math.pi)
+
+    # update the camera with the new angle 
+    pos_x = hypothenuse*math.cos(alpha)
+    pos_y = hypothenuse*math.sin(alpha)
+    env.viewport_camera_controller.default_cam_eye = (pos_x, pos_y, pos_z)
+    
+    # Update the target index of the camera
+    env.viewport_camera_controller.cfg.env_index = new_robot_index
 
 def main():
     """Play with RSL-RL agent."""
@@ -60,7 +115,16 @@ def main():
     agent_cfg: RslRlOnPolicyRunnerCfg = cli_args.parse_rsl_rl_cfg(args_cli.task, args_cli)
 
     # create isaac environment
-    env = gym.make(args_cli.task, cfg=env_cfg)
+    env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array")
+
+    video_kwargs = {
+        "video_folder": "videos",
+        "name_prefix" : args_cli.task,
+        "step_trigger": lambda step: step == 81,
+        "video_length": 600,
+    }
+    env = gym.wrappers.RecordVideo(env, **video_kwargs)
+
     # wrap around environment for rsl-rl
     env = RslRlVecEnvWrapper(env)
 
@@ -79,14 +143,13 @@ def main():
     # obtain the trained policy for inference
     policy = ppo_runner.get_inference_policy(device=env.unwrapped.device)
 
-    # export policy to onnx/jit
+    # export policy to onnx
     export_model_dir = os.path.join(os.path.dirname(resume_path), "exported")
-    export_policy_as_jit(
-        ppo_runner.alg.actor_critic, ppo_runner.obs_normalizer, path=export_model_dir, filename="policy.pt"
-    )
-    export_policy_as_onnx(
-        ppo_runner.alg.actor_critic, normalizer=ppo_runner.obs_normalizer, path=export_model_dir, filename="policy.onnx"
-    )
+    export_policy_as_onnx(ppo_runner.alg.actor_critic, export_model_dir, filename="policy.onnx")
+
+    # variable for moving target
+    update_target = 0
+    w = 0.5 # 1.0 # angular speed in [rad/s]
 
     # reset environment
     obs, _ = env.get_observations()
@@ -98,6 +161,15 @@ def main():
             actions = policy(obs)
             # env stepping
             obs, _, _, _ = env.step(actions)
+
+            # Update the camera tracking, camera angular speed in radian per second
+            move_camera(env=env.unwrapped, w=w)
+            
+            update_target += 1
+            if update_target == 80:
+                update_target = 0
+                change_camera_target(env=env.unwrapped)
+
 
     # close the simulator
     env.close()
