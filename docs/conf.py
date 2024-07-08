@@ -51,7 +51,6 @@ extensions = [
     "sphinx.ext.todo",
     "sphinx.ext.viewcode",
     "sphinxcontrib.bibtex",
-    "sphinxcontrib.icon",
     "sphinx_copybutton",
     "sphinx_design",
 ]

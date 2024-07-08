@@ -1,6 +1,3 @@
-.. _isaacsim-binaries-installation:
-
-
 Installation using Isaac Sim Binaries
 =====================================
 
@@ -25,13 +22,13 @@ To check the minimum system requirements,refer to the documentation
    .. tab-set::
       :sync-group: os
 
-      .. tab-item:: :icon:`fa-brands fa-linux` Linux
+      .. tab-item:: Linux
          :sync: linux
 
          On Linux systems, by default, Isaac Sim is installed in the directory
          ``${HOME}/.local/share/ov/pkg/isaac_sim-*``, with ``*`` corresponding to the Isaac Sim version.
 
-      .. tab-item:: :icon:`fa-brands fa-windows` Windows
+      .. tab-item:: Windows
          :sync: windows
 
          On Windows systems, by default,Isaac Sim is installed in the directory
@@ -75,7 +72,7 @@ Clone the Isaac Lab repository into your workspace:
    .. tab-set::
       :sync-group: os
 
-      .. tab-item:: :icon:`fa-brands fa-linux` Linux
+      .. tab-item:: Linux
          :sync: linux
 
          .. code:: text
@@ -96,7 +93,7 @@ Clone the Isaac Lab repository into your workspace:
                -d, --docs           Build the documentation from source using sphinx.
                -c, --conda [NAME]   Create the conda environment for Isaac Lab. Default name is 'isaaclab'.
 
-      .. tab-item:: :icon:`fa-brands fa-windows` Windows
+      .. tab-item:: Windows
          :sync: windows
 
          .. code:: text
@@ -127,7 +124,7 @@ to index the python modules and look for extensions shipped with Isaac Sim.
 .. tab-set::
    :sync-group: os
 
-   .. tab-item:: :icon:`fa-brands fa-linux` Linux
+   .. tab-item:: Linux
       :sync: linux
 
       .. code:: bash
@@ -138,7 +135,7 @@ to index the python modules and look for extensions shipped with Isaac Sim.
          ln -s path_to_isaac_sim _isaac_sim
          # For example: ln -s /home/nvidia/.local/share/ov/pkg/isaac-sim-4.0.0 _isaac_sim
 
-   .. tab-item:: :icon:`fa-brands fa-windows` Windows
+   .. tab-item:: Windows
       :sync: windows
 
       .. code:: batch
@@ -170,7 +167,7 @@ use the following command:
 .. tab-set::
    :sync-group: os
 
-   .. tab-item:: :icon:`fa-brands fa-linux` Linux
+   .. tab-item:: Linux
       :sync: linux
 
       .. code:: bash
@@ -180,7 +177,7 @@ use the following command:
          # Option 2: Custom name for conda environment
          ./isaaclab.sh --conda my_env  # or "./isaaclab.sh -c my_env"
 
-   .. tab-item:: :icon:`fa-brands fa-windows` Windows
+   .. tab-item:: Windows
       :sync: windows
 
       .. code:: batch
@@ -221,14 +218,14 @@ Installation
 .. tab-set::
    :sync-group: os
 
-   .. tab-item:: :icon:`fa-brands fa-linux` Linux
+   .. tab-item:: Linux
       :sync: linux
 
       .. code:: bash
 
          ./isaaclab.sh --install # or "./isaaclab.sh -i"
 
-   .. tab-item:: :icon:`fa-brands fa-windows` Windows
+   .. tab-item:: Windows
       :sync: windows
 
       .. code:: batch
@@ -243,14 +240,14 @@ Installation
    .. tab-set::
       :sync-group: os
 
-      .. tab-item:: :icon:`fa-brands fa-linux` Linux
+      .. tab-item:: Linux
          :sync: linux
 
          .. code:: bash
 
             ./isaaclab.sh --install rl_games  # or "./isaaclab.sh -i rl_games"
 
-      .. tab-item:: :icon:`fa-brands fa-windows` Windows
+      .. tab-item:: Windows
          :sync: windows
 
          .. code:: batch
