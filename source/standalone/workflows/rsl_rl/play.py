@@ -79,14 +79,12 @@ def main():
     # obtain the trained policy for inference
     policy = ppo_runner.get_inference_policy(device=env.unwrapped.device)
 
-    # export policy to onnx/jit
+    # export policy to onnx
     export_model_dir = os.path.join(os.path.dirname(resume_path), "exported")
     export_policy_as_jit(
         ppo_runner.alg.actor_critic, ppo_runner.obs_normalizer, path=export_model_dir, filename="policy.pt"
     )
-    export_policy_as_onnx(
-        ppo_runner.alg.actor_critic, normalizer=ppo_runner.obs_normalizer, path=export_model_dir, filename="policy.onnx"
-    )
+    export_policy_as_onnx(ppo_runner.alg.actor_critic, path=export_model_dir, filename="policy.onnx")
 
     # reset environment
     obs, _ = env.get_observations()
@@ -104,6 +102,15 @@ def main():
 
 
 if __name__ == "__main__":
+
+    # To automatically close all the unecessary windows
+    import omni.ui
+    windows = omni.ui.Workspace.get_windows()   
+    for window in windows: 
+        name = window.title
+        if name=="Property" or name=="Content" or name=="Layer" or name=="Semantics Schema Editor" or name=="Stage" or name=="Render Settings" or name=="Console" or name=="Simulation Settings":
+            omni.ui.Workspace.show_window(str(window), False)
+            
     # run the main function
     main()
     # close sim app

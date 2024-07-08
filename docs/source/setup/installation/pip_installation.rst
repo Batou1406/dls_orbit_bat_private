@@ -1,5 +1,3 @@
-.. _isaacsim-pip-installation:
-
 Installation using Isaac Sim pip
 ================================
 
@@ -7,18 +5,18 @@ Installation using Isaac Sim pip
 Installing Isaac Sim
 --------------------
 
-From Isaac Sim 4.0 release, it is possible to install Isaac Sim using pip. This approach is experimental and may have
-compatibility issues with some Linux distributions. If you encounter any issues, please report them to the
-`Isaac Sim Forums <https://docs.omniverse.nvidia.com/isaacsim/latest/common/feedback.html>`_.
+.. note::
 
-.. attention::
+   Installing Isaac Sim from pip is currently an experimental feature.
+   If errors occur, please report them to the
+   `Isaac Sim Forums <https://docs.omniverse.nvidia.com/isaacsim/latest/common/feedback.html>`_
+   and install Isaac Sim from pre-built binaries.
+
+.. note::
 
    Installing Isaac Sim with pip requires GLIBC 2.34+ version compatibility.
    To check the GLIBC version on your system, use command ``ldd --version``.
 
-   This may pose compatibility issues with some Linux distributions. For instance, Ubuntu 20.04 LTS has GLIBC 2.31
-   by default. If you encounter compatibility issues, we recommend following the
-   :ref:`Isaac Sim Binaries Installation <isaacsim-binaries-installation>` approach.
 
 -  To use the pip installation approach for Isaac Sim, we recommend first creating a virtual environment.
    Ensure that the python version of the virtual environment is **Python 3.10**.
@@ -37,7 +35,7 @@ compatibility issues with some Linux distributions. If you encounter any issues,
          .. tab-set::
             :sync-group: os
 
-            .. tab-item:: :icon:`fa-brands fa-linux` Linux
+            .. tab-item:: Linux
                :sync: linux
 
                .. code-block:: bash
@@ -47,7 +45,7 @@ compatibility issues with some Linux distributions. If you encounter any issues,
                   # activate the conda environment
                   source isaaclab/bin/activate
 
-            .. tab-item:: :icon:`fa-brands fa-windows` Windows
+            .. tab-item:: Windows
                :sync: windows
 
                .. code-block:: batch
@@ -119,7 +117,7 @@ Clone the Isaac Lab repository into your workspace:
    .. tab-set::
       :sync-group: os
 
-      .. tab-item:: :icon:`fa-brands fa-linux` Linux
+      .. tab-item:: Linux
          :sync: linux
 
          .. code:: text
@@ -140,7 +138,7 @@ Clone the Isaac Lab repository into your workspace:
                -d, --docs           Build the documentation from source using sphinx.
                -c, --conda [NAME]   Create the conda environment for Isaac Lab. Default name is 'isaaclab'.
 
-      .. tab-item:: :icon:`fa-brands fa-windows` Windows
+      .. tab-item:: Windows
          :sync: windows
 
          .. code:: text
@@ -175,14 +173,14 @@ Installation
 .. tab-set::
    :sync-group: os
 
-   .. tab-item:: :icon:`fa-brands fa-linux` Linux
+   .. tab-item:: Linux
       :sync: linux
 
       .. code:: bash
 
          ./isaaclab.sh --install # or "./isaaclab.sh -i"
 
-   .. tab-item:: :icon:`fa-brands fa-windows` Windows
+   .. tab-item:: Windows
       :sync: windows
 
       .. code:: bash
@@ -197,14 +195,14 @@ Installation
    .. tab-set::
       :sync-group: os
 
-      .. tab-item:: :icon:`fa-brands fa-linux` Linux
+      .. tab-item:: Linux
          :sync: linux
 
          .. code:: bash
 
             ./isaaclab.sh --install rl_games  # or "./isaaclab.sh -i rl_games"
 
-      .. tab-item:: :icon:`fa-brands fa-windows` Windows
+      .. tab-item:: Windows
          :sync: windows
 
          .. code:: bash

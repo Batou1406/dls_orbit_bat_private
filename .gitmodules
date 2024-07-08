@@ -1,0 +1,4 @@
+[submodule "source/extensions/omni.isaac.orbit_tasks/omni/isaac/orbit_tasks/locomotion/model_based/mdp/actions/Quadruped-PyMPC"]
+	path = source/extensions/omni.isaac.orbit_tasks/omni/isaac/orbit_tasks/locomotion/model_based/mdp/actions/Quadruped-PyMPC
+	url = git@github.com:iit-DLSLab/Quadruped-PyMPC.git
+	branch = devel/isaac

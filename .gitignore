@@ -57,3 +57,11 @@ _build
 **/runs/*
 **/logs/*
 **/recordings/*
+
+# Bat
+**/batTuto/*
+
+dataset/*
+model/*
+
+**/quadrupedpympc/*

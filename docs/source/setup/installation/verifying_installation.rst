@@ -63,7 +63,7 @@ variables to your terminal for the remaining of the installation instructions:
 .. tab-set::
    :sync-group: os
 
-   .. tab-item:: :icon:`fa-brands fa-linux` Linux
+   .. tab-item:: Linux
       :sync: linux
 
       .. code:: bash
@@ -73,7 +73,7 @@ variables to your terminal for the remaining of the installation instructions:
          # Isaac Sim python executable
          export ISAACSIM_PYTHON_EXE="${ISAACSIM_PATH}/python.sh"
 
-   .. tab-item:: :icon:`fa-brands fa-windows` Windows
+   .. tab-item:: Windows
       :sync: windows
 
       .. code:: batch
@@ -93,7 +93,7 @@ For more information on common paths, please check the Isaac Sim
    .. tab-set::
       :sync-group: os
 
-      .. tab-item:: :icon:`fa-brands fa-linux` Linux
+      .. tab-item:: Linux
          :sync: linux
 
          .. code:: bash
@@ -101,7 +101,7 @@ For more information on common paths, please check the Isaac Sim
             # note: you can pass the argument "--help" to see all arguments possible.
             ${ISAACSIM_PATH}/isaac-sim.sh
 
-      .. tab-item:: :icon:`fa-brands fa-windows` Windows
+      .. tab-item:: Windows
          :sync: windows
 
          .. code:: batch
@@ -115,7 +115,7 @@ For more information on common paths, please check the Isaac Sim
    .. tab-set::
       :sync-group: os
 
-      .. tab-item:: :icon:`fa-brands fa-linux` Linux
+      .. tab-item:: Linux
          :sync: linux
 
          .. code:: bash
@@ -125,7 +125,7 @@ For more information on common paths, please check the Isaac Sim
             # checks that Isaac Sim can be launched from python
             ${ISAACSIM_PYTHON_EXE} ${ISAACSIM_PATH}/standalone_examples/api/omni.isaac.core/add_cubes.py
 
-      .. tab-item:: :icon:`fa-brands fa-windows` Windows
+      .. tab-item:: Windows
          :sync: windows
 
          .. code:: batch
@@ -136,20 +136,24 @@ For more information on common paths, please check the Isaac Sim
             %ISAACSIM_PYTHON_EXE% %ISAACSIM_PATH%\standalone_examples\api\omni.isaac.core\add_cubes.py
 
 
-.. caution::
+.. attention::
 
-   If you have been using a previous version of Isaac Sim, you need to run the following command for the *first*
-   time after installation to remove all the old user data and cached variables:
+	If you have been using a previous version of Isaac Sim, you
+	need to run the following command for the *first* time after
+	installation to remove all the old user data and cached variables:
 
    .. tab-set::
+      :sync-group: os
 
-      .. tab-item:: :icon:`fa-brands fa-linux` Linux
+      .. tab-item:: Linux
+         :sync: linux
 
       	.. code:: bash
 
       		${ISAACSIM_PATH}/isaac-sim.sh --reset-user
 
-      .. tab-item:: :icon:`fa-brands fa-windows` Windows
+      .. tab-item:: Windows
+         :sync: windows
 
          .. code:: batch
 
@@ -173,7 +177,7 @@ top of the repository:
 .. tab-set::
    :sync-group: os
 
-   .. tab-item:: :icon:`fa-brands fa-linux` Linux
+   .. tab-item:: Linux
       :sync: linux
 
       .. code:: bash
@@ -185,7 +189,7 @@ top of the repository:
          # Option 2: Using python in your virtual environment
          python source/standalone/tutorials/00_sim/create_empty.py
 
-   .. tab-item:: :icon:`fa-brands fa-windows` Windows
+   .. tab-item:: Windows
       :sync: windows
 
       .. code:: batch

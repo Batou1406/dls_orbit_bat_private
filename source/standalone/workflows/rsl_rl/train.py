@@ -43,6 +43,9 @@ simulation_app = app_launcher.app
 
 """Rest everything follows."""
 
+import os
+os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
+
 import gymnasium as gym
 import os
 import torch
