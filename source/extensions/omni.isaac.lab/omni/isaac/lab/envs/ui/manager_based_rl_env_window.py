@@ -115,35 +115,49 @@ class BatManagerBasedRLEnvWindow(BaseEnvWindow):
             self.ui_window_elements["sampler_vstack"] = omni.ui.VStack(spacing=5, height=0)
             with self.ui_window_elements["sampler_vstack"]:
 
-                # create a number slider to change the number of samples
+                # create a slider to change the number of samples
                 num_samples_cfg = {
                     "label": "number of samples",
                     "type": "button",
                     "default_val": self.modelBaseAction.cfg.optimizerCfg.num_samples,
                     "min": 2,
                     "max": 20000,
-                    "tooltip": "alo",
+                    "tooltip": "Number of samples used by the sampling optimizer",
                 }
                 self.ui_window_elements["num samples"] = omni.isaac.ui.ui_utils.int_builder(**num_samples_cfg)
                 self.ui_window_elements["num samples"].add_value_changed_fn(self._update_num_samples)
 
+                # Create a slider to change the proportion of the samples sampled from previous best sample
                 prop_best_cfg = {
                     "label": "Prop. of best solution",
                     "type": "button",
                     "default_val": self.modelBaseAction.cfg.optimizerCfg.propotion_previous_solution,
                     "min": 0.0,
                     "max": 1.0,
-                    "tooltip": "Proportion of previous best solution in the sample",
+                    "tooltip": "Proportion of the samples sampled from previous best sample",
                 }
                 self.ui_window_elements["proportion Best"] = omni.isaac.ui.ui_utils.float_builder(**prop_best_cfg)
                 self.ui_window_elements["proportion Best"].add_value_changed_fn(self._update_proportion_best)
 
+                # create a slider to change the number iteration of the optimizer
+                num_iter_cfg = {
+                    "label": "number of iterations",
+                    "type": "button",
+                    "default_val": self.modelBaseAction.cfg.optimizerCfg.num_optimizer_iterations,
+                    "min": 1,
+                    "max": 5,
+                    "tooltip": "Number of time the sampling optiizer will iterate",
+                }
+                self.ui_window_elements["num iter"] = omni.isaac.ui.ui_utils.int_builder(**num_iter_cfg)
+                self.ui_window_elements["num iter"].add_value_changed_fn(self._update_num_iter)
+
+                # Create a button to enable or not the optimizer
                 with omni.ui.HStack():
                     omni.ui.Label(
                         "Enable Optimization",
                         width=omni.isaac.ui.ui_utils.LABEL_WIDTH - 12,
                         alignment=omni.ui.Alignment.LEFT_CENTER,
-                        tooltip="Alo",
+                        tooltip="Wether to enable or not the optimization - If not enabled, the actions are directly the actions provided by the network",
                     )
                     self.ui_window_elements["Enable Optimization"] = SimpleCheckBox(
                         model=omni.ui.SimpleBoolModel(),
@@ -153,12 +167,13 @@ class BatManagerBasedRLEnvWindow(BaseEnvWindow):
                     )
                     omni.isaac.ui.ui_utils.add_line_rect_flourish()
 
+                # Create a button to enable leg frequency optimization
                 with omni.ui.HStack():
                     omni.ui.Label(
                         "Frequency Optimization",
                         width=omni.isaac.ui.ui_utils.LABEL_WIDTH - 12,
                         alignment=omni.ui.Alignment.LEFT_CENTER,
-                        tooltip="Alo",
+                        tooltip="Wether to enable the leg frequency optimization or not",
                     )
                     self.ui_window_elements["Frequency Optimization"] = SimpleCheckBox(
                         model=omni.ui.SimpleBoolModel(),
@@ -168,12 +183,13 @@ class BatManagerBasedRLEnvWindow(BaseEnvWindow):
                     )
                     omni.isaac.ui.ui_utils.add_line_rect_flourish()
 
+                # Create a button to enable leg duty cycle optimization
                 with omni.ui.HStack():
                     omni.ui.Label(
                         "Duty Cyle Optimization",
                         width=omni.isaac.ui.ui_utils.LABEL_WIDTH - 12,
                         alignment=omni.ui.Alignment.LEFT_CENTER,
-                        tooltip="Alo",
+                        tooltip="Wether to enable the leg duty cycle optimization or not",
                     )
                     self.ui_window_elements["Duty Cylce Optimization"] = SimpleCheckBox(
                         model=omni.ui.SimpleBoolModel(),
@@ -183,12 +199,13 @@ class BatManagerBasedRLEnvWindow(BaseEnvWindow):
                     )
                     omni.isaac.ui.ui_utils.add_line_rect_flourish()
 
+                # Create a button to enable foot touch down optimization
                 with omni.ui.HStack():
                     omni.ui.Label(
                         "Foot step Optimization",
                         width=omni.isaac.ui.ui_utils.LABEL_WIDTH - 12,
                         alignment=omni.ui.Alignment.LEFT_CENTER,
-                        tooltip="Alo",
+                        tooltip="Wether to enable the foot touch down optimization or not",
                     )
                     self.ui_window_elements["Foot step Optimization"] = SimpleCheckBox(
                         model=omni.ui.SimpleBoolModel(),
@@ -198,12 +215,13 @@ class BatManagerBasedRLEnvWindow(BaseEnvWindow):
                     )
                     omni.isaac.ui.ui_utils.add_line_rect_flourish()
 
+                # Create a button to enable ground reaction forces optimization
                 with omni.ui.HStack():
                     omni.ui.Label(
                         "Force Optimization",
                         width=omni.isaac.ui.ui_utils.LABEL_WIDTH - 12,
                         alignment=omni.ui.Alignment.LEFT_CENTER,
-                        tooltip="Alo",
+                        tooltip="Wether to enable the ground reaction forces optimization or not",
                     )
                     self.ui_window_elements["Force Optimization"] = SimpleCheckBox(
                         model=omni.ui.SimpleBoolModel(),
@@ -213,6 +231,7 @@ class BatManagerBasedRLEnvWindow(BaseEnvWindow):
                     )
                     omni.isaac.ui.ui_utils.add_line_rect_flourish()
 
+                # Create a slider to chnage the leg frequency standard variation in the sampling law
                 f_std_cfg = {
                     "label": "f std",
                     "type": "button",
@@ -225,6 +244,7 @@ class BatManagerBasedRLEnvWindow(BaseEnvWindow):
                 self.ui_window_elements["f std"] = omni.isaac.ui.ui_utils.float_builder(**f_std_cfg)
                 self.ui_window_elements["f std"].add_value_changed_fn(self._update_f_std)
 
+                # Create a slider to chnage the leg duty cycle standard variation in the sampling law
                 d_std_cfg = {
                     "label": "d std",
                     "type": "button",
@@ -237,6 +257,7 @@ class BatManagerBasedRLEnvWindow(BaseEnvWindow):
                 self.ui_window_elements["d std"] = omni.isaac.ui.ui_utils.float_builder(**d_std_cfg)
                 self.ui_window_elements["d std"].add_value_changed_fn(self._update_d_std)
 
+                # Create a slider to chnage the foot touch down position standard variation in the sampling law
                 p_std_cfg = {
                     "label": "p std",
                     "type": "button",
@@ -249,6 +270,7 @@ class BatManagerBasedRLEnvWindow(BaseEnvWindow):
                 self.ui_window_elements["p std"] = omni.isaac.ui.ui_utils.float_builder(**p_std_cfg)
                 self.ui_window_elements["p std"].add_value_changed_fn(self._update_p_std)
 
+                # Create a slider to chnage the ground reaction forces standard variation in the sampling law
                 F_std_cfg = {
                     "label": "F std",
                     "type": "button",
@@ -317,20 +339,23 @@ class BatManagerBasedRLEnvWindow(BaseEnvWindow):
         #             # self.ui_window_elements["Foot step Optimization"]  = SimpleCheckBox(model=omni.ui.SimpleBoolModel(),enabled=value,checked=self.modelBaseAction.cfg.optimizerCfg.optimize_p,on_checked_fn=self._toggle_p_opt,)
         #             # self.ui_window_elements["Force Optimization"]      = SimpleCheckBox(model=omni.ui.SimpleBoolModel(),enabled=value,checked=self.modelBaseAction.cfg.optimizerCfg.optimize_F,on_checked_fn=self._toggle_F_opt,)
 
-    def _update_num_samples(self,model: omni.ui.SimpleIntModel):
+    def _update_num_samples(self, model: omni.ui.SimpleIntModel):
         self.modelBaseAction.controller.samplingOptimizer.num_samples = model.as_int
 
-    def _update_proportion_best(self,model: omni.ui.SimpleFloatModel):
+    def _update_proportion_best(self, model: omni.ui.SimpleFloatModel):
         self.modelBaseAction.controller.samplingOptimizer.propotion_previous_solution = model.as_float
 
-    def _update_f_std(self,model: omni.ui.SimpleFloatModel):
+    def _update_f_std(self, model: omni.ui.SimpleFloatModel):
         self.modelBaseAction.controller.samplingOptimizer.std_f = (model.as_float)*torch.ones_like(self.modelBaseAction.controller.samplingOptimizer.std_f)
 
-    def _update_d_std(self,model: omni.ui.SimpleFloatModel):
+    def _update_d_std(self, model: omni.ui.SimpleFloatModel):
         self.modelBaseAction.controller.samplingOptimizer.std_d = (model.as_float)*torch.ones_like(self.modelBaseAction.controller.samplingOptimizer.std_d)
 
-    def _update_p_std(self,model: omni.ui.SimpleFloatModel):
+    def _update_p_std(self, model: omni.ui.SimpleFloatModel):
         self.modelBaseAction.controller.samplingOptimizer.std_p = (model.as_float)*torch.ones_like(self.modelBaseAction.controller.samplingOptimizer.std_p)
 
-    def _update_F_std(self,model: omni.ui.SimpleFloatModel):
+    def _update_F_std(self, model: omni.ui.SimpleFloatModel):
         self.modelBaseAction.controller.samplingOptimizer.std_F = (model.as_float)*torch.ones_like(self.modelBaseAction.controller.samplingOptimizer.std_F)
+
+    def _update_num_iter(self, model: omni.ui.SimpleIntModel):
+        self.modelBaseAction.controller.samplingOptimizer.num_optimizer_iterations = model.as_int

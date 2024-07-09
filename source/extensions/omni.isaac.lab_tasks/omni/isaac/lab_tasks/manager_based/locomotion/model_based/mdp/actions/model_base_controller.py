@@ -640,7 +640,7 @@ class samplingController(modelBaseController):
         self.samplingOptimizer = SamplingOptimizer(device=device,num_legs=num_legs, num_samples=optimizerCfg.num_samples, sampling_horizon=optimizerCfg.prevision_horizon, discretization_time=optimizerCfg.discretization_time,
                                                    interpolation_F_method=optimizerCfg.parametrization_F, interpolation_p_method=optimizerCfg.parametrization_p, height_ref=optimizerCfg.height_ref,
                                                    optimize_f=optimizerCfg.optimize_f, optimize_d=optimizerCfg.optimize_d, optimize_p=optimizerCfg.optimize_p, optimize_F=optimizerCfg.optimize_F,
-                                                   propotion_previous_solution=optimizerCfg.propotion_previous_solution)  
+                                                   propotion_previous_solution=optimizerCfg.propotion_previous_solution, num_optimizer_iterations=optimizerCfg.num_optimizer_iterations)  
         self.c_prev = torch.ones(num_envs, num_legs, device=device)
 
         # To enable or not the optimizer at run time
@@ -695,7 +695,7 @@ fake = False
 class SamplingOptimizer():
     """ Model Based optimizer based on the centroidal model """
 
-    def __init__(self, device, num_legs, num_samples, sampling_horizon, discretization_time, interpolation_F_method, interpolation_p_method, height_ref, optimize_f, optimize_d, optimize_p, optimize_F, propotion_previous_solution):
+    def __init__(self, device, num_legs, num_samples, sampling_horizon, discretization_time, interpolation_F_method, interpolation_p_method, height_ref, optimize_f, optimize_d, optimize_p, optimize_F, propotion_previous_solution, num_optimizer_iterations):
         """ 
         Args :
             device                 : 'cuda' or 'cpu' 
@@ -720,6 +720,7 @@ class SamplingOptimizer():
         self.num_samples = num_samples
         self.sampling_horizon = sampling_horizon
         self.dt = discretization_time    
+        self.num_optimizer_iterations = num_optimizer_iterations
 
         # Define Interpolation method for GRF and interfer GRF input size 
         if   interpolation_F_method == 'cubic spline' : 
@@ -855,25 +856,26 @@ class SamplingOptimizer():
         # torch.cuda.synchronize(device=self.device)
         # start_time = time.time()
 
-        # --- Step 1 : Generate the samples and bound them to valid input
-        f_samples, d_samples, p_lw_samples, F_lw_samples = self.generate_samples(f=f, d=d, p_lw=p_lw, F_lw=F_lw, height_map=height_map)
+        for i in range(self.num_optimizer_iterations):
+            # --- Step 1 : Generate the samples and bound them to valid input
+            f_samples, d_samples, p_lw_samples, F_lw_samples = self.generate_samples(f=f, d=d, p_lw=p_lw, F_lw=F_lw, height_map=height_map)
 
-        # --- Step 2 : Given f and d samples -> generate the contact sequence for the samples
-        c_samples, new_phase = self.gait_generator(f_samples=f_samples, d_samples=d_samples, phase=phase.squeeze(0), sampling_horizon=self.sampling_horizon, dt=self.dt)
+            # --- Step 2 : Given f and d samples -> generate the contact sequence for the samples
+            c_samples, new_phase = self.gait_generator(f_samples=f_samples, d_samples=d_samples, phase=phase.squeeze(0), sampling_horizon=self.sampling_horizon, dt=self.dt)
 
-        # --- Step 2 : prepare the variables : convert from torch.Tensor to Jax
-        initial_state_jax, reference_seq_state_jax, reference_seq_input_samples_jax, \
-        action_seq_c_samples_jax, action_p_lw_samples_jax, action_F_lw_samples_jax = self.prepare_variable_for_compute_rollout(env=env, c_samples=c_samples, p_lw_samples=p_lw_samples, F_lw_samples=F_lw_samples, feet_in_contact=c_prev[0,])
+            # --- Step 2 : prepare the variables : convert from torch.Tensor to Jax
+            initial_state_jax, reference_seq_state_jax, reference_seq_input_samples_jax, \
+            action_seq_c_samples_jax, action_p_lw_samples_jax, action_F_lw_samples_jax = self.prepare_variable_for_compute_rollout(env=env, c_samples=c_samples, p_lw_samples=p_lw_samples, F_lw_samples=F_lw_samples, feet_in_contact=c_prev[0,])
 
-        # --- Step 3 : Compute the rollouts to find the rollout cost : can't used named argument with VMAP...
-        cost_samples_jax = self.jit_parallel_compute_rollout(initial_state_jax, reference_seq_state_jax, reference_seq_input_samples_jax,
-                                                             action_seq_c_samples_jax, action_p_lw_samples_jax, action_F_lw_samples_jax)
+            # --- Step 3 : Compute the rollouts to find the rollout cost : can't used named argument with VMAP...
+            cost_samples_jax = self.jit_parallel_compute_rollout(initial_state_jax, reference_seq_state_jax, reference_seq_input_samples_jax,
+                                                                action_seq_c_samples_jax, action_p_lw_samples_jax, action_F_lw_samples_jax)
 
-        # --- Step 4 : Given the samples cost, find the best control action
-        best_action_seq_jax, best_index = self.find_best_actions(action_seq_c_samples_jax, cost_samples_jax)
+            # --- Step 4 : Given the samples cost, find the best control action
+            best_action_seq_jax, best_index = self.find_best_actions(action_seq_c_samples_jax, cost_samples_jax)
 
-        # --- Step 4 : Convert the optimal value back to torch.Tensor
-        f_star, d_star, p_star_lw, F_star_lw = self.retrieve_z_from_action_seq(best_index, f_samples, d_samples, p_lw_samples, F_lw_samples)
+            # --- Step 4 : Convert the optimal value back to torch.Tensor
+            f_star, d_star, p_star_lw, F_star_lw = self.retrieve_z_from_action_seq(best_index, f_samples, d_samples, p_lw_samples, F_lw_samples)
 
 
         # torch.cuda.synchronize(device=self.device)

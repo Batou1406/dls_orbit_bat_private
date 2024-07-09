@@ -81,6 +81,9 @@ class ModelBaseActionCfg(ActionTermCfg):
         propotion_previous_solution: float = 0.2
         """ Proportion of the previous solution that will be used to generate samples"""
 
+        num_optimizer_iterations: int = 1
+        """ Number of time the sampling optiizer will iterate """
+
     optimizerCfg: OptimizerCfg | None = None
     """ Must be provided if a controller with optimizer is selected (eg. 'samplingController')"""
 
