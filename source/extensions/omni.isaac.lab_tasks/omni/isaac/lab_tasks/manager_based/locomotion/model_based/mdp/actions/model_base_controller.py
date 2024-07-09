@@ -1478,7 +1478,7 @@ class SamplingOptimizer():
         # p_lw_samples[:,1] = p_lw_samples[:,1].clamp(min=-0.20,max=+0.20)
 
         # Clip F
-        F_lw_samples = F_lw_samples.clamp(min=0)
+        F_lw_samples[:,:,2,:] = F_lw_samples[:,:,2,:].clamp(min=0)
 
         # Ensure p on the ground TODO Implement
         # p_lw_samples[:,:,2,:] = 0.0*torch.ones_like(p_lw_samples[:,:,2,:])
