@@ -400,7 +400,7 @@ class TerrainImporterUniformDifficulty(TerrainImporter):
         self.difficulty[env_ids] += 1 * move_up - 1 * move_down
 
         # Clamp difficulty between valid range
-        self.difficulty[env_ids] = self.difficulty[env_ids].clamp(0, self.max_terrain_level-2)
+        self.difficulty[env_ids] = self.difficulty[env_ids].clamp(0, self.max_terrain_level-1)
 
         # Generate 75%-25% binomial law. (diffiuclty is of type 'int' thus we have to specify the float type for comparison)
         proportion = (torch.rand_like(self.difficulty[env_ids], dtype=torch.float) > 0.75)
@@ -412,8 +412,6 @@ class TerrainImporterUniformDifficulty(TerrainImporter):
 
         # Sample 75% of the terrain with uniform law between [0,difficulty], and 25% of the terrain with difficulty
         self.terrain_levels[env_ids] = (uniform * proportion) + (maximum * ~proportion)
-
-        print('Max terrain difficulty : ',max(self.terrain_levels))
 
         # update the env origins
         self.env_origins[env_ids] = self.terrain_origins[self.terrain_levels[env_ids], self.terrain_types[env_ids]]
