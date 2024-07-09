@@ -16,6 +16,8 @@ from . import model_base_actions
 
 from . import model_base_controller
 
+from typing import Literal
+
 
 ##
 # Model-base Latent space actions.
@@ -83,6 +85,9 @@ class ModelBaseActionCfg(ActionTermCfg):
 
         num_optimizer_iterations: int = 1
         """ Number of time the sampling optiizer will iterate """
+
+        sampling_law: Literal['normal', 'uniform'] = 'normal'
+        """ Sampling law to sample from in ['normal', 'uniform'] """
 
     optimizerCfg: OptimizerCfg | None = None
     """ Must be provided if a controller with optimizer is selected (eg. 'samplingController')"""

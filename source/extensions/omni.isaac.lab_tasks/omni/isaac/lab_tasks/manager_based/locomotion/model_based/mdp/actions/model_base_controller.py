@@ -640,7 +640,7 @@ class samplingController(modelBaseController):
         self.samplingOptimizer = SamplingOptimizer(device=device,num_legs=num_legs, num_samples=optimizerCfg.num_samples, sampling_horizon=optimizerCfg.prevision_horizon, discretization_time=optimizerCfg.discretization_time,
                                                    interpolation_F_method=optimizerCfg.parametrization_F, interpolation_p_method=optimizerCfg.parametrization_p, height_ref=optimizerCfg.height_ref,
                                                    optimize_f=optimizerCfg.optimize_f, optimize_d=optimizerCfg.optimize_d, optimize_p=optimizerCfg.optimize_p, optimize_F=optimizerCfg.optimize_F,
-                                                   propotion_previous_solution=optimizerCfg.propotion_previous_solution, num_optimizer_iterations=optimizerCfg.num_optimizer_iterations)  
+                                                   propotion_previous_solution=optimizerCfg.propotion_previous_solution, num_optimizer_iterations=optimizerCfg.num_optimizer_iterations, sampling_law=optimizerCfg.sampling_law)  
         self.c_prev = torch.ones(num_envs, num_legs, device=device)
 
         # To enable or not the optimizer at run time
@@ -695,7 +695,7 @@ fake = False
 class SamplingOptimizer():
     """ Model Based optimizer based on the centroidal model """
 
-    def __init__(self, device, num_legs, num_samples, sampling_horizon, discretization_time, interpolation_F_method, interpolation_p_method, height_ref, optimize_f, optimize_d, optimize_p, optimize_F, propotion_previous_solution, num_optimizer_iterations):
+    def __init__(self, device, num_legs, num_samples, sampling_horizon, discretization_time, interpolation_F_method, interpolation_p_method, height_ref, optimize_f, optimize_d, optimize_p, optimize_F, propotion_previous_solution, num_optimizer_iterations, sampling_law):
         """ 
         Args :
             device                 : 'cuda' or 'cpu' 
@@ -762,6 +762,13 @@ class SamplingOptimizer():
         self.optimize_d = optimize_d
         self.optimize_p = optimize_p
         self.optimize_F = optimize_F
+
+        # Sampling law
+        if   sampling_law == 'normal' : self.sampling_law = self.normal_sampling
+        elif sampling_law == 'uniform': self.sampling_law = self.uniform_sampling
+
+        # Wether to force clip the sample to std
+        self.clip = False
 
         # How much of the previous solution is used to generate samples compare to the provided guess (in [0,1])
         self.propotion_previous_solution = propotion_previous_solution
@@ -1145,16 +1152,16 @@ class SamplingOptimizer():
         print('num samples RL',num_samples_RL)
 
         # Samples from the previous best solution
-        f_samples_best    = self.normal_sampling(num_samples=num_samples_previous_best, mean=self.f_best[0], std=self.std_f)
-        d_samples_best    = self.normal_sampling(num_samples=num_samples_previous_best, mean=self.d_best[0], std=self.std_d)
-        p_lw_samples_best = self.normal_sampling(num_samples=num_samples_previous_best, mean=self.p_best[0], std=self.std_p)
-        F_lw_samples_best = self.normal_sampling(num_samples=num_samples_previous_best, mean=self.F_best[0], std=self.std_F)
+        f_samples_best    = self.sampling_law(num_samples=num_samples_previous_best, mean=self.f_best[0], std=self.std_f, clip=self.clip)
+        d_samples_best    = self.sampling_law(num_samples=num_samples_previous_best, mean=self.d_best[0], std=self.std_d, clip=self.clip)
+        p_lw_samples_best = self.sampling_law(num_samples=num_samples_previous_best, mean=self.p_best[0], std=self.std_p, clip=self.clip)
+        F_lw_samples_best = self.sampling_law(num_samples=num_samples_previous_best, mean=self.F_best[0], std=self.std_F, clip=self.clip)
 
         # Samples from the provided guess
-        f_samples_rl    = self.normal_sampling(num_samples=num_samples_RL, mean=f[0],    std=self.std_f)
-        d_samples_rl    = self.normal_sampling(num_samples=num_samples_RL, mean=d[0],    std=self.std_d)
-        p_lw_samples_rl = self.normal_sampling(num_samples=num_samples_RL, mean=p_lw[0], std=self.std_p)
-        F_lw_samples_rl = self.normal_sampling(num_samples=num_samples_RL, mean=F_lw[0], std=self.std_F)
+        f_samples_rl    = self.sampling_law(num_samples=num_samples_RL, mean=f[0],    std=self.std_f, clip=self.clip)
+        d_samples_rl    = self.sampling_law(num_samples=num_samples_RL, mean=d[0],    std=self.std_d, clip=self.clip)
+        p_lw_samples_rl = self.sampling_law(num_samples=num_samples_RL, mean=p_lw[0], std=self.std_p, clip=self.clip)
+        F_lw_samples_rl = self.sampling_law(num_samples=num_samples_RL, mean=F_lw[0], std=self.std_F, clip=self.clip)
 
         # Concatenate the samples
         f_samples    = torch.cat((f_samples_rl,    f_samples_best),    dim=0)
@@ -1189,7 +1196,7 @@ class SamplingOptimizer():
         return f_samples, d_samples, p_lw_samples, F_lw_samples
 
 
-    def normal_sampling(self, num_samples:int, mean:torch.Tensor, std:torch.Tensor|None=None, seed:int|None=None) -> torch.Tensor:
+    def normal_sampling(self, num_samples:int, mean:torch.Tensor, std:torch.Tensor|None=None, seed:int|None=None, clip=False) -> torch.Tensor:
         """ Normal sampling law given mean and std -> return a samples
         
         Args :
@@ -1210,7 +1217,36 @@ class SamplingOptimizer():
             std = torch.ones_like(mean)
 
         # Sample from a normal law with the provided parameters
-        samples = mean + (std * torch.randn((num_samples,) + mean.shape, device=self.device))
+        if clip == True :
+            samples = mean + (std * torch.randn((num_samples,) + mean.shape, device=self.device)).clamp(min=-std, max=std)
+        else :
+            samples = mean + (std * torch.randn((num_samples,) + mean.shape, device=self.device))
+
+        return samples
+    
+
+    def uniform_sampling(self, num_samples:int, mean:torch.Tensor, std:torch.Tensor|None=None, seed:int|None=None, clip=False) -> torch.Tensor:
+        """ Normal sampling law given mean and std -> return a samples
+        
+        Args :
+            mean     (Tensor): Mean of normal sampling law          of shape(num_dim1, num_dim2, etc.)
+            std      (Tensor): Standard dev of normal sampling law  of shape(num_dim1, num_dim2, etc.)
+            num_samples (int): Number of samples to generate
+            seed        (int): seed to generate random numbers
+
+        Return :
+            samples  (Tensor): Samples generated with mean and std  of shape(num_sammple, num_dim1, num_dim2, etc.)
+        """
+
+        # Seed if provided
+        if seed : 
+            torch.manual_seed(seed)
+
+        if std is None :
+            std = torch.ones_like(mean)
+
+        # Sample from a uniform law with the provided parameters
+        samples = mean + (std * torch.empty((num_samples,) + mean.shape, device=self.device).uniform_(-1.0, 1.0))
 
         return samples
 
