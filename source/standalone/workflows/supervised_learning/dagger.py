@@ -34,7 +34,7 @@ parser.add_argument('--batch-size', type=int, default=64, metavar='N',      help
 parser.add_argument('--lr', type=float, default=1.0, metavar='LR',          help='learning rate (default: 1.0)')
 parser.add_argument('--gamma', type=float, default=0.7, metavar='M',        help='Learning rate step gamma (default: 0.7)')
 parser.add_argument("--model-name", type=str, default='modelDagger1', help="Folder where to log the generated dataset (in /dataset/task/)")
-parser.add_argument('--load-dataset', type=str, default='test1')
+parser.add_argument('--load-dataset', type=str, default='dagger1')
 
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
@@ -105,12 +105,16 @@ def train(model, device, train_loader, optimizer, epoch, criterion):
         train_loss += loss.item()
         optimizer.step()
         if (batch_idx % 1 == 0) :
-            print('Train Epoch: {} [{}/{} ({:.0f}%)] batch cum. Loss: {:.6f}'.format(
-                epoch, batch_idx * len(data), len(train_loader.dataset),
+            # print('Train Epoch: {} [{}/{} ({:.0f}%)] batch cum. Loss: {:.6f}'.format(
+            #     epoch, batch_idx * len(data), len(train_loader.dataset),
+            #     100. * batch_idx /  len(train_loader), loss.item()), end='\r', flush=True)
+            print('Training [{:7d}/{:7d} ({:.0f}%)] batch cum. Loss: {:.6f}'.format(
+                batch_idx * len(data), len(train_loader.dataset),
                 100. * batch_idx /  len(train_loader), loss.item()), end='\r', flush=True)
 
     train_loss_avg = train_loss / len(train_loader.dataset)
-    print(f"\nEpoch {epoch} : Average Train Loss {train_loss_avg}")
+    # print(f"\nEpoch {epoch} : Average Train Loss {train_loss_avg}")
+    print(f"\nAverage Train Loss {train_loss_avg:.4f}")
     return train_loss_avg
 
 
@@ -202,7 +206,8 @@ def main():
     buffer_size =  args_cli.buffer_size
     trajectory_length_s = 3 # [s]
     trajectory_length_iter = int(trajectory_length_s / (buffer_size*env.unwrapped.step_dt))
-    t = time.time()
+    last_time_outloop = time.time()
+    last_time = time.time()
     printing_freq = 10
     count = 0
     frequency_reduction = args_cli.freq_reduction
@@ -245,6 +250,7 @@ def main():
     epoch_avg_train_loss_list = []
     avg_epoch_reward_list = []
     dataset_max_size = 300000 # [datapoints]
+    tot_epoch = 20
 
 
     # Printing
@@ -288,7 +294,10 @@ def main():
     observations_data = torch.empty(0,device=device)
     actions_data = torch.empty(0, device=device)
 
-    for epoch in range(30):
+    for epoch in range(tot_epoch):
+        print(f'\n----- Epoch {epoch} / {tot_epoch} ----- Total Remaining Time {(tot_epoch-epoch)*(time.time()-last_time_outloop):4.1f}[s]')
+        last_time_outloop = time.time()
+
         # --- Step 1 : Get ID for student actions
         n = min(int(alpha(epoch)*args_cli.num_envs), args_cli.num_envs)
         expert_idx = torch.randperm(args_cli.num_envs)[:n]
@@ -298,7 +307,9 @@ def main():
             epoch_reward = 0.0
             # Roll the simulation for trajectory_length_s time
             for j in range(trajectory_length_iter):
-
+                # Printing
+                print('Recording data : {:2.1f}% - time remaning : {:4.1f}[s]'.format(100*j/trajectory_length_iter, ((time.time()-last_time)*(trajectory_length_iter-j))), end='\r', flush=True)
+                last_time = time.time()
 
                 # --- Step 2 : Sample 'Observation' Trajectory with actions from mixture policy (Expert + Student)
                 buffer_obs = []
@@ -366,7 +377,8 @@ def main():
         # Save the training metrics
         epoch_avg_train_loss_list.append(avg_train_loss)
         avg_epoch_reward_list.append(epoch_reward / (trajectory_length_iter*buffer_size) )
-        print('Average Epoch %d Reward : %.2f \n' % (epoch, avg_epoch_reward_list[-1]))
+        # print('Average Epoch %d Reward : %.2f \n' % (epoch, avg_epoch_reward_list[-1]))
+        print('Average Epoch Reward : %.2f' % (avg_epoch_reward_list[-1]))
 
 
     # Save the trained model
@@ -374,6 +386,16 @@ def main():
     logging_directory = f'model/{args_cli.task}/{args_cli.load_dataset}'
     if not os.path.exists(logging_directory):
         os.makedirs(logging_directory)
+    #increment logging dir number if already exists
+    else :
+        i = 1
+        new_logging_directory = f"{logging_directory}{i}"
+        while os.path.exists(new_logging_directory):
+            i += 1
+            new_logging_directory = f"{logging_directory}{i}"
+        os.makedirs(new_logging_directory)
+        logging_directory = new_logging_directory
+
     torch.save(student_policy.state_dict(),logging_directory + '/' + args_cli.model_name + '.pt')
     print('\nModel saved as : ',logging_directory + '/' + args_cli.model_name + '.pt\n')
 
@@ -402,12 +424,14 @@ def main():
     plt.title('Average Training Loss')
     plt.xlabel('iterations')
     plt.ylabel('Loss')
+    plt.savefig(os.path.join(logging_directory, 'average_training_loss.png'))
 
     plt.figure(2)
     plt.plot(avg_epoch_reward_list)
     plt.title('Average Epoch Reward')
     plt.xlabel('iterations')
     plt.ylabel('Reward')
+    plt.savefig(os.path.join(logging_directory, 'average_epoch_reward.png'))
 
     plt.show()
 
