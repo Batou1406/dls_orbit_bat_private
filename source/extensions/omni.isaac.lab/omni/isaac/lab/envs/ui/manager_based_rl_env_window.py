@@ -233,7 +233,7 @@ class BatManagerBasedRLEnvWindow(BaseEnvWindow):
 
                 # Create a slider to chnage the leg frequency standard variation in the sampling law
                 f_std_cfg = {
-                    "label": "f std",
+                    "label": "f std [Hz]",
                     "type": "button",
                     "default_val": float(self.modelBaseAction.controller.samplingOptimizer.std_f),
                     "min": 0.0,
@@ -259,7 +259,7 @@ class BatManagerBasedRLEnvWindow(BaseEnvWindow):
 
                 # Create a slider to chnage the foot touch down position standard variation in the sampling law
                 p_std_cfg = {
-                    "label": "p std",
+                    "label": "p std [m]",
                     "type": "button",
                     "default_val": float(self.modelBaseAction.controller.samplingOptimizer.std_p),
                     "min": 0.0,
@@ -272,7 +272,7 @@ class BatManagerBasedRLEnvWindow(BaseEnvWindow):
 
                 # Create a slider to chnage the ground reaction forces standard variation in the sampling law
                 F_std_cfg = {
-                    "label": "F std",
+                    "label": "F std [N]",
                     "type": "button",
                     "default_val": float(self.modelBaseAction.controller.samplingOptimizer.std_F),
                     "min": 0.0,
