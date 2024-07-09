@@ -65,5 +65,3 @@ dataset/*
 model/*
 
 **/quadrupedpympc/*
-
-!model/Isaac-Model-Based-Base-Aliengo-v0/test1/modelDagger1.pt
