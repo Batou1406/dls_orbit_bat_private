@@ -22,9 +22,11 @@ parser.add_argument("--disable_fabric", action="store_true", default=False,     
 parser.add_argument("--num_envs", type=int,         default=1,                                      help="Number of environments to simulate.")
 parser.add_argument("--task", type=str,             default='Isaac-Model-Based-Base-Aliengo-v0',    help="Name of the task.")
 parser.add_argument("--seed", type=int,             default=None,                                   help="Seed used for the environment")
-parser.add_argument("--controller_name", type=str,  default='aliengo_model_based_base',             help="Name of the controller")
+# parser.add_argument("--controller_name", type=str,  default='aliengo_model_based_base',             help="Name of the controller")
+parser.add_argument("--controller_name", type=str,  default='Isaac-Model-Based-Base-Aliengo-v0',             help="Name of the controller")
 # parser.add_argument("--model_name", type=str,       default='baseTaskNoise5ActGood1/model1',   help="Name of the model to load (in /model/controller/)")
-parser.add_argument("--model_name", type=str,       default='baseGiulio2/model1',   help="Name of the model to load (in /model/controller/)")
+# parser.add_argument("--model_name", type=str,       default='baseGiulio2/model1',   help="Name of the model to load (in /model/controller/)")
+parser.add_argument("--model_name", type=str,       default='test1/modelDagger1',   help="Name of the model to load (in /model/controller/)")
 
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
