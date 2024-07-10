@@ -210,6 +210,20 @@ def main():
     p_shape = (env.num_envs, 4, 2, buffer_size)
     F_shape = (env.num_envs, 4, 3, buffer_size)
 
+    # Create logging directory if necessary
+    logging_directory = f'model/{args_cli.task}/{args_cli.folder_name}'
+    if not os.path.exists(logging_directory):
+        os.makedirs(logging_directory)
+    #increment logging dir number if already exists
+    else :
+        i = 1
+        new_logging_directory = f"{logging_directory}{i}"
+        while os.path.exists(new_logging_directory):
+            i += 1
+            new_logging_directory = f"{logging_directory}{i}"
+        os.makedirs(new_logging_directory)
+        logging_directory = new_logging_directory
+
 
     # --- Step 3 : Reset environment
     obs, _ = env.get_observations()
@@ -248,8 +262,8 @@ def main():
         print(f"Loading model checkpoint from: {resume_path}")
 
         print(f"\nNumber of envs: {args_cli.num_envs}")
-        print(f"Number of samples:  {args_cli.num_step}")
-        print(f"Recorded dataset will consists of {args_cli.num_envs*args_cli.num_step} datapoints")
+        # print(f"Number of samples:  {args_cli.num_step}")
+        # print(f"Recorded dataset will consists of {args_cli.num_envs*args_cli.num_step} datapoints")
 
         print(f"\nDataset will be recorded as {file_prefix}")
         print('and saved at :',f'{logging_directory}/{file_prefix}.pt')
@@ -368,20 +382,6 @@ def main():
 
 
     # Save the trained model
-    # Create logging directory if necessary
-    logging_directory = f'model/{args_cli.task}/{args_cli.folder_name}'
-    if not os.path.exists(logging_directory):
-        os.makedirs(logging_directory)
-    #increment logging dir number if already exists
-    else :
-        i = 1
-        new_logging_directory = f"{logging_directory}{i}"
-        while os.path.exists(new_logging_directory):
-            i += 1
-            new_logging_directory = f"{logging_directory}{i}"
-        os.makedirs(new_logging_directory)
-        logging_directory = new_logging_directory
-
     torch.save(student_policy.state_dict(),logging_directory + '/' + args_cli.model_name + '.pt')
     print('\nModel saved as : ',logging_directory + '/' + args_cli.model_name + '.pt\n')
 

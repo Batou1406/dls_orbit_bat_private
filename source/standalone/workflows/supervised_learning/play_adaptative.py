@@ -26,7 +26,8 @@ parser.add_argument("--seed", type=int,             default=None,               
 parser.add_argument("--controller_name", type=str,  default='Isaac-Model-Based-Base-Aliengo-v0',             help="Name of the controller")
 # parser.add_argument("--model_name", type=str,       default='baseTaskNoise5ActGood1/model1',   help="Name of the model to load (in /model/controller/)")
 # parser.add_argument("--model_name", type=str,       default='baseGiulio2/model1',   help="Name of the model to load (in /model/controller/)")
-parser.add_argument("--model_name", type=str,       default='test1/modelDagger1',   help="Name of the model to load (in /model/controller/)")
+# parser.add_argument("--model_name", type=str,       default='test1/modelDagger1',   help="Name of the model to load (in /model/controller/)")
+parser.add_argument("--model_name", type=str,       default='goodPolicy1/dagger50hz4Act',   help="Name of the model to load (in /model/controller/)")
 
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
