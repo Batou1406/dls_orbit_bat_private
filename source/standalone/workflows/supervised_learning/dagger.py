@@ -20,21 +20,18 @@ import cli_args  # isort: skip
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Train an RL agent with RSL-RL.")
 parser.add_argument("--cpu", action="store_true", default=False, help="Use CPU pipeline.")
-parser.add_argument("--disable_fabric", action="store_true", default=False, help="Disable fabric and use USD I/O operations.")
-parser.add_argument("--num_envs",     type=int, default=256, help="Number of environments to simulate.")
-parser.add_argument("--num_step",     type=int, default=1000, help="Number of simulation step : the number of datapoints would be : num_step*num_envs")
-parser.add_argument("--task",         type=str, default=None, help="Name of the task.")
-parser.add_argument("--seed",         type=int, default=None, help="Seed used for the environment")
-parser.add_argument("--dataset_name", type=str, default=None, help="Folder where to log the generated dataset (in /dataset/task/)")
-parser.add_argument("--buffer_size",  type=int, default=5,    help="Number of prediction steps")
-# parser.add_argument("--testing_flag", action="store_true",default=False,help="Flag to generate testing data, default is training data")
-parser.add_argument("--freq_reduction",type=int,default=2,    help="Factor of reduction of the recording frequency compare to playing frequency")
-
-parser.add_argument('--batch-size', type=int, default=64, metavar='N',      help='input batch size for training (default: 64)')
-parser.add_argument('--lr', type=float, default=1.0, metavar='LR',          help='learning rate (default: 1.0)')
-parser.add_argument('--gamma', type=float, default=0.7, metavar='M',        help='Learning rate step gamma (default: 0.7)')
-parser.add_argument("--model-name", type=str, default='modelDagger1', help="Folder where to log the generated dataset (in /dataset/task/)")
-parser.add_argument('--load-dataset', type=str, default='dagger1')
+parser.add_argument("--disable_fabric", action="store_true", default=False,  help="Disable fabric and use USD I/O operations.")
+parser.add_argument("--num_envs",     type=int,   default=256,               help="Number of environments to simulate.")
+parser.add_argument("--task",         type=str,   default=None,              help="Name of the task.")
+parser.add_argument("--seed",         type=int,   default=None,              help="Seed used for the environment")
+parser.add_argument("--buffer_size",  type=int,   default=5,                 help="Number of prediction steps")
+parser.add_argument('--epochs',       type=int,   default=20,  metavar='N',  help='number of epochs to train (default: 14)')
+parser.add_argument('--batch-size',   type=int,   default=64,  metavar='N',  help='input batch size for training (default: 64)')
+parser.add_argument('--lr',           type=float, default=1.0, metavar='LR', help='learning rate (default: 1.0)')
+parser.add_argument('--gamma',        type=float, default=0.7, metavar='M',  help='Learning rate step gamma (default: 0.7)')
+parser.add_argument("--model-name",   type=str,   default='dagger50hz4Act',  help="Name of the model to be saved")
+parser.add_argument('--folder-name',  type=str,   default='goodPolicy1',     help="Name of the folder to save the trained model in 'model/task/folder-name'")
+# parser.add_argument("--freq_reduction",type=int,default=2,    help="Factor of reduction of the recording frequency compare to playing frequency")
 
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
@@ -140,7 +137,7 @@ def alpha(epoch, type='indicator'):
 
     # Indicator Function
     if type == 'indicator':
-        if epoch in [0,1,2,3]:
+        if epoch in [0,1,2]:
             alpha = 1
         else :
             alpha = 0
@@ -182,35 +179,33 @@ def main():
 
 
     # --- Step 2 : Define usefull variables
-    # Create logging directory to save the recorded dataset
-    logging_directory = f'dataset/{agent_cfg.experiment_name}/{args_cli.dataset_name}'
-    if not os.path.exists(logging_directory):
-        os.makedirs(logging_directory)
-
-    # # Set the data to be testing or training data
+    #  Set the data to be testing or training data
     file_prefix = 'training_data'
 
     # Type of action recorded
     typeAction = 'discrete' # 'discrete', 'spline' # TODO implement spline
 
-    # Variable for datalogging
-    observations_list = []
-    actions_list = []
-
     # Temporary variable to create the rolling buffer
     buffer_obs = []
     buffer_act = []
 
-    # oder helper variables
-    num_samples = args_cli.num_step
+    # Buffer size : number of prediction horizon for the student policy
     buffer_size =  args_cli.buffer_size
+
+    # Trajectory length that are recorded between epoch
     trajectory_length_s = 3 # [s]
+
+    # Number of epoch
+    tot_epoch = args_cli.epochs
+
+    # Dataset maximum size before clipping
+    dataset_max_size = 300000 # [datapoints]
+
+    # oder helper variables
     trajectory_length_iter = int(trajectory_length_s / (buffer_size*env.unwrapped.step_dt))
     last_time_outloop = time.time()
     last_time = time.time()
-    printing_freq = 10
-    count = 0
-    frequency_reduction = args_cli.freq_reduction
+    # frequency_reduction = args_cli.freq_reduction
     f_len, d_len, p_len, F_len = 4, 4, 8, 12
     p_shape = (env.num_envs, 4, 2, buffer_size)
     F_shape = (env.num_envs, 4, 3, buffer_size)
@@ -233,12 +228,6 @@ def main():
 
     # Set training and testing arguments
     train_kwargs = {'batch_size': args_cli.batch_size}
-    # if use_cuda:
-    #     cuda_kwargs = {'num_workers': 1,
-    #                 #    'pin_memory': True, #https://discuss.pytorch.org/t/what-does-runtimeerror-cuda-driver-error-initialization-error-mean/87505/7
-    #                    'pin_memory': False,
-    #                    'shuffle': True}
-    #     train_kwargs.update(cuda_kwargs)
 
     #  Define Model criteria : model, optimizer and loss criterion and scheduler
     input_size = obs.shape[-1]
@@ -249,9 +238,6 @@ def main():
     scheduler       = StepLR(optimizer, step_size=1, gamma=args_cli.gamma)
     epoch_avg_train_loss_list = []
     avg_epoch_reward_list = []
-    dataset_max_size = 300000 # [datapoints]
-    tot_epoch = 20
-
 
     # Printing
     if True : 
@@ -273,8 +259,8 @@ def main():
 
         print(f"\nSimulation runs with time step {env.unwrapped.physics_dt} [s], at frequency {1/env.unwrapped.physics_dt} [Hz]")
         print(f"Policy runs with time step {env.unwrapped.step_dt} [s], at frequency {1/env.unwrapped.step_dt} [Hz]")
-        print(f"Dataset will be recorded with time step {env.unwrapped.step_dt*frequency_reduction} [s], at frequency {1/(frequency_reduction*env.unwrapped.step_dt)} [Hz]")
-        print(f"Which will correspond in a prediction horizon of {buffer_size*env.unwrapped.step_dt*frequency_reduction} [s]")
+        # print(f"Dataset will be recorded with time step {env.unwrapped.step_dt*frequency_reduction} [s], at frequency {1/(frequency_reduction*env.unwrapped.step_dt)} [Hz]")
+        # print(f"Which will correspond in a prediction horizon of {buffer_size*env.unwrapped.step_dt*frequency_reduction} [s]")
 
         print(f"\nType of action recorded: {typeAction}")
         print(f"with N = {buffer_size} prediction horizon")
@@ -383,7 +369,7 @@ def main():
 
     # Save the trained model
     # Create logging directory if necessary
-    logging_directory = f'model/{args_cli.task}/{args_cli.load_dataset}'
+    logging_directory = f'model/{args_cli.task}/{args_cli.folder_name}'
     if not os.path.exists(logging_directory):
         os.makedirs(logging_directory)
     #increment logging dir number if already exists
