@@ -406,7 +406,7 @@ class modelBaseController(baseController):
             desired_foot_acc_traj_lw = 6*(1 - full_phase_traj) * (cp3 - 2*cp2 + cp1) + 6 * (full_phase_traj) * (cp4 - 2*cp3 + cp2)
 
             full_pt_lw = torch.cat((desired_foot_pos_traj_lw, desired_foot_vel_traj_lw, desired_foot_acc_traj_lw), dim=2)
-        else : full_pt_lw = torch.empty(1)
+        else : full_pt_lw = torch.empty((self._num_envs, self._num_legs, 9, 22),device=self._device)
 
         return pt_lw, full_pt_lw
 
