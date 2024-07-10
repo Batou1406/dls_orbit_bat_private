@@ -86,8 +86,11 @@ class ModelBaseActionCfg(ActionTermCfg):
         num_optimizer_iterations: int = 1
         """ Number of time the sampling optiizer will iterate """
 
-        sampling_law: Literal['normal', 'uniform'] = 'normal'
+        sampling_law: Literal['normal', 'uniform'] = 'uniform'
         """ Sampling law to sample from in ['normal', 'uniform'] """
+
+        clip_sample: bool = True 
+        """ Wether to clip or not the samples to a range of the standard deviation """
 
     optimizerCfg: OptimizerCfg | None = None
     """ Must be provided if a controller with optimizer is selected (eg. 'samplingController')"""

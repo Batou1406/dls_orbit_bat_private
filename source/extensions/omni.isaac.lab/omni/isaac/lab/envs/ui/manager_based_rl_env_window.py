@@ -231,6 +231,33 @@ class BatManagerBasedRLEnvWindow(BaseEnvWindow):
                     )
                     omni.isaac.ui.ui_utils.add_line_rect_flourish()
 
+                # create a Dropdown menu to select the sampling law
+                viewer_follow_cfg = {
+                    "label": "Sampling Law",
+                    "type": "dropdown",
+                    "default_val": {'normal':0, 'uniform':1}[self.modelBaseAction.cfg.optimizerCfg.sampling_law],
+                    "items": [name.replace("_", " ").title() for name in ['normal', 'uniform']], # TODO hardcoded for now... Do better
+                    "tooltip": "The sampling to generate samples from",
+                    "on_clicked_fn": self._set_sampling_law,
+                }
+                self.ui_window_elements["viewer_follow"] = omni.isaac.ui.ui_utils.dropdown_builder(**viewer_follow_cfg)
+
+                # Create a button to enable or not sample clipping
+                with omni.ui.HStack():
+                    omni.ui.Label(
+                        "Sample Clipping",
+                        width=omni.isaac.ui.ui_utils.LABEL_WIDTH - 12,
+                        alignment=omni.ui.Alignment.LEFT_CENTER,
+                        tooltip="Wether to clip the sample to 2*std when the sampling is with an unbounded law",
+                    )
+                    self.ui_window_elements["Sample Clipping"] = SimpleCheckBox(
+                        model=omni.ui.SimpleBoolModel(),
+                        enabled=True,
+                        checked=self.modelBaseAction.cfg.optimizerCfg.clip_sample,
+                        on_checked_fn=self._toggle_clip_sample,
+                    )
+                    omni.isaac.ui.ui_utils.add_line_rect_flourish()                
+
                 # Create a slider to chnage the leg frequency standard variation in the sampling law
                 f_std_cfg = {
                     "label": "f std [Hz]",
@@ -321,6 +348,14 @@ class BatManagerBasedRLEnvWindow(BaseEnvWindow):
 
     def _toggle_F_opt(self, value: bool):
         self.modelBaseAction.controller.samplingOptimizer.optimize_F = value
+
+    def _set_sampling_law(self, value: str):
+        # value is modified and comes with a capital letter first
+        if   value == 'Normal' : self.modelBaseAction.controller.samplingOptimizer.sampling_law = self.modelBaseAction.controller.samplingOptimizer.normal_sampling
+        elif value == 'Uniform': self.modelBaseAction.controller.samplingOptimizer.sampling_law = self.modelBaseAction.controller.samplingOptimizer.uniform_sampling
+
+    def _toggle_clip_sample(self, value: bool):
+        self.modelBaseAction.controller.samplingOptimizer.clip_sample = value
 
     def _toggle_opt(self, value: bool):
         from omni.kit.window.extensions import SimpleCheckBox

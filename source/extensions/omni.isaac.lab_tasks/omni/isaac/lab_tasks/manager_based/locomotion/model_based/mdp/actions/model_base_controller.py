@@ -640,7 +640,8 @@ class samplingController(modelBaseController):
         self.samplingOptimizer = SamplingOptimizer(device=device,num_legs=num_legs, num_samples=optimizerCfg.num_samples, sampling_horizon=optimizerCfg.prevision_horizon, discretization_time=optimizerCfg.discretization_time,
                                                    interpolation_F_method=optimizerCfg.parametrization_F, interpolation_p_method=optimizerCfg.parametrization_p, height_ref=optimizerCfg.height_ref,
                                                    optimize_f=optimizerCfg.optimize_f, optimize_d=optimizerCfg.optimize_d, optimize_p=optimizerCfg.optimize_p, optimize_F=optimizerCfg.optimize_F,
-                                                   propotion_previous_solution=optimizerCfg.propotion_previous_solution, num_optimizer_iterations=optimizerCfg.num_optimizer_iterations, sampling_law=optimizerCfg.sampling_law)  
+                                                   propotion_previous_solution=optimizerCfg.propotion_previous_solution, num_optimizer_iterations=optimizerCfg.num_optimizer_iterations, sampling_law=optimizerCfg.sampling_law,
+                                                   clip_sample=optimizerCfg.clip_sample)  
         self.c_prev = torch.ones(num_envs, num_legs, device=device)
 
         # To enable or not the optimizer at run time
@@ -695,7 +696,8 @@ fake = False
 class SamplingOptimizer():
     """ Model Based optimizer based on the centroidal model """
 
-    def __init__(self, device, num_legs, num_samples, sampling_horizon, discretization_time, interpolation_F_method, interpolation_p_method, height_ref, optimize_f, optimize_d, optimize_p, optimize_F, propotion_previous_solution, num_optimizer_iterations, sampling_law):
+    def __init__(self, device, num_legs, num_samples, sampling_horizon, discretization_time, interpolation_F_method, interpolation_p_method, height_ref, optimize_f, optimize_d, optimize_p, optimize_F,
+                 propotion_previous_solution, num_optimizer_iterations, sampling_law, clip_sample):
         """ 
         Args :
             device                 : 'cuda' or 'cpu' 
@@ -768,7 +770,7 @@ class SamplingOptimizer():
         elif sampling_law == 'uniform': self.sampling_law = self.uniform_sampling
 
         # Wether to force clip the sample to std
-        self.clip = False
+        self.clip_sample = clip_sample
 
         # How much of the previous solution is used to generate samples compare to the provided guess (in [0,1])
         self.propotion_previous_solution = propotion_previous_solution
@@ -1152,16 +1154,16 @@ class SamplingOptimizer():
         print('num samples RL',num_samples_RL)
 
         # Samples from the previous best solution
-        f_samples_best    = self.sampling_law(num_samples=num_samples_previous_best, mean=self.f_best[0], std=self.std_f, clip=self.clip)
-        d_samples_best    = self.sampling_law(num_samples=num_samples_previous_best, mean=self.d_best[0], std=self.std_d, clip=self.clip)
-        p_lw_samples_best = self.sampling_law(num_samples=num_samples_previous_best, mean=self.p_best[0], std=self.std_p, clip=self.clip)
-        F_lw_samples_best = self.sampling_law(num_samples=num_samples_previous_best, mean=self.F_best[0], std=self.std_F, clip=self.clip)
+        f_samples_best    = self.sampling_law(num_samples=num_samples_previous_best, mean=self.f_best[0], std=self.std_f, clip=self.clip_sample)
+        d_samples_best    = self.sampling_law(num_samples=num_samples_previous_best, mean=self.d_best[0], std=self.std_d, clip=self.clip_sample)
+        p_lw_samples_best = self.sampling_law(num_samples=num_samples_previous_best, mean=self.p_best[0], std=self.std_p, clip=self.clip_sample)
+        F_lw_samples_best = self.sampling_law(num_samples=num_samples_previous_best, mean=self.F_best[0], std=self.std_F, clip=self.clip_sample)
 
         # Samples from the provided guess
-        f_samples_rl    = self.sampling_law(num_samples=num_samples_RL, mean=f[0],    std=self.std_f, clip=self.clip)
-        d_samples_rl    = self.sampling_law(num_samples=num_samples_RL, mean=d[0],    std=self.std_d, clip=self.clip)
-        p_lw_samples_rl = self.sampling_law(num_samples=num_samples_RL, mean=p_lw[0], std=self.std_p, clip=self.clip)
-        F_lw_samples_rl = self.sampling_law(num_samples=num_samples_RL, mean=F_lw[0], std=self.std_F, clip=self.clip)
+        f_samples_rl    = self.sampling_law(num_samples=num_samples_RL, mean=f[0],    std=self.std_f, clip=self.clip_sample)
+        d_samples_rl    = self.sampling_law(num_samples=num_samples_RL, mean=d[0],    std=self.std_d, clip=self.clip_sample)
+        p_lw_samples_rl = self.sampling_law(num_samples=num_samples_RL, mean=p_lw[0], std=self.std_p, clip=self.clip_sample)
+        F_lw_samples_rl = self.sampling_law(num_samples=num_samples_RL, mean=F_lw[0], std=self.std_F, clip=self.clip_sample)
 
         # Concatenate the samples
         f_samples    = torch.cat((f_samples_rl,    f_samples_best),    dim=0)
@@ -1218,7 +1220,7 @@ class SamplingOptimizer():
 
         # Sample from a normal law with the provided parameters
         if clip == True :
-            samples = mean + (std * torch.randn((num_samples,) + mean.shape, device=self.device)).clamp(min=-std, max=std)
+            samples = mean + (std * torch.randn((num_samples,) + mean.shape, device=self.device)).clamp(min=-2*std, max=2*std)
         else :
             samples = mean + (std * torch.randn((num_samples,) + mean.shape, device=self.device))
 
