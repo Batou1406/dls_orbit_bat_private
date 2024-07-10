@@ -406,8 +406,8 @@ class ModelBaseAction(ActionTerm):
         # Optimize the latent variable with the model base controller
         self.f_star, self.d_star, self.c_star, self.p_star_lw, self.F_star_lw, self.pt_star_lw, self.full_pt_lw = self.controller.process_latent_variable(f=self.f, d=self.d, p_lw=self.p_lw, F_lw=self.F_lw, env=self._env, height_map=torch.zeros(17,11)) # TODO implement height map
 
-        # Enforce friction cone constraints for GRF
-        # self.F_star_lw = self.enforce_friction_cone_constraints(F=self.F_star_lw, mu=0.55)
+        # Enforce friction cone constraints for GRF : enforce only with sampling controller, because training should learn not to slip
+        if type(self.controller) == model_base_controller.samplingController: self.F_star_lw = self.enforce_friction_cone_constraints(F=self.F_star_lw, mu=self.cfg.optimizerCfg.mu)
 
         # Reset the inner loop counter
         self.inner_loop = 0      

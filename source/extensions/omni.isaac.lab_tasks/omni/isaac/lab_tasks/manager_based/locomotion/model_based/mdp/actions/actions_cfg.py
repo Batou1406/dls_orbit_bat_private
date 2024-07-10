@@ -68,6 +68,9 @@ class ModelBaseActionCfg(ActionTermCfg):
         height_ref: float = 0.38
         """ Height reference for the optimization, defined as mean distance between legs in contact and base """
 
+        mu : float = 0.4
+        """ Coefficient of friction imposed for the friction cone constraints """
+
         optimize_f: bool = False
         """ If enabled, leg frequency will be optimized"""
 

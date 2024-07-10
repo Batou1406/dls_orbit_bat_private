@@ -636,12 +636,8 @@ class samplingController(modelBaseController):
         # Initialise the Model Base Controller
         super().__init__(verbose_md, device, num_envs, num_legs, dt_out, decimation, dt_in, p_default_lw, step_height, foot_offset, swing_ctrl_pos_gain_fb, swing_ctrl_vel_gain_fb)
 
-        # Create the optimizer
-        self.samplingOptimizer = SamplingOptimizer(device=device,num_legs=num_legs, num_samples=optimizerCfg.num_samples, sampling_horizon=optimizerCfg.prevision_horizon, discretization_time=optimizerCfg.discretization_time,
-                                                   interpolation_F_method=optimizerCfg.parametrization_F, interpolation_p_method=optimizerCfg.parametrization_p, height_ref=optimizerCfg.height_ref,
-                                                   optimize_f=optimizerCfg.optimize_f, optimize_d=optimizerCfg.optimize_d, optimize_p=optimizerCfg.optimize_p, optimize_F=optimizerCfg.optimize_F,
-                                                   propotion_previous_solution=optimizerCfg.propotion_previous_solution, num_optimizer_iterations=optimizerCfg.num_optimizer_iterations, sampling_law=optimizerCfg.sampling_law,
-                                                   clip_sample=optimizerCfg.clip_sample)  
+        self.samplingOptimizer = SamplingOptimizer(device=device,num_legs=num_legs, optimizerCfg=optimizerCfg)  
+        
         self.c_prev = torch.ones(num_envs, num_legs, device=device)
 
         # To enable or not the optimizer at run time
@@ -696,8 +692,7 @@ fake = False
 class SamplingOptimizer():
     """ Model Based optimizer based on the centroidal model """
 
-    def __init__(self, device, num_legs, num_samples, sampling_horizon, discretization_time, interpolation_F_method, interpolation_p_method, height_ref, optimize_f, optimize_d, optimize_p, optimize_F,
-                 propotion_previous_solution, num_optimizer_iterations, sampling_law, clip_sample):
+    def __init__(self, device, num_legs, optimizerCfg):
         """ 
         Args :
             device                 : 'cuda' or 'cpu' 
@@ -719,25 +714,25 @@ class SamplingOptimizer():
         self.num_legs = num_legs
         
         # Optimizer configuration
-        self.num_samples = num_samples
-        self.sampling_horizon = sampling_horizon
-        self.dt = discretization_time    
-        self.num_optimizer_iterations = num_optimizer_iterations
+        self.num_samples = optimizerCfg.num_samples
+        self.sampling_horizon = optimizerCfg.prevision_horizon
+        self.dt = optimizerCfg.discretization_time    
+        self.num_optimizer_iterations = optimizerCfg.num_optimizer_iterations
 
         # Define Interpolation method for GRF and interfer GRF input size 
-        if   interpolation_F_method == 'cubic spline' : 
+        if   optimizerCfg.parametrization_F == 'cubic spline' : 
             self.interpolation_F=self.compute_cubic_spline
             self.F_param = 4
-        elif interpolation_F_method == 'discrete'     :
+        elif optimizerCfg.parametrization_F == 'discrete'     :
             self.interpolation_F=self.compute_discrete
             self.F_param = self.sampling_horizon
         else : raise NotImplementedError('Request interpolation method is not implemented yet')
 
         # Define Interpolation method for foot touch down position and interfer foot touch down position input size 
-        if   interpolation_p_method == 'cubic spline' : 
+        if   optimizerCfg.parametrization_p == 'cubic spline' : 
             self.interpolation_p=self.compute_cubic_spline
             self.p_param = 4
-        elif interpolation_p_method == 'discrete'     : 
+        elif optimizerCfg.parametrization_p == 'discrete'     : 
             self.interpolation_p=self.compute_discrete
             self.p_param = self.sampling_horizon
         else : raise NotImplementedError('Request interpolation method is not implemented yet')
@@ -757,26 +752,26 @@ class SamplingOptimizer():
         # TODO Get these value properly
         self.F_z_min = 0
         self.F_z_max = self.robot_model.mass*9.81
-        self.mu = 0.5
+        self.mu = optimizerCfg.mu
 
         # Boolean to enable variable optimization or not
-        self.optimize_f = optimize_f
-        self.optimize_d = optimize_d
-        self.optimize_p = optimize_p
-        self.optimize_F = optimize_F
+        self.optimize_f = optimizerCfg.optimize_f
+        self.optimize_d = optimizerCfg.optimize_d
+        self.optimize_p = optimizerCfg.optimize_p
+        self.optimize_F = optimizerCfg.optimize_F
 
         # Sampling law
-        if   sampling_law == 'normal' : self.sampling_law = self.normal_sampling
-        elif sampling_law == 'uniform': self.sampling_law = self.uniform_sampling
+        if   optimizerCfg.sampling_law == 'normal' : self.sampling_law = self.normal_sampling
+        elif optimizerCfg.sampling_law == 'uniform': self.sampling_law = self.uniform_sampling
 
         # Wether to force clip the sample to std
-        self.clip_sample = clip_sample
+        self.clip_sample = optimizerCfg.clip_sample
 
         # How much of the previous solution is used to generate samples compare to the provided guess (in [0,1])
-        self.propotion_previous_solution = propotion_previous_solution
+        self.propotion_previous_solution = optimizerCfg.propotion_previous_solution
 
         # Define the height reference for the tracking
-        self.height_ref = height_ref
+        self.height_ref = optimizerCfg.height_ref
 
         # Define Variance for the sampling law
         self.std_f = torch.tensor((0.05), device=device)
