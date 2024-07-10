@@ -59,10 +59,10 @@ class ModelBaseActionCfg(ActionTermCfg):
         num_samples: int = 10000
         """ Number of samples used if the optimizerType is 'sampling' """
 
-        parametrization_F: str = 'discrete'
+        parametrization_F: Literal['discrete', 'cubic spline'] = 'discrete'
         """ Define how F, Ground Reaction Forces, are encoded : can be 'discrete' or 'cubic spline', this modify F_param """
 
-        parametrization_p: str = 'discrete'
+        parametrization_p: Literal['discrete', 'cubic spline'] = 'discrete'
         """ Define how p, foot touch down position, are encoded : can be 'discrete' or 'cubic spline', this modify p_param  """
 
         height_ref: float = 0.38

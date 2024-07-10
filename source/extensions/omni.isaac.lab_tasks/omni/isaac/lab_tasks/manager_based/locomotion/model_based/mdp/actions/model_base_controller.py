@@ -822,19 +822,19 @@ class SamplingOptimizer():
         self.R = self.R.at[11,11].set(0.001)    #foot_force_z_RR
 
         # Initialize the best solution
-        self.f_best = 1.5*torch.ones( (1,4),     device=device)
-        self.d_best = 0.6*torch.ones( (1,4),     device=device)
-        self.p_best =     torch.zeros((1,4,3,5), device=device)
-        self.F_best =     torch.zeros((1,4,3,5), device=device)
+        self.f_best = 1.5*torch.ones( (1,self.num_legs),                 device=device)
+        self.d_best = 0.6*torch.ones( (1,self.num_legs),                 device=device)
+        self.p_best =     torch.zeros((1,self.num_legs,3,self.p_param ), device=device)
+        self.F_best =     torch.zeros((1,self.num_legs,3,self.F_param ), device=device)
         self.F_best[:,:,2,:] = 50.0
 
 
     def reset(self):
         # Reset the best solution
-        self.f_best = 1.5*torch.ones( (1,4),     device=self.device)
-        self.d_best = 0.6*torch.ones( (1,4),     device=self.device)
-        self.p_best =     torch.zeros((1,4,3,5), device=self.device)
-        self.F_best =     torch.zeros((1,4,3,5), device=self.device)
+        self.f_best = 1.5*torch.ones( (1,self.num_legs),                 device=self.device)
+        self.d_best = 0.6*torch.ones( (1,self.num_legs),                 device=self.device)
+        self.p_best =     torch.zeros((1,self.num_legs,3,self.p_param ), device=self.device)
+        self.F_best =     torch.zeros((1,self.num_legs,3,self.F_param ), device=self.device) 
         self.F_best[:,:,2,:] = 50.0
 
 
@@ -1327,7 +1327,7 @@ class SamplingOptimizer():
             # jax.debug.print("p_lw: {}", p_lw)
 
             # Apply Force constraints : Friction cone constraints and Force set to zero if foot not in contact
-            F_lw = self.enforce_force_constraints(F=F_lw, c=current_contact)    # TODO Single spline for now : Implement multiple spline function
+            F_lw = self.enforce_force_constraints(F_lw=F_lw, c=current_contact)    # TODO Single spline for now : Implement multiple spline function
 
             # Embed input into variable for the centroidal model
             input = jnp.concatenate([
@@ -1438,12 +1438,12 @@ class SamplingOptimizer():
         return param
 
     
-    def enforce_force_constraints(self, F: jnp.array, c: jnp.array) -> jnp.array:
+    def enforce_force_constraints(self, F_lw: jnp.array, c: jnp.array) -> jnp.array:
         """ Given raw GRFs in local world frame and the contact sequence, return the GRF clamped by the friction cone
         and set to zero if not in contact
         
         Args :
-            F (jnp.array): Ground Reaction forces samples                    of shape(num_legs*3)
+            F_lw    (jnp.array): Ground Reaction forces samples              of shape(num_legs*3)
             c    (jnp.array): contact sequence samples                       of shape(num_legs)
             
         Return
@@ -1451,9 +1451,9 @@ class SamplingOptimizer():
 
         # --- Step 1 : Enforce the friction cone constraints
         # Retrieve Force component
-        F_x = F[0::3]  # x components: elements 0, 3, 6, 9   shape(num_legs)
-        F_y = F[1::3]  # y components: elements 1, 4, 7, 10  shape(num_legs)
-        F_z = F[2::3]  # z components: elements 2, 5, 8, 11  shape(num_legs)
+        F_x = F_lw[0::3]  # x components: elements 0, 3, 6, 9   shape(num_legs)
+        F_y = F_lw[1::3]  # y components: elements 1, 4, 7, 10  shape(num_legs)
+        F_z = F_lw[2::3]  # z components: elements 2, 5, 8, 11  shape(num_legs)
 
         # Compute the maximum Force in the xz plane
         F_xy_max = self.mu * F_z            # shape(num_legs)
