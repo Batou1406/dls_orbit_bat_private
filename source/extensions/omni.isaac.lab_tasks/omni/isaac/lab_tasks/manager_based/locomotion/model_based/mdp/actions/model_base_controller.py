@@ -1389,6 +1389,7 @@ class SamplingOptimizer():
             horizon          (int): The length of the curve
             
         Returns : 
+            F
         
         """
 
@@ -1397,27 +1398,80 @@ class SamplingOptimizer():
         q = (tau - 0.0)/(1.0-0.0)
         
         # Compute the spline interpolation parameters
-        a = 2*q*q*q - 3*q*q + 1
-        b = (q*q*q - 2*q*q + q)*0.5
+        a =  2*q*q*q - 3*q*q     + 1
+        b =    q*q*q - 2*q*q + q
         c = -2*q*q*q + 3*q*q
-        d = (q*q*q - q*q)*0.5
+        d =    q*q*q -   q*q
 
         # Compute the phi parameters
-        phi_x = (1./2.)*(((parameters[2] - parameters[1])/0.5) + ((parameters[1] - parameters[0])/0.5))
-        phi_next_x = (1./2.)*(((parameters[3] - parameters[2])/0.5) + ((parameters[2] - parameters[1])/0.5))
+        phi_x      = (1./2.)*(parameters[:,2]  - parameters[:,0])
+        phi_next_x = (1./2.)*(parameters[:,3]  - parameters[:,1])
 
-        phi_y = (1./2.)*(((parameters[6] - parameters[5])/0.5) + ((parameters[5] - parameters[4])/0.5))
-        phi_next_y = (1./2.)*(((parameters[7] - parameters[6])/0.5) + ((parameters[6] - parameters[5])/0.5))
+        phi_y      = (1./2.)*(parameters[:,6]  - parameters[:,4])
+        phi_next_y = (1./2.)*(parameters[:,7]  - parameters[:,5])
 
-        phi_z = (1./2.)*(((parameters[10] - parameters[9])/0.5) + ((parameters[9] - parameters[8])/0.5))
-        phi_next_z = (1./2.)*(((parameters[11] - parameters[10])/0.5) + ((parameters[10] - parameters[9])/0.5))
+        phi_z      = (1./2.)*(parameters[:,10] - parameters[:,8])
+        phi_next_z = (1./2.)*(parameters[:,11] - parameters[:,9])
 
         # Compute the function value f(x)
-        f_x = a*parameters[1] + b*phi_x + c*parameters[2]  + d*phi_next_x
-        f_y = a*parameters[5] + b*phi_y + c*parameters[6]  + d*phi_next_y
-        f_z = a*parameters[9] + b*phi_z + c*parameters[10] + d*phi_next_z
-       
-        return f_x, f_y, f_z  
+        F_x = a*parameters[:,1] + b*phi_x + c*parameters[:,2]  + d*phi_next_x
+        F_y = a*parameters[:,5] + b*phi_y + c*parameters[:,6]  + d*phi_next_y
+        F_z = a*parameters[:,9] + b*phi_z + c*parameters[:,10] + d*phi_next_z
+
+        # jax.debug.print("parameters : {}", parameters)
+
+        # jax.debug.breakpoint()
+
+        F = jnp.stack((F_x, F_y, F_z), axis=-1)
+        F = jnp.reshape(F, (-1,))
+        
+        return F
+    
+
+    def new_compute_cubic_spline(self, parameters, step, horizon):
+        """ Given a set of spline parameters, and the point in the trajectory return the function value 
+        
+        Args :
+            parameters (jnp.array): of shape((num_legs, 3*sampling_horizon))
+            step             (int): The point in the curve in [0, horizon]
+            horizon          (int): The length of the curve
+            
+        Returns : 
+            F
+        
+        """
+
+        # Find the point in the curve q in [0,1]
+        tau = step/(horizon)        
+        q = (tau - 0.0)/(1.0-0.0)
+        
+        # Compute the spline interpolation parameters
+        a =  2*q*q*q - 3*q*q     + 1
+        b =    q*q*q - 2*q*q + q
+        c = -2*q*q*q + 3*q*q
+        d =    q*q*q -   q*q
+
+        # Compute the phi parameters
+        phi_x      = (1./2.)*(parameters[:,2]  - parameters[:,0])
+        phi_next_x = (1./2.)*(parameters[:,3]  - parameters[:,1])
+
+        phi_y      = (1./2.)*(parameters[:,6]  - parameters[:,4])
+        phi_next_y = (1./2.)*(parameters[:,7]  - parameters[:,5])
+
+        phi_z      = (1./2.)*(parameters[:,10] - parameters[:,8])
+        phi_next_z = (1./2.)*(parameters[:,11] - parameters[:,9])
+
+        jax.debug.print("parameters: {}", parameters[0,:])
+
+        # Compute the function value f(x)
+        F_x = a*parameters[:,1] + b*phi_x + c*parameters[:,2]  + d*phi_next_x
+        F_y = a*parameters[:,5] + b*phi_y + c*parameters[:,6]  + d*phi_next_y
+        F_z = a*parameters[:,9] + b*phi_z + c*parameters[:,10] + d*phi_next_z
+
+        F = jnp.stack((F_x, F_y, F_z), axis=-1)
+        F = jnp.reshape(F, (-1,))
+        
+        return F
 
 
     def compute_discrete(self, parameters, step, horizon):
