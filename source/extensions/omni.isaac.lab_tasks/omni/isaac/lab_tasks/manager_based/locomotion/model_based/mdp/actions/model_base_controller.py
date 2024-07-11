@@ -723,9 +723,11 @@ class SamplingOptimizer():
         if   optimizerCfg.parametrization_F == 'cubic spline' : 
             self.interpolation_F=self.compute_cubic_spline
             self.F_param = 4
+            self.spline = True
         elif optimizerCfg.parametrization_F == 'discrete'     :
             self.interpolation_F=self.compute_discrete
             self.F_param = self.sampling_horizon
+            self.spline = False
         else : raise NotImplementedError('Request interpolation method is not implemented yet')
 
         # Define Interpolation method for foot touch down position and interfer foot touch down position input size 
@@ -891,6 +893,11 @@ class SamplingOptimizer():
         print('d - cum. diff. : %3.2f' % torch.sum(torch.abs(d_star - d)))
         print('p - cum. diff. : %3.2f' % torch.sum(torch.abs(p_star_lw - p_lw)))
         print('F - cum. diff. : %5.1f' % torch.sum(torch.abs(F_star_lw - F_lw)))
+
+        # TODO Fix this ! 
+        if self.spline:
+            p_star_lw[...,0] = p_star_lw[...,1]
+            F_star_lw[...,0] = F_star_lw[...,1]
 
         return f_star, d_star, p_star_lw, F_star_lw
 
