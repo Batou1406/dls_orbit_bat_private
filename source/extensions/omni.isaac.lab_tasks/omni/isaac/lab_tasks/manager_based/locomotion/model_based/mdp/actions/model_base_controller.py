@@ -1070,8 +1070,8 @@ class SamplingOptimizer():
             f_samples    (Tensor) : Leg frequency samples               of shape(num_samples, num_leg)
             d_samples    (Tensor) : Leg duty cycle samples              of shape(num_samples, num_leg)
             p_lw_samples (Tensor) : Foot touch down position samples    of shape(num_samples, num_leg, 3, p_param)
-            F_lw_samples (Tensor) : Ground Reaction forces samples      of shape(num_samples, 3, F_param
-            c_samples    (Tensor) : Contact sequence samples            of shape(num_sample, num_legs, time_horizon)
+            F_lw_samples (Tensor) : Ground Reaction forces samples      of shape(num_samples, num_leg, 3, F_param)
+            c_samples    (Tensor) : Contact sequence samples            of shape(num_sample, num_legs, sampling_horizon)
           
         Returns:
             f_star    (Tensor): Best leg frequency                      of shape(1, num_leg)
@@ -1091,6 +1091,7 @@ class SamplingOptimizer():
 
         # if next stime step feet is in swing : set F_best to zero
         self.F_best = c_samples[best_index.item(),:,1].unsqueeze(0).unsqueeze(2).unsqueeze(3) * F_star_lw
+        # self.F_best[c_samples[best_index.item(),:,1].unsqueeze(0)] = 200/torch.sum(c_samples[best_index.item(),:,1])
 
         return f_star, d_star, p_star_lw, F_star_lw
 
@@ -1395,15 +1396,13 @@ class SamplingOptimizer():
         """ Given a set of spline parameters, and the point in the trajectory return the function value 
         
         Args :
-            parameters (jnp.array): of shape(TODO)
+            parameters (jnp.array): of shape(num_legs, spline_param*3) 
             step             (int): The point in the curve in [0, horizon]
             horizon          (int): The length of the curve
             
         Returns : 
-            F
-        
+            actions    (jnp.array): The action of shape(num_legs*3) (can be p or F)
         """
-
         # Find the point in the curve q in [0,1]
         tau = step/(horizon)        
         q = (tau - 0.0)/(1.0-0.0)
@@ -1425,64 +1424,15 @@ class SamplingOptimizer():
         phi_next_z = (1./2.)*(parameters[:,11] - parameters[:,9])
 
         # Compute the function value f(x)
-        F_x = a*parameters[:,1] + b*phi_x + c*parameters[:,2]  + d*phi_next_x
-        F_y = a*parameters[:,5] + b*phi_y + c*parameters[:,6]  + d*phi_next_y
-        F_z = a*parameters[:,9] + b*phi_z + c*parameters[:,10] + d*phi_next_z
+        action_x = a*parameters[:,1] + b*phi_x + c*parameters[:,2]  + d*phi_next_x # shape(4)
+        action_y = a*parameters[:,5] + b*phi_y + c*parameters[:,6]  + d*phi_next_y # shape(4)
+        action_z = a*parameters[:,9] + b*phi_z + c*parameters[:,10] + d*phi_next_z # shape(4)
 
-        # jax.debug.print("parameters : {}", parameters)
-
-        # jax.debug.breakpoint()
-
-        F = jnp.stack((F_x, F_y, F_z), axis=-1)
-        F = jnp.reshape(F, (-1,))
+        # Stack the variable to have only one variable
+        actions = jnp.stack((action_x, action_y, action_z), axis=-1)
+        actions = jnp.reshape(actions, (-1,))   # shape(12)
         
-        return F
-    
-
-    def new_compute_cubic_spline(self, parameters, step, horizon):
-        """ Given a set of spline parameters, and the point in the trajectory return the function value 
-        
-        Args :
-            parameters (jnp.array): of shape((num_legs, 3*sampling_horizon))
-            step             (int): The point in the curve in [0, horizon]
-            horizon          (int): The length of the curve
-            
-        Returns : 
-            F
-        
-        """
-
-        # Find the point in the curve q in [0,1]
-        tau = step/(horizon)        
-        q = (tau - 0.0)/(1.0-0.0)
-        
-        # Compute the spline interpolation parameters
-        a =  2*q*q*q - 3*q*q     + 1
-        b =    q*q*q - 2*q*q + q
-        c = -2*q*q*q + 3*q*q
-        d =    q*q*q -   q*q
-
-        # Compute the phi parameters
-        phi_x      = (1./2.)*(parameters[:,2]  - parameters[:,0])
-        phi_next_x = (1./2.)*(parameters[:,3]  - parameters[:,1])
-
-        phi_y      = (1./2.)*(parameters[:,6]  - parameters[:,4])
-        phi_next_y = (1./2.)*(parameters[:,7]  - parameters[:,5])
-
-        phi_z      = (1./2.)*(parameters[:,10] - parameters[:,8])
-        phi_next_z = (1./2.)*(parameters[:,11] - parameters[:,9])
-
-        jax.debug.print("parameters: {}", parameters[0,:])
-
-        # Compute the function value f(x)
-        F_x = a*parameters[:,1] + b*phi_x + c*parameters[:,2]  + d*phi_next_x
-        F_y = a*parameters[:,5] + b*phi_y + c*parameters[:,6]  + d*phi_next_y
-        F_z = a*parameters[:,9] + b*phi_z + c*parameters[:,10] + d*phi_next_z
-
-        F = jnp.stack((F_x, F_y, F_z), axis=-1)
-        F = jnp.reshape(F, (-1,))
-        
-        return F
+        return actions
 
 
     def compute_discrete(self, parameters, step, horizon):
@@ -1495,12 +1445,12 @@ class SamplingOptimizer():
             horizon          (int): Not used : here for compatibility
 
         Returns :
-            parameters (jnp.array): The action of shape(num_legs*3)
+            actions (jnp.array): The action of shape(num_legs*3)
         """
 
-        param = (parameters.reshape((self.num_legs, 3, self.sampling_horizon)))[:,:,step].flatten()
+        actions = (parameters.reshape((self.num_legs, 3, self.sampling_horizon)))[:,:,step].flatten()
 
-        return param
+        return actions
 
     
     def enforce_force_constraints(self, F_lw: jnp.array, c: jnp.array) -> jnp.array:
