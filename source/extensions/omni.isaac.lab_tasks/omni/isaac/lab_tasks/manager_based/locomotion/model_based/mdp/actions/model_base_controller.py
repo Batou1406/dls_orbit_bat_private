@@ -881,7 +881,7 @@ class SamplingOptimizer():
             best_action_seq_jax, best_index = self.find_best_actions(action_seq_c_samples_jax, cost_samples_jax)
 
             # --- Step 4 : Convert the optimal value back to torch.Tensor
-            f_star, d_star, p_star_lw, F_star_lw = self.retrieve_z_from_action_seq(best_index, f_samples, d_samples, p_lw_samples, F_lw_samples)
+            f_star, d_star, p_star_lw, F_star_lw = self.retrieve_z_from_action_seq(best_index, f_samples, d_samples, p_lw_samples, F_lw_samples, c_samples)
 
 
         # torch.cuda.synchronize(device=self.device)
@@ -1061,7 +1061,7 @@ class SamplingOptimizer():
         return initial_state_jax, reference_seq_state_jax, reference_seq_input_samples_jax, action_seq_c_samples_jax, action_p_lw_samples_jax, action_F_lw_samples_jax
 
 
-    def retrieve_z_from_action_seq(self, best_index, f_samples, d_samples, p_lw_samples, F_lw_samples) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    def retrieve_z_from_action_seq(self, best_index, f_samples, d_samples, p_lw_samples, F_lw_samples, c_samples) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """ Given the index of the best sample and the samples, return the 'optimized' latent variabl z*=(f*,d*,p*,F*)
         As torch.Tensor, usable by the model based controller
          
@@ -1071,6 +1071,7 @@ class SamplingOptimizer():
             d_samples    (Tensor) : Leg duty cycle samples              of shape(num_samples, num_leg)
             p_lw_samples (Tensor) : Foot touch down position samples    of shape(num_samples, num_leg, 3, p_param)
             F_lw_samples (Tensor) : Ground Reaction forces samples      of shape(num_samples, 3, F_param
+            c_samples    (Tensor) : Contact sequence samples            of shape(num_sample, num_legs, time_horizon)
           
         Returns:
             f_star    (Tensor): Best leg frequency                      of shape(1, num_leg)
@@ -1087,6 +1088,9 @@ class SamplingOptimizer():
 
         # Update previous best solution
         self.f_best, self.d_best, self.p_best, self.F_best = f_star, d_star, p_star_lw, F_star_lw
+
+        # if next stime step feet is in swing : set F_best to zero
+        self.F_best = c_samples[best_index.item(),:,1].unsqueeze(0).unsqueeze(2).unsqueeze(3) * F_star_lw
 
         return f_star, d_star, p_star_lw, F_star_lw
 
