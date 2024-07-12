@@ -75,6 +75,7 @@ class BatManagerBasedRLEnvWindow(BaseEnvWindow):
             # create collapsable frame for Sampling controller
             try : 
                 self.modelBaseAction: ModelBaseAction = env.action_manager.get_term('model_base_variable')
+                self.velocityCommand = env.command_manager.get_term('base_velocity')
                 try:          
                     self.modelBaseAction.controller.samplingOptimizer   
                     self._build_sampler_frame()
@@ -177,6 +178,16 @@ class BatManagerBasedRLEnvWindow(BaseEnvWindow):
                     "on_clicked_fn": self._set_debug_gait,
                 }
                 self.ui_window_elements["debug_gait"] = omni.isaac.ui.ui_utils.dropdown_builder(**debug_gait_follow_cfg)
+
+                # add viewer default eye and lookat locations
+                self.ui_window_elements["velocity_setter"] = omni.isaac.ui.ui_utils.xyz_builder(
+                    label="Velocity Command",
+                    tooltip="Modify the Forward, lateral and angular velocity command.",
+                    step=0.01,
+                    min=-1.0,
+                    max=1.0,
+                    on_value_changed_fn=[self._set_velocity_fn] * 3,
+                )
 
                 # Create a button to enable leg frequency optimization
                 with omni.ui.HStack():
@@ -411,3 +422,15 @@ class BatManagerBasedRLEnvWindow(BaseEnvWindow):
         if   value == 'None'        : self.modelBaseAction.debug_apply_action_status = None
         if   value == 'Full Stance' : self.modelBaseAction.debug_apply_action_status = 'full stance'
         if   value == 'Trot'        : self.modelBaseAction.debug_apply_action_status = 'trot'
+
+    def _set_velocity_fn(self, model: omni.ui.SimpleFloatModel):
+        # Set the velocity sampling ranges
+        self.velocityCommand.cfg.ranges.for_vel_b = [self.ui_window_elements["velocity_setter"][0].get_value_as_float(), self.ui_window_elements["velocity_setter"][0].get_value_as_float()]
+        self.velocityCommand.cfg.ranges.lat_vel_b = [self.ui_window_elements["velocity_setter"][1].get_value_as_float(), self.ui_window_elements["velocity_setter"][1].get_value_as_float()]
+        self.velocityCommand.cfg.ranges.ang_vel_b = [self.ui_window_elements["velocity_setter"][2].get_value_as_float(), self.ui_window_elements["velocity_setter"][2].get_value_as_float()]
+        self.velocityCommand.cfg.ranges.initial_heading_err = [0.0, 0.0]
+
+        # Reset to resample a new command
+        self.velocityCommand.reset(env_ids=range(self.env.num_envs))
+
+        
