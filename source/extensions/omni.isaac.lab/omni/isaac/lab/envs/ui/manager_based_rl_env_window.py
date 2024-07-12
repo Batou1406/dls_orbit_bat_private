@@ -167,6 +167,17 @@ class BatManagerBasedRLEnvWindow(BaseEnvWindow):
                     )
                     omni.isaac.ui.ui_utils.add_line_rect_flourish()
 
+                # create a Dropdown menu to select a debug gait or not
+                debug_gait_follow_cfg = {
+                    "label": "Debug Gait",
+                    "type": "dropdown",
+                    "default_val": 0,
+                    "items": [name.replace("_", " ").title() for name in ['None', 'full stance', 'trot']], # TODO hardcoded for now... Do better
+                    "tooltip": "Disable RL action (f,d,p) and apply a static gait",
+                    "on_clicked_fn": self._set_debug_gait,
+                }
+                self.ui_window_elements["debug_gait"] = omni.isaac.ui.ui_utils.dropdown_builder(**debug_gait_follow_cfg)
+
                 # Create a button to enable leg frequency optimization
                 with omni.ui.HStack():
                     omni.ui.Label(
@@ -394,3 +405,9 @@ class BatManagerBasedRLEnvWindow(BaseEnvWindow):
 
     def _update_num_iter(self, model: omni.ui.SimpleIntModel):
         self.modelBaseAction.controller.samplingOptimizer.num_optimizer_iterations = model.as_int
+
+    def _set_debug_gait(self, value: str): 
+        # value is modified and comes with a capital letter first
+        if   value == 'None'        : self.modelBaseAction.debug_apply_action_status = None
+        if   value == 'Full Stance' : self.modelBaseAction.debug_apply_action_status = 'full stance'
+        if   value == 'Trot'        : self.modelBaseAction.debug_apply_action_status = 'trot'

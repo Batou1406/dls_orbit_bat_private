@@ -171,6 +171,9 @@ class ModelBaseAction(ActionTerm):
 
         # Define F and p size given how it is parametrised
         if self.cfg.optimizerCfg is not None:
+            # Wether to bypass RL actions with some static gait
+            self.debug_apply_action_status = self.cfg.optimizerCfg.debug_apply_action
+
             # Parametrized Action 
             if self.cfg.optimizerCfg.parametrization_F == 'cubic spline':
                 self._F_param = 4 
@@ -186,7 +189,10 @@ class ModelBaseAction(ActionTerm):
             elif self.cfg.optimizerCfg.parametrization_p == 'discrete':
                 self._p_param = self.cfg.optimizerCfg.prevision_horizon
             else : raise NotImplementedError('Provided P parametrisation not implemented')
-        else : 
+        else :
+            # RL Actions applied 
+            self.debug_apply_action_status = None 
+
             # Discrete Action : One action - One time step
             self._F_param = 1
             self._p_param = 1
@@ -395,7 +401,8 @@ class ModelBaseAction(ActionTerm):
         self.f, self.d, self.p_norm, self.F_norm = self.normalization(f=self.f_raw, d=self.d_raw, p=self.p_raw, F=self.F_raw)
 
         # Disable Action : useful for debug
-        # self.f, self.d, self.p_norm = self.debug_disable_action(f=self.f, d=self.d, p_norm=self.p_norm, gait='full stance')
+        if self.debug_apply_action_status:
+            self.f, self.d, self.p_norm = self.debug_disable_action(f=self.f, d=self.d, p_norm=self.p_norm, gait=self.debug_apply_action_status)
 
         # Apply Transformation to have the Actions in the correct Frame
         self.f, self.d, self.p_lw, self.F_lw = self.transformation(f=self.f, d=self.d, p_h=self.p_norm, F_h=self.F_norm)

@@ -4,7 +4,6 @@ import torch
 from torch.distributions.constraints import real
 
 import jax.numpy as jnp
-# import numpy as np
 
 import omni.isaac.lab.utils.math as math_utils
 
@@ -36,6 +35,11 @@ from .quadrupedpympc.sampling.centroidal_model_jax import Centroidal_Model_JAX
 
 import time
 
+
+import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
+import threading
+import itertools
 # import numpy as np
 # import matplotlib.pyplot as plt
 # np.set_printoptions(precision=2, linewidth=200)
@@ -643,6 +647,8 @@ class samplingController(modelBaseController):
         # To enable or not the optimizer at run time
         self.optimizer_active = True
 
+        self.samplingOptimizer.start()
+
 
     def reset(self, env_ids: Sequence[int] | None,  p_default_lw: torch.Tensor) -> None:
         """ Reset the sampling optimizer internal values"""
@@ -829,6 +835,41 @@ class SamplingOptimizer():
         self.p_best =     torch.zeros((1,self.num_legs,3,self.p_param ), device=device)
         self.F_best =     torch.zeros((1,self.num_legs,3,self.F_param ), device=device)
         self.F_best[:,:,2,:] = 50.0
+
+        # Create Variable for the Live plot
+        # self.fig, self.axes = plt.subplots(2, 2)#, sharex=True, sharey=True)
+        # self.lines = [self.axes[0, 0].plot(self.F_best[0,0,2,:].cpu().numpy())[0], self.axes[0, 1].plot(self.F_best[0,1,2,:].cpu().numpy())[0], 
+        #               self.axes[1, 0].plot(self.F_best[0,2,2,:].cpu().numpy())[0], self.axes[1, 1].plot(self.F_best[0,3,2,:].cpu().numpy())[0]]
+        
+        # # Set limits and labels
+        # for ax in self.axes.flatten():
+        #     ax.set_xlim(0, self.sampling_horizon)
+        #     ax.set_ylim(0, self.F_z_max)  
+        #     ax.set_xlabel('iteration')
+        #     ax.set_ylabel('Force Z [N]')
+        
+        # # Set titles
+        # titles = ['FL', 'FR', 'RL', 'RR']
+        # for ax, title in zip(self.axes.flatten(), titles):
+        #     ax.set_title(title)
+
+
+        self.fig, self.ax = plt.subplots()
+
+        # Plot lines and save them in a list
+        self.line1, = self.ax.plot(self.F_best[0,0,2,:].cpu().numpy(), label='FL')
+        self.line2, = self.ax.plot(self.F_best[0,1,2,:].cpu().numpy(), label='FR')
+        self.line3, = self.ax.plot(self.F_best[0,2,2,:].cpu().numpy(), label='RL')
+        self.line4, = self.ax.plot(self.F_best[0,3,2,:].cpu().numpy(), label='RR')
+        
+        # Set limits and labels
+        self.ax.set_xlim(0, self.sampling_horizon-1)
+        self.ax.set_ylim(0, self.F_z_max)  
+        self.ax.set_xlabel('iteration')
+        self.ax.set_ylabel('Force Z [N]')
+
+        # Add a legend
+        self.ax.legend()
 
 
     def reset(self):
@@ -1556,3 +1597,21 @@ class SamplingOptimizer():
         yaw   = ((yaw   - torch.pi) % (2*torch.pi)) - torch.pi
 
         return roll, pitch, yaw
+
+
+    def animate(self, frame):
+
+        # self.line.set_ydata(self.F_best[0,0,2,:].cpu().numpy())
+        self.line1.set_ydata(self.F_best[0,0,2,:].cpu().numpy())
+        self.line2.set_ydata(self.F_best[0,1,2,:].cpu().numpy())
+        self.line3.set_ydata(self.F_best[0,2,2,:].cpu().numpy())
+        self.line4.set_ydata(self.F_best[0,3,2,:].cpu().numpy())
+        return [self.line1, self.line2, self.line3, self.line4]
+
+
+    def start_animation(self, interval=100):
+        self.ani = FuncAnimation(self.fig, self.animate, frames=itertools.count(), blit=True, interval=interval)
+        plt.show()
+
+    def start(self):
+        threading.Thread(target=self.start_animation).start()

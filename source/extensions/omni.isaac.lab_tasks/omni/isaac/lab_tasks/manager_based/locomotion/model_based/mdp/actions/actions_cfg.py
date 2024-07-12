@@ -95,6 +95,9 @@ class ModelBaseActionCfg(ActionTermCfg):
         clip_sample: bool = True 
         """ Wether to clip or not the samples to a range of the standard deviation """
 
+        debug_apply_action: Literal[None, 'full stance', 'trot'] = None
+        """ Wether to deactivate f,d,and p from RL and change that with another static gait"""
+
     optimizerCfg: OptimizerCfg | None = None
     """ Must be provided if a controller with optimizer is selected (eg. 'samplingController')"""
 
