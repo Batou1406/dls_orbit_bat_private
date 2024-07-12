@@ -124,9 +124,9 @@ class ModelBaseAction(ActionTerm):
         p_len               : To ease the actions extraction
         F_len               : To ease the actions extraction
         
-        p_star_lw (t.Tensor): Optimizied foot pos sequence                  of shape (batch_size, num_legs, 3, p_param)
-        F_star_lw (t.Tensor): Opt. Ground Reac. Forces (GRF) seq.           of shape (batch_size, num_legs, 3, F_param)
-        c_star (trch.Tensor): Optimizied foot contact sequence              of shape (batch_size, num_legs, 1)
+        p0_star_lw  (Tensor): Optimizied foot pos sequence                  of shape (batch_size, num_legs, 3, p_param)
+        F0_star_lw  (Tensor): Opt. Ground Reac. Forces (GRF) seq.           of shape (batch_size, num_legs, 3, F_param)
+        c0_star (tch.Tensor): Optimizied foot contact sequence              of shape (batch_size, num_legs, 1)
         pt_star_lw  (Tensor): Optimizied foot swing trajectory              of shape (batch_size, num_legs, 9, decimation)  (9 = pos, vel, acc)
         
         z            (tuple): Latent variable : z=(f,d,p,F)                 of shape (...)
@@ -259,9 +259,9 @@ class ModelBaseAction(ActionTerm):
         # Model-based optimized latent variable
         self.f_star     = torch.zeros(self.num_envs, self._num_legs,                     device=self.device)
         self.d_star     = torch.zeros(self.num_envs, self._num_legs,                     device=self.device)
-        self.c_star     = torch.ones( self.num_envs, self._num_legs, 1,                  device=self.device)
-        self.p_star_lw  = torch.zeros(self.num_envs, self._num_legs, 3, self._p_param,   device=self.device)
-        self.F_star_lw  = torch.zeros(self.num_envs, self._num_legs, 3, self._F_param,   device=self.device)
+        self.c0_star    = torch.ones( self.num_envs, self._num_legs,                     device=self.device)
+        self.p0_star_lw = torch.zeros(self.num_envs, self._num_legs, 3,                  device=self.device)
+        self.F0_star_lw = torch.zeros(self.num_envs, self._num_legs, 3,                  device=self.device)
         self.pt_star_lw = torch.zeros(self.num_envs, self._num_legs, 9, self._decimation,device=self.device)
         self.full_pt_lw = torch.zeros(self.num_envs, self._num_legs, 9, 22,              device=self.device)  # Used for plotting only
 
@@ -347,7 +347,7 @@ class ModelBaseAction(ActionTerm):
         after inverse_normalisation(inverse_transformation(optimization(transformation(normalisation(raw_actions))))) 
         Dimension is always 4+4+8+12 = (batch_size, 28) """
 
-        f, d, p_h, F_h = self.inverse_transformation(f=self.f_star, d=self.d_star, p_lw=self.p_star_lw[:,:,:,0].unsqueeze(-1), F_lw=self.F_star_lw[:,:,:,0].unsqueeze(-1))
+        f, d, p_h, F_h = self.inverse_transformation(f=self.f_star, d=self.d_star, p_lw=self.p0_star_lw.unsqueeze(-1), F_lw=self.F0_star_lw.unsqueeze(-1))
         f_raw, d_raw, p_raw, F_raw = self. inverse_normalization(f=f, d=d, p=p_h, F=F_h)
         return  torch.cat((f_raw.flatten(1,-1), d_raw.flatten(1,-1), p_raw.flatten(1,-1), F_raw.flatten(1,-1)),dim=1)
 
@@ -411,10 +411,10 @@ class ModelBaseAction(ActionTerm):
         self._processed_actions = torch.cat((self.f.flatten(1,-1), self.d.flatten(1,-1), self.p_lw.flatten(1,-1), self.F_lw.flatten(1,-1)),dim=1)
 
         # Optimize the latent variable with the model base controller
-        self.f_star, self.d_star, self.c_star, self.p_star_lw, self.F_star_lw, self.pt_star_lw, self.full_pt_lw = self.controller.process_latent_variable(f=self.f, d=self.d, p_lw=self.p_lw, F_lw=self.F_lw, env=self._env, height_map=torch.zeros(17,11)) # TODO implement height map
+        self.f_star, self.d_star, self.c0_star, self.p0_star_lw, self.F0_star_lw, self.pt_star_lw, self.full_pt_lw = self.controller.process_latent_variable(f=self.f, d=self.d, p_lw=self.p_lw, F_lw=self.F_lw, env=self._env, height_map=torch.zeros(17,11)) # TODO implement height map
 
         # Enforce friction cone constraints for GRF : enforce only with sampling controller, because training should learn not to slip
-        if type(self.controller) == model_base_controller.samplingController: self.F_star_lw = self.enforce_friction_cone_constraints(F=self.F_star_lw, mu=self.cfg.optimizerCfg.mu)
+        # if type(self.controller) == model_base_controller.samplingController: self.F0_star_lw = self.enforce_friction_cone_constraints(F=self.F0_star_lw.unsqueeze(-1), mu=self.cfg.optimizerCfg.mu).squeeze(-1)
 
         # Reset the inner loop counter
         self.inner_loop = 0      
@@ -434,14 +434,12 @@ class ModelBaseAction(ActionTerm):
         p_lw, p_dot_lw, q_dot, jacobian_lw, jacobian_dot_lw, mass_matrix, h = self.get_robot_state() 
 
         # Extract optimal variables
-        F0_star_lw = self.F_star_lw[:,:,:,0]
-        c0_star = self.c_star[:,:,0]
         pt_i_star_lw = self.pt_star_lw[:,:,:,self.inner_loop]
         self.inner_loop += 1    
 
         # Use model controller to compute the torques from the latent variable
         # Transform the shape from (batch_size, num_legs, num_joints_per_leg) to (batch_size, num_joints) # Permute and reshape to have the joint in right order [0,4,8][1,5,...] to [0,1,2,...]
-        self.u = (self.controller.compute_control_output(F0_star_lw=F0_star_lw, c0_star=c0_star, pt_i_star_lw=pt_i_star_lw, p_lw=p_lw, p_dot_lw=p_dot_lw, q_dot=q_dot,
+        self.u = (self.controller.compute_control_output(F0_star_lw=self.F0_star_lw, c0_star=self.c0_star, pt_i_star_lw=pt_i_star_lw, p_lw=p_lw, p_dot_lw=p_dot_lw, q_dot=q_dot,
                                                          jacobian_lw=jacobian_lw, jacobian_dot_lw=jacobian_dot_lw, mass_matrix=mass_matrix, h=h)).permute(0,2,1).reshape(self.num_envs,self._num_joints)
 
         # Apply the computed torques
@@ -449,7 +447,7 @@ class ModelBaseAction(ActionTerm):
 
         # Debug
         if verbose_mb:
-            self.debug_apply_action(p_lw, p_dot_lw, q_dot, jacobian_lw, jacobian_dot_lw, mass_matrix, h, F0_star_lw, c0_star, pt_i_star_lw)
+            self.debug_apply_action(p_lw, p_dot_lw, q_dot, jacobian_lw, jacobian_dot_lw, mass_matrix, h, self.F0_star_lw, self.c0_star, pt_i_star_lw)
 
 
     def reset(self, env_ids: Sequence[int] | None = None) -> None:
@@ -501,9 +499,9 @@ class ModelBaseAction(ActionTerm):
         # Model-based optimized latent variable
         self.f_star[env_ids,...]     = 0.0
         self.d_star[env_ids,...]     = 0.0
-        self.c_star[env_ids,...]     = 1.0
-        self.p_star_lw[env_ids,...]  = 0.0
-        self.F_star_lw[env_ids,...]  = 0.0
+        self.c0_star[env_ids,...]    = 1.0
+        self.p0_star_lw[env_ids,...] = 0.0
+        self.F0_star_lw[env_ids,...] = 0.0
         self.pt_star_lw[env_ids,...] = 0.0
         self.full_pt_lw[env_ids,...] = 0.0 # Used for plotting only
 
@@ -836,7 +834,7 @@ class ModelBaseAction(ActionTerm):
         robot_yaw_in_w = math_utils.yaw_quat(self._asset.data.root_quat_w).unsqueeze(1)
 
         # Update hip position and orientation while leg in contact (so it's saved for the entire swing trajectory with lift-off position)
-        in_contact = (self.c_star[:,:,0]==1).unsqueeze(-1)  # True if foot in contact, False in in swing, shape(batch, legs, 1)
+        in_contact = (self.c0_star==1).unsqueeze(-1)  # True if foot in contact, False in in swing, shape(batch, legs, 1)
         self.hip0_pos_lw = (p_hip_lw * in_contact) + (self.hip0_pos_lw * (~in_contact))                 # shape(batch, legs, 3)
         self.hip0_yaw_quat_lw = (robot_yaw_in_w * in_contact) + (self.hip0_yaw_quat_lw * (~in_contact)) # shape(batch, 1, 4)*(batch, legs, 1) -> (batch, legs, 4)
 
@@ -1056,7 +1054,7 @@ class ModelBaseAction(ActionTerm):
             # print(' Robot position  : ', self._asset.data.root_pos_w[0,...])
             # print('Foot traj shape  : ', self.pt_star_lw.shape)
             # print('Foot traj : ', self.pt_star_lw[0,0,:3,:])
-            # print('Foot Force :', self.F_star_lw[0,:,:])
+            # print('Foot Force :', self.F0_star_lw[0,:,:])
             # print('\nZ lin vel : ', self._asset.data.root_lin_vel_b[0, 2])
             # print(self._env.reward_manager.find_terms('track_lin_vel_xy_exp'))
             # try : 
@@ -1067,7 +1065,7 @@ class ModelBaseAction(ActionTerm):
                 # print('Track exp         : ',self._env.reward_manager._episode_sums["track_lin_vel_xy_exp"][0:4])
             # except : pass
 
-            if (self.F_lw != self.F_star_lw).any():
+            if (self.F_lw[:,:,:,0] != self.F0_star_lw).any():
                 assert ValueError('F value don\'t match...')
 
         # --- Visualize foot position ---
@@ -1084,7 +1082,7 @@ class ModelBaseAction(ActionTerm):
             # p_w_2, _ = math_utils.combine_frame_transforms(robot_pos_w, robot_orientation_w, p_b[:,2,:])
             # p_w_3, _ = math_utils.combine_frame_transforms(robot_pos_w, robot_orientation_w, p_b[:,3,:])
             # p_w = torch.cat((p_w_0.unsqueeze(1), p_w_1.unsqueeze(1), p_w_2.unsqueeze(1), p_w_3.unsqueeze(1)), dim=1)
-            stance = self.c_star[:,:,0]
+            stance = self.c0_star
 
             marker_locations_stance = (p_w[:,:,:] * stance.unsqueeze(-1)).flatten(0,1)
             marker_locations_swing = (p_w[:,:,:] * (~stance.unsqueeze(-1))).flatten(0,1)
@@ -1320,7 +1318,7 @@ class ModelBaseAction(ActionTerm):
         marker_locations = full_pt_w_
 
         # Visualize the traj only if it is used (ie. the foot is in swing -> c==0)
-        marker_indices = ((self.c_star[:,:,0].unsqueeze(-1).expand(self.num_envs,self._num_legs,22)).flatten(1,2).flatten(0,1))       
+        marker_indices = ((self.c0_star.unsqueeze(-1).expand(self.num_envs,self._num_legs,22)).flatten(1,2).flatten(0,1))       
 
         self.foot_traj_visualizer.visualize(translations=marker_locations, marker_indices=marker_indices)
 
@@ -1335,8 +1333,8 @@ class ModelBaseAction(ActionTerm):
         marker_locations = p3_w.flatten(0,1) # (batch*num_legs, 3)
 
         # From GRF, retrieve orientation (angle and axis representation)
-        F = self.F_star_lw[:,:,:,0].clone().detach()[0,:] # (batch, num_legs, 3) -> (num_legs, 3)
-        F = self.F_star_lw[:,:,:,0].clone().detach().flatten(0,1) # (batch*num_legs, 3)
+        F = self.F0_star_lw.clone().detach()[0,:] # (batch, num_legs, 3) -> (num_legs, 3)
+        F = self.F0_star_lw.clone().detach().flatten(0,1) # (batch*num_legs, 3)
         normalize_F = torch.nn.functional.normalize(F, p=2, dim=1) # Transform GRF to unit vectors # (batch*num_legs, 3)
         # angle : u dot v = cos(angle) -> angle = acos(u*v) : for unit vector # Need to take the opposite angle in order to make appropriate rotation
         angle = -torch.acos(torch.tensordot(normalize_F, torch.tensor([1.0,0.0,0.0], device=self.device), dims=1)) # shape(batch*num_legs, 3) -> (batch*num_legs)
@@ -1353,8 +1351,7 @@ class ModelBaseAction(ActionTerm):
         marker_locations = translation
 
         # Visualize the force only if it is used (ie. the foot is in contact -> c==1)
-        # marker_indices = ~self.c_star[:,:,0][0,...]
-        marker_indices = ~self.c_star[:,:,0].flatten(0,1)
+        marker_indices = ~self.c0_star.flatten(0,1)
 
         self.foot_GRF_visualizer.visualize(translations=marker_locations, orientations=marker_orientations, scales=scale, marker_indices=marker_indices)
         

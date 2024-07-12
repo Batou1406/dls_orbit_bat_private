@@ -122,7 +122,7 @@ class baseController(ABC):
         typically, it would compute :
             - T_stance_phase = stance_leg_controller(GRF, q, c) # Update the jacobian with the new joint position.
             - T_swing_phase = swing_leg_controller(trajectory, q, q_dot, c) # Feedback lineraization control - trajectory computed with a spline to be followed - new updated joint controller.
-            - T = (T_stance_phase * c_star) + (T_swing_phase * (~c_star))
+            - T = (T_stance_phase * c0_star) + (T_swing_phase * (~c0_star))
         and return T
         
         Args:
@@ -237,31 +237,34 @@ class modelBaseController(baseController):
             The variable are in the 'local' world frame _wl. This notation is introduced to avoid confusion with the 'global' world frame, where all the batches coexists.
 
         Args:
-            - f   (torch.Tensor): Prior leg frequency                   of shape (batch_size, num_legs)
-            - d   (torch.Tensor): Prior stepping duty cycle             of shape (batch_size, num_legs)
-            - p_lw (trch.Tensor): Prior foot touch down seq. in _lw     of shape (batch_size, num_legs, 3, number_predict_step)
-            - F_lw (trch.Tensor): Prior Ground Reac. Forces (GRF) seq.  of shape (batch_size, num_legs, 3, F_param)
-                                  In local world frame
-            - height_map (Tnsor): Height map arround the robot          of shape(x, y)
+            f      (torch.Tensor): Prior leg frequency                    of shape (batch_size, num_legs)
+            d      (torch.Tensor): Prior stepping duty cycle              of shape (batch_size, num_legs)
+            p_lw   (torch.Tensor): Prior foot touch down seq. in _lw      of shape (batch_size, num_legs, 3, p_param)
+            F_lw   (torch.Tensor): Prior Ground Reac. Forces (GRF) seq.   of shape (batch_size, num_legs, 3, F_param)
+                                   In local world frame
+            height_map   (Tensor): Height map arround the robot           of shape(x, y)
 
         Returns:
-            - p*_lw (tch.Tensor): Optimized foot touch down seq. in _lw of shape (batch_size, num_legs, 3, number_predict_step)
-            - F*_lw (tch.Tensor): Opt. Gnd Reac. F. (GRF) seq.   in _lw of shape (batch_size, num_legs, 3, F_param)
-            - c*  (torch.Tensor): Optimized foot contact sequence       of shape (batch_size, num_legs, 1)
-            - pt*_lw (th.Tensor): Optimized foot swing traj.     in _lw of shape (batch_size, num_legs, 9, decimation)  (9 = pos, vel, acc)
+            f*     (torch.Tensor): Opt. leg frequency                    of shape (batch_size, num_legs)
+            d*     (torch.Tensor): Opt. leg duty cycle                   of shape (batch_size, num_legs)
+            c0*    (torch.Tensor): Optimized foot contact sequence       of shape (batch_size, num_legs)
+            p0*_lw (torch.Tensor): Optimized foot touch down seq. in _lw of shape (batch_size, num_legs, 3)
+            F0*_lw (torch.Tensor): Opt. Gnd Reac. F. (GRF) seq.   in _lw of shape (batch_size, num_legs, 3)
+            pt*_lw (torch.Tensor): Optimized foot swing traj.     in _lw of shape (batch_size, num_legs, 9, decimation)  (9 = pos, vel, acc)
+            full_pt_lw (t.Tensor): Full swing traj for ploting           of shape (batch_size, num_legs, 9, 22)
         """
 
         # No optimizer
-        f_star, d_star, F_star_lw, p_star_lw = f, d, F_lw, p_lw
+        f_star, d_star, p0_star_lw, F0_star_lw = f, d, p_lw[:,:,:,0], F_lw[:,:,:,0]
 
         # Compute the contact sequence and update the phase
         c_star, self.phase = self.gait_generator(f=f_star, d=d_star, phase=self.phase, horizon=1, dt=self._dt_out)
+        c0_star = c_star[:,:,0] # shape (batch_size, num_legs)
 
         # Generate the swing trajectory
-        # pt_lw = self.swing_trajectory_generator(p_lw=p_lw[:,:,:,0], c=c, d=d, f=f)
-        pt_star_lw, full_pt_lw = self.full_swing_trajectory_generator(p_lw=p_star_lw[:,:,:,0], c=c_star, d=d_star, f=f_star)
+        pt_star_lw, full_pt_lw = self.full_swing_trajectory_generator(p_lw=p0_star_lw, c0=c0_star, d=d_star, f=f_star)
 
-        return f_star, d_star, c_star, p_star_lw, F_star_lw, pt_star_lw, full_pt_lw
+        return f_star, d_star, c0_star, p0_star_lw, F0_star_lw, pt_star_lw, full_pt_lw
     
 
     def gait_generator(self, f: torch.Tensor, d: torch.Tensor, phase: torch.Tensor, horizon: int, dt) -> tuple[torch.Tensor, torch.Tensor]:
@@ -304,7 +307,7 @@ class modelBaseController(baseController):
         return c, new_phase
 
 
-    def full_swing_trajectory_generator(self, p_lw: torch.Tensor, c: torch.Tensor, f: torch.Tensor, d: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def full_swing_trajectory_generator(self, p_lw: torch.Tensor, c0: torch.Tensor, f: torch.Tensor, d: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """ Given feet position sequence and contact sequence -> compute swing trajectories by fitting a cubic spline between
         the lift-off and the touch down define in the contact sequence. 
         - Swing frequency and duty cycle are used to compute the swing period
@@ -315,7 +318,7 @@ class modelBaseController(baseController):
         
         Args:
             - p_lw (trch.Tensor): Foot touch down postion in _lw        of shape(batch_size, num_legs, 3)
-            - c   (torch.Tensor): Foot contact sequence                 of shape(batch_size, num_legs, decimation)
+            - c0  (torch.Tensor): Foot contact sequence                 of shape(batch_size, num_legs)
             - f   (torch.Tensor): Leg frequency           in R+         of shape(batch_size, num_legs)
             - d   (torch.Tensor): Stepping duty cycle     in[0,1]       of shape(batch_size, num_legs)
 
@@ -340,7 +343,7 @@ class modelBaseController(baseController):
 
         # Retrieve p0 : update p0 with latest foot position when in contact, don't update when in swing
         # p0 shape (batch_size, num_legs, 3)
-        in_contact = (c[:,:,0]==1).unsqueeze(-1)    # True if foot in contact, False in in swing, shape (batch_size, num_legs, 1)
+        in_contact = (c0==1).unsqueeze(-1)    # True if foot in contact, False in in swing, shape (batch_size, num_legs, 1)
         self.p0_lw = (self.p_lw_sim_prev * in_contact) + (self.p0_lw * (~in_contact)) # p_lw_sim_prev : last data from sim available
 
         # Retrieve p2 : this is simply the foot touch down prior given as input
@@ -421,7 +424,7 @@ class modelBaseController(baseController):
         typically, it would compute :
             - T_stance_phase = stance_leg_controller(GRF, q, c) # Update the jacobian with the new joint position.
             - T_swing_phase = swing_leg_controller(trajectory, q, q_dot, c) # Feedback lineraization control - trajectory computed with a spline to be followed - new updated joint controller.
-            - T = (T_stance_phase * c_star) + (T_swing_phase * (~c_star))
+            - T = (T_stance_phase * c0_star) + (T_swing_phase * (~c0_star))
         and return T
         Note :
             The variable are in the 'local' world frame _wl. This notation is introduced to avoid confusion with the 'global' world frame, where all the batches coexists.
@@ -662,39 +665,42 @@ class samplingController(modelBaseController):
             The variable are in the 'local' world frame _wl. This notation is introduced to avoid confusion with the 'global' world frame, where all the batches coexists.
 
         Args:
-            - f   (torch.Tensor): Prior leg frequency                   of shape (batch_size, num_legs)
-            - d   (torch.Tensor): Prior stepping duty cycle             of shape (batch_size, num_legs)
-            - p_lw (trch.Tensor): Prior foot touch down seq. in _lw     of shape (batch_size, num_legs, 3, p_param)
-            - F_lw (trch.Tensor): Prior Ground Reac. Forces (GRF) seq.  of shape (batch_size, num_legs, 3, F_param)
-                                  In local world frame
-            - height_map (Tnsor): Height map arround the robot          of shape(x, y)
+            f      (torch.Tensor): Prior leg frequency                    of shape (batch_size, num_legs)
+            d      (torch.Tensor): Prior stepping duty cycle              of shape (batch_size, num_legs)
+            p_lw   (torch.Tensor): Prior foot touch down seq. in _lw      of shape (batch_size, num_legs, 3, p_param)
+            F_lw   (torch.Tensor): Prior Ground Reac. Forces (GRF) seq.   of shape (batch_size, num_legs, 3, F_param)
+                                   In local world frame
+            height_map   (Tensor): Height map arround the robot           of shape(x, y)
 
         Returns:
-            - p*_lw (tch.Tensor): Optimized foot touch down seq. in _lw of shape (batch_size, num_legs, 3, p_param)
-            - F*_lw (tch.Tensor): Opt. Gnd Reac. F. (GRF) seq.   in _lw of shape (batch_size, num_legs, 3, F_param)
-            - c*  (torch.Tensor): Optimized foot contact sequence       of shape (batch_size, num_legs, 1)
-            - pt*_lw (th.Tensor): Optimized foot swing traj.     in _lw of shape (batch_size, num_legs, 9, decimation)  (9 = pos, vel, acc)
+            f*     (torch.Tensor): Opt. leg frequency                    of shape (batch_size, num_legs)
+            d*     (torch.Tensor): Opt. leg duty cycle                   of shape (batch_size, num_legs)
+            c0*    (torch.Tensor): Optimized foot contact sequence       of shape (batch_size, num_legs)
+            p0*_lw (torch.Tensor): Optimized foot touch down seq. in _lw of shape (batch_size, num_legs, 3)
+            F0*_lw (torch.Tensor): Opt. Gnd Reac. F. (GRF) seq.   in _lw of shape (batch_size, num_legs, 3)
+            pt*_lw (torch.Tensor): Optimized foot swing traj.     in _lw of shape (batch_size, num_legs, 9, decimation)  (9 = pos, vel, acc)
+            full_pt_lw (t.Tensor): Full swing traj for ploting           of shape (batch_size, num_legs, 9, 22)
         """
 
         # Call the optimizer
         if self.optimizer_active:
-            f_star, d_star, p_star_lw, F_star_lw = self.samplingOptimizer.optimize_latent_variable(env=env, f=f, d=d, p_lw=p_lw, F_lw=F_lw, phase=self.phase, c_prev=self.c_prev, height_map=height_map)
-        else : f_star, d_star, F_star_lw, p_star_lw = f, d, F_lw, p_lw
+            f_star, d_star, p0_star_lw, F0_star_lw = self.samplingOptimizer.optimize_latent_variable(env=env, f=f, d=d, p_lw=p_lw, F_lw=F_lw, phase=self.phase, c_prev=self.c_prev, height_map=height_map)
+        else : f_star, d_star, p0_star_lw, F0_star_lw = f, d, p_lw[:,:,:,0], F_lw[:,:,:,0]
+
 
         # Compute the contact sequence and update the phase
         c_star, self.phase = self.gait_generator(f=f_star, d=d_star, phase=self.phase, horizon=1, dt=self._dt_out)
+        c0_star = c_star[:,:,0] # shape (batch_size, num_legs)
 
         # Update c_prev : shape (batch_size, num_legs)
         self.c_prev = c_star[:,:,0]
 
         # Generate the swing trajectory
-        pt_star_lw, full_pt_lw = self.full_swing_trajectory_generator(p_lw=p_star_lw[:,:,:,0], c=c_star, d=d_star, f=f_star)
+        pt_star_lw, full_pt_lw = self.full_swing_trajectory_generator(p_lw=p0_star_lw, c0=c0_star, d=d_star, f=f_star)
 
-        return f_star, d_star, c_star, p_star_lw, F_star_lw, pt_star_lw, full_pt_lw
+        return f_star, d_star, c0_star, p0_star_lw, F0_star_lw, pt_star_lw, full_pt_lw
 
 # ---------------------------------- Optimizer --------------------------------
-count=0
-fake = False
 class SamplingOptimizer():
     """ Model Based optimizer based on the centroidal model """
 
@@ -719,6 +725,9 @@ class SamplingOptimizer():
         self.dtype_general = 'float32'
         self.num_legs = num_legs
         
+        # Save Config
+        self.cfg = optimizerCfg
+
         # Optimizer configuration
         self.num_samples = optimizerCfg.num_samples
         self.sampling_horizon = optimizerCfg.prevision_horizon
@@ -729,11 +738,9 @@ class SamplingOptimizer():
         if   optimizerCfg.parametrization_F == 'cubic spline' : 
             self.interpolation_F=self.compute_cubic_spline
             self.F_param = 4
-            self.spline = True
         elif optimizerCfg.parametrization_F == 'discrete'     :
             self.interpolation_F=self.compute_discrete
             self.F_param = self.sampling_horizon
-            self.spline = False
         else : raise NotImplementedError('Request interpolation method is not implemented yet')
 
         # Define Interpolation method for foot touch down position and interfer foot touch down position input size 
@@ -837,23 +844,6 @@ class SamplingOptimizer():
         self.F_best[:,:,2,:] = 50.0
 
         # Create Variable for the Live plot
-        # self.fig, self.axes = plt.subplots(2, 2)#, sharex=True, sharey=True)
-        # self.lines = [self.axes[0, 0].plot(self.F_best[0,0,2,:].cpu().numpy())[0], self.axes[0, 1].plot(self.F_best[0,1,2,:].cpu().numpy())[0], 
-        #               self.axes[1, 0].plot(self.F_best[0,2,2,:].cpu().numpy())[0], self.axes[1, 1].plot(self.F_best[0,3,2,:].cpu().numpy())[0]]
-        
-        # # Set limits and labels
-        # for ax in self.axes.flatten():
-        #     ax.set_xlim(0, self.sampling_horizon)
-        #     ax.set_ylim(0, self.F_z_max)  
-        #     ax.set_xlabel('iteration')
-        #     ax.set_ylabel('Force Z [N]')
-        
-        # # Set titles
-        # titles = ['FL', 'FR', 'RL', 'RR']
-        # for ax, title in zip(self.axes.flatten(), titles):
-        #     ax.set_title(title)
-
-
         self.fig, self.ax = plt.subplots()
 
         # Plot lines and save them in a list
@@ -905,7 +895,7 @@ class SamplingOptimizer():
 
         for i in range(self.num_optimizer_iterations):
             # --- Step 1 : Generate the samples and bound them to valid input
-            f_samples, d_samples, p_lw_samples, F_lw_samples = self.generate_samples(f=f, d=d, p_lw=p_lw, F_lw=F_lw, height_map=height_map)
+            f_samples, d_samples, p_lw_samples, F_lw_samples = self.generate_samples(iter=i, f=f, d=d, p_lw=p_lw, F_lw=F_lw, height_map=height_map)
 
             # --- Step 2 : Given f and d samples -> generate the contact sequence for the samples
             c_samples, new_phase = self.gait_generator(f_samples=f_samples, d_samples=d_samples, phase=phase.squeeze(0), sampling_horizon=self.sampling_horizon, dt=self.dt)
@@ -919,10 +909,10 @@ class SamplingOptimizer():
                                                                 action_seq_c_samples_jax, action_p_lw_samples_jax, action_F_lw_samples_jax)
 
             # --- Step 4 : Given the samples cost, find the best control action
-            best_action_seq_jax, best_index = self.find_best_actions(action_seq_c_samples_jax, cost_samples_jax)
+            p0_star_lw_2, F0_star_lw_2, best_index, best_cost = self.find_best_actions(action_seq_c_samples_jax, action_p_lw_samples_jax, action_F_lw_samples_jax, cost_samples_jax)
 
             # --- Step 4 : Convert the optimal value back to torch.Tensor
-            f_star, d_star, p_star_lw, F_star_lw = self.retrieve_z_from_action_seq(best_index, f_samples, d_samples, p_lw_samples, F_lw_samples, c_samples)
+            f_star, d_star, p0_star_lw, F0_star_lw = self.retrieve_z_from_action_seq(best_index, f_samples, d_samples, p_lw_samples, F_lw_samples, c_samples, c_prev)
 
 
         # torch.cuda.synchronize(device=self.device)
@@ -930,17 +920,12 @@ class SamplingOptimizer():
         # elapsed_time_ms = (stop_time - start_time) * 1000
         # print(f"Execution time: {elapsed_time_ms:.2f} ms")
 
-        print('f - cum. diff. : %3.2f' % torch.sum(torch.abs(f_star - f)))
-        print('d - cum. diff. : %3.2f' % torch.sum(torch.abs(d_star - d)))
-        print('p - cum. diff. : %3.2f' % torch.sum(torch.abs(p_star_lw - p_lw)))
-        print('F - cum. diff. : %5.1f' % torch.sum(torch.abs(F_star_lw - F_lw)))
+        # print('f - cum. diff. : %3.2f' % torch.sum(torch.abs(f_star - f)))
+        # print('d - cum. diff. : %3.2f' % torch.sum(torch.abs(d_star - d)))
+        # print('p - cum. diff. : %3.2f' % torch.sum(torch.abs(p_star_lw - p_lw)))
+        # print('F - cum. diff. : %5.1f' % torch.sum(torch.abs(F_star_lw - F_lw)))
 
-        # TODO Fix this ! 
-        if self.spline:
-            p_star_lw[...,0] = p_star_lw[...,1]
-            F_star_lw[...,0] = F_star_lw[...,1]
-
-        return f_star, d_star, p_star_lw, F_star_lw
+        return f_star, d_star, p0_star_lw, F0_star_lw # p_star_lw, F_star_lw
 
 
     def prepare_variable_for_compute_rollout(self, env: ManagerBasedRLEnv, c_samples:torch.Tensor, p_lw_samples:torch.Tensor, F_lw_samples:torch.Tensor, feet_in_contact:torch.Tensor) -> tuple[jnp.array, jnp.array, jnp.array, jnp.array, jnp.array, jnp.array]:
@@ -966,7 +951,7 @@ class SamplingOptimizer():
             initial_state_jax               (jnp.array): Current state of the robot (CoM pos-vel, foot pos)             of shape(state_dim)
             reference_seq_state_jax         (jnp.array): Reference state sequence along the prediction horizon          of shape(sampling_horizon, state_dim)
             reference_seq_input_samples_jax (jnp.array): Reference GRF sequence samples along the prediction horizon    of shape(num_samples,      sampling_horizon, input_dim)
-            action_seq_c_samples_jax        (jnp.array): contact sequence samples along the prediction horizon          of shape(num_samples,      sampling_horizon, num_legs)
+            action_seq_c_samples_jax        (jnp.array): contact sequence samples along the prediction horizon          of shape(num_samples,      sampling_horizon, num_legs) 
             action_p_lw_samples_jax         (jnp.array): Foot touch down position parameters samples                    of shape(num_samples,      num_legs,         3*p_param)
             action_F_lw_samples_jax         (jnp.array): GRF parameters samples                                         of shape(num_samples,      num_legs,         3*F_param)
         """
@@ -1072,16 +1057,6 @@ class SamplingOptimizer():
         action_p_lw_samples  = p_lw_samples.flatten(2,3)      # Foot touch down position samples of shape(num_samples, num_legs, 3*p_param)
         action_F_lw_samples  = F_lw_samples.flatten(2,3)      # Ground Reaction Forces           of shape(num_samples, num_legs, 3*F_param)
 
-        # global count
-        # count +=1
-        # # print(count)
-        # if count == 20:
-        #     torch.save({'initial_state': initial_state, 
-        #                 'reference_seq_state': reference_seq_state,
-        #                 'reference_seq_input_samples': reference_seq_input_samples,
-        #                 'action_seq_c_samples':action_seq_c_samples,
-        #                 'action_p_lw_samples':action_p_lw_samples,
-        #                 'action_F_lw_samples':action_F_lw_samples,}, 'tensors.pth')
 
         # ----- Step 4 : Convert torch tensor to jax.array
         # start_time3 = time.time()
@@ -1102,7 +1077,7 @@ class SamplingOptimizer():
         return initial_state_jax, reference_seq_state_jax, reference_seq_input_samples_jax, action_seq_c_samples_jax, action_p_lw_samples_jax, action_F_lw_samples_jax
 
 
-    def retrieve_z_from_action_seq(self, best_index, f_samples, d_samples, p_lw_samples, F_lw_samples, c_samples) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    def retrieve_z_from_action_seq(self, best_index, f_samples, d_samples, p_lw_samples, F_lw_samples, c_samples, c_prev) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """ Given the index of the best sample and the samples, return the 'optimized' latent variabl z*=(f*,d*,p*,F*)
         As torch.Tensor, usable by the model based controller
          
@@ -1113,40 +1088,73 @@ class SamplingOptimizer():
             p_lw_samples (Tensor) : Foot touch down position samples    of shape(num_samples, num_leg, 3, p_param)
             F_lw_samples (Tensor) : Ground Reaction forces samples      of shape(num_samples, num_leg, 3, F_param)
             c_samples    (Tensor) : Contact sequence samples            of shape(num_sample, num_legs, sampling_horizon)
+            c_prev       (Tensor) : previous contact                    of shape(1, num_legs)
           
         Returns:
             f_star    (Tensor): Best leg frequency                      of shape(1, num_leg)
             d_star    (Tensor): Best leg duty cycle                     of shape(1, num_leg)
-            p_star_lw (Tensor): Best foot touch down position           of shape(1, num_leg, 3, p_param)
-            F_star_lw (Tensor): Best ground Reaction Forces             of shape(1, num_leg, 3, F_param)            
+            p0_star_lw (Tensor): Best foot touch down position          of shape(1, num_leg, 3)
+            F0_star_lw (Tensor): Best ground Reaction Forces            of shape(1, num_leg, 3)            
         """
 
         # Retrieve best sample, given the best index
-        f_star = f_samples[best_index.item()].unsqueeze(0)
-        d_star = d_samples[best_index.item()].unsqueeze(0)
-        p_star_lw = p_lw_samples[best_index.item()].unsqueeze(0)
-        F_star_lw = F_lw_samples[best_index.item()].unsqueeze(0)
+        f_star = f_samples[best_index.item()].unsqueeze(0)           # shape(1, num_leg)
+        d_star = d_samples[best_index.item()].unsqueeze(0)           # shape(1, num_leg)
+        c_star = c_samples[best_index.item()].unsqueeze(0)           # shape(1, num_leg, sampling_horizon)
+        p_star_lw = p_lw_samples[best_index.item()].unsqueeze(0)     # shape(1, num_leg, 3, p_param)
+        F_star_lw = F_lw_samples[best_index.item()].unsqueeze(0)     # shape(1, num_leg, 3, F_param)
 
         # Update previous best solution
         self.f_best, self.d_best, self.p_best, self.F_best = f_star, d_star, p_star_lw, F_star_lw
 
         # if next stime step feet is in swing : set F_best to zero
-        self.F_best = c_samples[best_index.item(),:,1].unsqueeze(0).unsqueeze(2).unsqueeze(3) * F_star_lw
+        # self.F_best = c_samples[best_index.item(),:,1].unsqueeze(0).unsqueeze(2).unsqueeze(3) * F_star_lw
         # self.F_best[c_samples[best_index.item(),:,1].unsqueeze(0)] = 200/torch.sum(c_samples[best_index.item(),:,1])
 
-        return f_star, d_star, p_star_lw, F_star_lw
+        # reset the delta of the actions if contact ended (ie. started swing phase)
+        lift_off_mask = ((c_prev[:,:] == 1) * (c_star[:,:,0] == 0)) # shape (1,num_legs) 
+        self.F_best[lift_off_mask] = 0.0
+        self.F_best[lift_off_mask,:,2] = (self.robot_model.mass*9.81)/2 #(torch.sum(c_star[:,:,0]+1).clamp(min=1))
+
+        print('lift off mask', lift_off_mask)
+
+        # breakpoint()
+
+        # Retrive action to be applied at next time step
+        # p : Foot touch Down
+        if   self.cfg.parametrization_p == 'cubic spline':
+            p0_star_lw = p_star_lw[...,1]
+        elif self.cfg.parametrization_p == 'discrete':
+            p0_star_lw = p_star_lw[...,0]
+
+        # F : GRF
+        if   self.cfg.parametrization_F == 'cubic spline':
+            F0_star_lw = F_star_lw[...,1]
+        elif self.cfg.parametrization_F == 'discrete':
+            F0_star_lw = F_star_lw[...,0]
+
+        print('f - cum. diff. : %3.2f' % torch.sum(torch.abs(f_star - f_samples[0,...])))
+        print('d - cum. diff. : %3.2f' % torch.sum(torch.abs(d_star - d_samples[0,...])))
+        print('p - cum. diff. : %3.2f' % torch.sum(torch.abs(p_star_lw - p_star_lw[0,...])))
+        print('F - cum. diff. : %5.1f' % torch.sum(torch.abs(F_star_lw - F_star_lw[0,...])))
+
+        return f_star, d_star, p0_star_lw, F0_star_lw
 
 
-    def find_best_actions(self, action_seq_samples: jnp.array, cost_samples: jnp.array) -> tuple[jnp.array, int]: 
+    def find_best_actions(self, action_seq_c_samples_jax: jnp.array, action_p_lw_samples_jax: jnp.array, action_F_lw_samples_jax: jnp.array, cost_samples: jnp.array) -> tuple[torch.tensor, torch.tensor, int, int]: 
         """ Given action samples and associated cost, filter invalid values and retrieves the best cost and associated actions
         
         Args : 
-            action_seq_samples (jnp.array): Samples of actions   of shape(num_samples, time_horizon, num_legs)
-            cost_samples       (jnp.array): Associated cost      of shape(num_samples)
+            action_seq_c_samples_jax (jnp.array): Samples of contact sequence       of shape(num_samples, sampling_horizon, num_legs) 
+            action_p_lw_samples_jax  (jnp.array): Samples of foot touch down        of shape(num_samples, num_legs,        3*p_param)
+            action_F_lw_samples_jax  (jnp.array): Samples of GRF                    of shape(num_samples, num_legs,        3*F_param)
+            cost_samples             (jnp.array): Associated cost                   of shape(num_samples)
              
         Returns :
-            best_action_seq    (jnp.array):  Action with the smallest cost of shape(time_horizon, num_legs)
-            best_index          (int):
+            best_c_seq_jax           (jnp.array): Contact seq w. smallest cost      of shape(sampling_horizon, num_legs)
+            best_p_lw_jax            (jnp.array): foot touch down w. smallest cost  of shape(sampling_horizon, num_legs)
+            best_F_lw_jax            (jnp.array): GRF w. smallest cost              of shape(sampling_horizon, num_legs)
+            best_index                     (int): Index of the sample with the smallest cost
         """
 
         print('\ncost sample ',cost_samples)
@@ -1158,25 +1166,66 @@ class SamplingOptimizer():
 
         # Take the best found control parameters
         best_index = jnp.nanargmin(cost_samples)
-        best_cost = cost_samples.take(best_index)
-        best_action_seq = action_seq_samples[best_index]
+        best_cost = cost_samples[best_index] # cost_samples.take(best_index)
 
         print('Best cost :', best_cost, ', best index :', best_index)
 
-        if fake : best_index = jnp.int32(0)
-
-        return best_action_seq, best_index
-
-
-    def best_solution(self):
-        return self.f_best, self.d_best, self.p_best, self.F_best
+        # # Retrieve the best action in jax
+        # best_c_seq_jax = action_seq_c_samples_jax[best_index] # shape (sampling_horizon, num_legs) 
+        # best_p_lw_jax = action_p_lw_samples_jax[best_index]   # shape (num_legs, 3*p_param)
+        # best_F_lw_jax = action_F_lw_samples_jax[best_index]   # shape (num_legs, 3*F_param)
 
 
-    def shift_solution(self):
-        pass
+        # # --- Option 1 : Compute the trajectory for the best variable with the constrainst : this is slow
+        # # Initialise empty variable
+        # p_star_lw_jax = jnp.zeros((self.num_legs, 3, self.sampling_horizon)) # shape (num_legs, 3, sampling_horizon)
+        # F_star_lw_jax = jnp.zeros((self.num_legs, 3, self.sampling_horizon)) # shape (num_legs, 3, sampling_horizon)
+
+        # # Apply the transformation
+        # for i in range(self.sampling_horizon):
+        #     # Compute the foot touch down position given the interpolation parameter and the point in the curve
+        #     best_pi_lw_jax = self.interpolation_p(parameters=best_p_lw_jax, step=i, horizon=self.sampling_horizon) # shape (3*num_legs) : ie [FLx, FLy, FLz, FRx, ...]
+
+        #     # Compute the GRFs given the interpolation parameter and the point in the curve
+        #     best_Fi_lw_jax = self.interpolation_F(parameters=best_F_lw_jax, step=i, horizon=self.sampling_horizon) # shape (3*num_legs) : ie [FLx, FLy, FLz, FRx, ...]
+
+        #     # Apply Force constraints : Friction cone constraints and Force set to zero if foot not in contact
+        #     best_Fi_lw_jax = self.enforce_force_constraints_jax(F_lw=best_Fi_lw_jax, c=best_c_seq_jax[0]) # shape (3*num_legs) : ie [FLx, FLy, FLz, FRx, ...]
+
+        #     # Reshape in the correct format 
+        #     best_pi_lw_jax = best_pi_lw_jax.reshape(4, 3) # shape (num_legs, 3)
+        #     best_Fi_lw_jax = best_Fi_lw_jax.reshape(4, 3) # shape (num_legs, 3)
+
+        #     # Save the constrained reshaped variable
+        #     p_star_lw_jax = p_star_lw_jax.at[:,:,i].set(best_pi_lw_jax) # shape (num_legs, 3) saved into (num_legs, 3, sampling_horizon) at time i
+        #     F_star_lw_jax = F_star_lw_jax.at[:,:,i].set(best_Fi_lw_jax) # shape (num_legs, 3) saved into (num_legs, 3, sampling_horizon) at time i
+        
+
+        # # --- Option 2 : Compute only the action to be applied with the constrainst
+        # # Compute the foot touch down position given the interpolation parameter and the point in the curve
+        # best_p0_lw_jax = self.interpolation_p(parameters=best_p_lw_jax, step=0, horizon=self.sampling_horizon) # shape (3*num_legs) : ie [FLx, FLy, FLz, FRx, ...]
+
+        # # Compute the GRFs given the interpolation parameter and the point in the curve
+        # best_F0_lw_jax = self.interpolation_F(parameters=best_F_lw_jax, step=0, horizon=self.sampling_horizon) # shape (3*num_legs) : ie [FLx, FLy, FLz, FRx, ...]        
+
+        # # Apply Force constraints : Friction cone constraints and Force set to zero if foot not in contact
+        # best_F0_lw_jax = self.enforce_force_constraints_jax(F_lw=best_F0_lw_jax, c=best_c_seq_jax[0]) # shape (3*num_legs) : ie [FLx, FLy, FLz, FRx, ...]
+
+        # # Reshape in the correct format 
+        # best_p0_lw_jax = best_p0_lw_jax.reshape(4, 3) # shape (num_legs, 3)
+        # best_F0_lw_jax = best_F0_lw_jax.reshape(4, 3) # shape (num_legs, 3)
+
+        # # Convert it back to torch tensor
+        # p0_star_lw = jax_to_torch(best_p0_lw_jax).unsqueeze(0) # shape(1, num_legs, 3) ie. 1=num_envs
+        # F0_star_lw = jax_to_torch(best_F0_lw_jax).unsqueeze(0) # shape(1, num_legs, 3) ie. 1=num_envs
+        
+        p0_star_lw = jnp.zeros(0)
+        F0_star_lw = jnp.zeros(0)
+
+        return p0_star_lw, F0_star_lw, best_index, best_cost
 
 
-    def generate_samples(self, f:torch.Tensor, d:torch.Tensor, p_lw:torch.Tensor, F_lw:torch.Tensor, height_map:torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    def generate_samples(self, iter:int, f:torch.Tensor, d:torch.Tensor, p_lw:torch.Tensor, F_lw:torch.Tensor, height_map:torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """ Given action (f,d,p,F), generate action sequence samples (f_samples, d_samples, p_samples, F_samples)
         If multiple action sequence are provided (because several policies are blended together), generate samples
         from these polices with equal proportions. TODO
@@ -1195,8 +1244,12 @@ class SamplingOptimizer():
             F_lw_samples (Tensor) : Ground Reaction forces samples      of shape(num_samples, num_leg, 3, F_param)
         """
         # Define how much samples from the RL or from the previous solution we're going to sample
-        num_samples_previous_best = int(self.num_samples * self.propotion_previous_solution)
-        num_samples_RL = self.num_samples - num_samples_previous_best
+        if iter == 0:
+            num_samples_previous_best = int(self.num_samples * self.propotion_previous_solution)
+            num_samples_RL = self.num_samples - num_samples_previous_best
+        else :
+            num_samples_previous_best = self.num_samples
+            num_samples_RL = 0
 
         print('num samples best',num_samples_previous_best)
         print('num samples RL',num_samples_RL)
@@ -1226,10 +1279,10 @@ class SamplingOptimizer():
         p_lw_samples[:,:,2,:] = p_lw[0,:,2,:]
 
         # Put the RL actions as the first samples
-        f_samples[0,:]        = f[0,:]
-        d_samples[0,:]        = d[0,:]
-        p_lw_samples[0,:,:,:] = p_lw[0,:,:,:]
-        F_lw_samples[0,:,:,:] = F_lw[0,:,:,:]
+        # f_samples[0,:]        = f[0,:]
+        # d_samples[0,:]        = d[0,:]
+        # p_lw_samples[0,:,:,:] = p_lw[0,:,:,:]
+        # F_lw_samples[0,:,:,:] = F_lw[0,:,:,:]
 
         # Put the Previous best actions as the second samples
         f_samples[1,:]        = self.f_best[0,:]
@@ -1367,8 +1420,8 @@ class SamplingOptimizer():
 
 
             # --- Step 2 : Retrieve the input given the interpolation parameters
-            step = n # TODO : do this properly
-            horizon = self.sampling_horizon # TODO : do this properly
+            step = n 
+            horizon = self.sampling_horizon
 
             # Compute the GRFs given the interpolation parameter and the point in the curve
             F_lw = self.interpolation_F(parameters=action_F_lw_jax, step=step, horizon=horizon)
@@ -1376,11 +1429,8 @@ class SamplingOptimizer():
             # Compute the foot touch down position given the interpolation parameter and the point in the curve
             p_lw = self.interpolation_p(parameters=action_p_lw_jax, step=step, horizon=horizon)
 
-            # jax.debug.breakpoint()
-            # jax.debug.print("p_lw: {}", p_lw)
-
             # Apply Force constraints : Friction cone constraints and Force set to zero if foot not in contact
-            F_lw = self.enforce_force_constraints(F_lw=F_lw, c=current_contact)    # TODO Single spline for now : Implement multiple spline function
+            F_lw = self.enforce_force_constraints_jax(F_lw=F_lw, c=current_contact)  
 
             # Embed input into variable for the centroidal model
             input = jnp.concatenate([
@@ -1388,9 +1438,6 @@ class SamplingOptimizer():
                 F_lw
             ])
 
-            # jax.debug.print("step      : {}", n)
-            # jax.debug.print("state[12:]: {}", state[12:18])
-            # jax.debug.print("input[:12]: {}", input[:6])
 
             # --- Step 3 : Integrate the dynamics with the centroidal model
             state_next = self.robot_model.integrate_jax(state, input, current_contact)
@@ -1417,18 +1464,7 @@ class SamplingOptimizer():
         # Iterate the model over the time horizon and retrieve the cost
         cost, state = jax.lax.fori_loop(0, self.sampling_horizon, iterate_fun, carry)
 
-        # print('cost :', cost)
-        # print('state : ', state)
-
         cost_samples_jax = cost
-
-        # jax.debug.print(" action_seq_c_jax: {}", action_seq_c_jax)
-        # jax.debug.print("~action_seq_c_jax: {}",~action_seq_c_jax)
-        # jax.debug.print(" jnp.invert(action_seq_c_jax): {}",jnp.invert(action_seq_c_jax))
-        # jax.debug.print(" jnp.logical_not(action_seq_c_jax): {}",jnp.logical_not(action_seq_c_jax))
-        # jax.debug.print(" jnp.logical_not(action_seq_c_jax): {}",jnp.logical_not(action_seq_c_jax))
-
-        # jax.debug.breakpoint()
 
         return cost_samples_jax
 
@@ -1494,7 +1530,7 @@ class SamplingOptimizer():
         return actions
 
     
-    def enforce_force_constraints(self, F_lw: jnp.array, c: jnp.array) -> jnp.array:
+    def enforce_force_constraints_jax(self, F_lw: jnp.array, c: jnp.array) -> jnp.array:
         """ Given raw GRFs in local world frame and the contact sequence, return the GRF clamped by the friction cone
         and set to zero if not in contact
         
@@ -1540,41 +1576,78 @@ class SamplingOptimizer():
         """ Enforce the input f, d, p_lw, F_lw to valid ranges. Ie. clip
             - f to [0,3] [Hz]
             - d to [0,1]
-            /!\ NOT CLAMPED /!\ - p_lw to (p_x=[-0.24,+0.36], p_y=[-0.20,+0.20],[]) because not in the right frame
+            - p_lw can't be clipped because already in lw frame
             - F_lw -> F_lw_z to [0, +inf]
-        Moreover, ensure, p_z on the ground
+        Moreover, ensure additionnal constraints
+            - p_z on the ground (not implemented yet) TODO Implement
+            - F_lw : Friction cone constraints
 
         Args
             f_samples    (torch.Tensor): Leg frequency samples               of shape(num_samples, num_leg)
             d_samples    (torch.Tensor): Leg duty cycle samples              of shape(num_samples, num_leg)
             p_lw_samples (torch.Tensor): Foot touch down position samples    of shape(num_samples, num_leg, 3, p_param)
-            F_lw_samples (torch.Tensor): Ground Reaction forces samples      of shape(num_samples, 3, F_param)
+            F_lw_samples (torch.Tensor): Ground Reaction forces samples      of shape(num_samples, num_leg, 3, F_param)
             height_map   (torch.Tensor): Height map arround the robot        of shape(x, y)
 
         Return
             f_samples    (torch.Tensor): Clipped Leg frequency samples               of shape(num_samples, num_leg)
             d_samples    (torch.Tensor): Clipped Leg duty cycle samples              of shape(num_samples, num_leg)
             p_lw_samples (torch.Tensor): Clipped Foot touch down position samples    of shape(num_samples, num_leg, 3, p_param)
-            F_lw_samples (torch.Tensor): Clipped Ground Reaction forces samples      of shape(num_samples, 3, F_param)
+            F_lw_samples (torch.Tensor): Clipped Ground Reaction forces samples      of shape(num_samples, num_leg, 3, F_param)
         """
-        
+        # --- Step 1 : Clip Action to valid range
         # Clip f
         f_samples = f_samples.clamp(min=0, max=3)
 
         # Clip d
         d_samples = d_samples.clamp(min=0, max=1)
 
-        # Clip p is already in lw frame... can't change it
-        # p_lw_samples[:,0] = p_lw_samples[:,0].clamp(min=-0.24,max=+0.36)
-        # p_lw_samples[:,1] = p_lw_samples[:,1].clamp(min=-0.20,max=+0.20)
+        # Clip p - is already in lw frame... can't clip it in this frame
+        # ...
 
         # Clip F
-        F_lw_samples[:,:,2,:] = F_lw_samples[:,:,2,:].clamp(min=0)
+        F_lw_samples[:,:,2,:] = F_lw_samples[:,:,2,:].clamp(min=self.F_z_min, max=self.F_z_max)
 
-        # Ensure p on the ground TODO Implement
+
+        # --- Step 2 : Add Constraints
+        # p :  Ensure p on the ground TODO Implement
         # p_lw_samples[:,:,2,:] = 0.0*torch.ones_like(p_lw_samples[:,:,2,:])
+      
+        # F : Ensure Friction Cone constraints (Bounding spline means quasi bounding trajectory)
+        F_lw_samples = self.enforce_friction_cone_constraints_torch(F=F_lw_samples, mu=self.mu)
+
 
         return f_samples, d_samples, p_lw_samples, F_lw_samples
+
+
+    def enforce_friction_cone_constraints_torch(self, F:torch.Tensor, mu:float) -> torch.Tensor:
+        """ Enforce the friction cone constraints
+        ||F_xy|| < F_z*mu
+        Args :
+            F (torch.Tensor): The GRF                                    of shape(num_samples, num_legs, 3, F_param)
+
+        Returns :
+            F (torch.Tensor): The GRF with enforced friction constraints of shape(num_samples, num_legs, 3, F_param)
+        """
+
+        F_x = F[:,:,0,:].unsqueeze(2)
+        F_y = F[:,:,1,:].unsqueeze(2)
+        F_z = F[:,:,2,:].unsqueeze(2).clamp(min=0)
+
+        # Angle between vec_x and vec_F_xy
+        alpha = torch.atan2(F[:,:,1,:], F[:,:,0,:]).unsqueeze(2) # atan2(y,x) = arctan(y/x)
+
+        # Compute the maximal Force in the xy plane
+        F_xy_max = mu*F_z
+
+        # Clipped the violation for the x and y component (unsqueeze to avoid to loose that dimension) : To use clamp_max -> need to remove the sign...
+        F_x_clipped =  F_x.sign()*(torch.abs(F_x).clamp_max(torch.abs(torch.cos(alpha)*F_xy_max)))
+        F_y_clipped =  F_y.sign()*(torch.abs(F_y).clamp_max(torch.abs(torch.sin(alpha)*F_xy_max)))
+
+        # Reconstruct the vector
+        F = torch.cat((F_x_clipped, F_y_clipped, F_z), dim=2)
+
+        return F
 
 
     def from_zero_twopi_to_minuspi_pluspi(self, roll, pitch, yaw):
@@ -1600,8 +1673,6 @@ class SamplingOptimizer():
 
 
     def animate(self, frame):
-
-        # self.line.set_ydata(self.F_best[0,0,2,:].cpu().numpy())
         self.line1.set_ydata(self.F_best[0,0,2,:].cpu().numpy())
         self.line2.set_ydata(self.F_best[0,1,2,:].cpu().numpy())
         self.line3.set_ydata(self.F_best[0,2,2,:].cpu().numpy())
@@ -1612,6 +1683,7 @@ class SamplingOptimizer():
     def start_animation(self, interval=100):
         self.ani = FuncAnimation(self.fig, self.animate, frames=itertools.count(), blit=True, interval=interval)
         plt.show()
+
 
     def start(self):
         threading.Thread(target=self.start_animation).start()

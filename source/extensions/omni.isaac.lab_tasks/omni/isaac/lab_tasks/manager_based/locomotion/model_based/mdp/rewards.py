@@ -372,7 +372,7 @@ def track_proprioceptive_height_exp(env: ManagerBasedRLEnv, target_height: float
     # Retrieve the number of feet in contact (set as a minimum of 1 to avoid division by zero)
     if method == "Action":
         action: ModelBaseAction = env.action_manager.get_term(actionName)
-        feet_in_contact = action.c_star[:,:,0]
+        feet_in_contact = action.c0_star
         num_feet_in_contact = (torch.sum(feet_in_contact, dim=1)).clamp(min=1)
     elif method == "Sensor":
         sensor: ContactSensor = env.scene.sensors[sensorCfg.name]
