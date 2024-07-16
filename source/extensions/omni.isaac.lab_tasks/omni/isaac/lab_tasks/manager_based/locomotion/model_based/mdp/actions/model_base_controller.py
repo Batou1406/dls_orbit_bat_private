@@ -29,6 +29,10 @@ def torch_to_jax(x_torch):
     shape = x_torch.shape
     x_torch_flat = torch.flatten(x_torch)
     x_jax = jax.dlpack.from_dlpack(torch.utils.dlpack.to_dlpack(x_torch_flat))
+
+    # assert (x_torch.cpu().numpy() == jax.device_get(x_jax.reshape(shape))).all()
+    # jax.device_get(x_jax.reshape(shape))
+    # time.sleep(0.005)
     return x_jax.reshape(shape)
 
 from .quadrupedpympc.sampling.centroidal_model_jax import Centroidal_Model_JAX
@@ -36,11 +40,11 @@ from .quadrupedpympc.sampling.centroidal_model_jax import Centroidal_Model_JAX
 import time
 
 
-import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation
-import threading
-import itertools
-# import numpy as np
+# import matplotlib.pyplot as plt
+# from matplotlib.animation import FuncAnimation
+# import threading
+# import itertools
+import numpy as np
 # import matplotlib.pyplot as plt
 # np.set_printoptions(precision=2, linewidth=200)
 # force=[[],[],[],[],[],[],[],[],[],[],[],[]]
@@ -650,7 +654,8 @@ class samplingController(modelBaseController):
         # To enable or not the optimizer at run time
         self.optimizer_active = True
 
-        self.samplingOptimizer.start()
+        # To Start Live plot of GRF
+        # self.samplingOptimizer.start()
 
 
     def reset(self, env_ids: Sequence[int] | None,  p_default_lw: torch.Tensor) -> None:
@@ -690,15 +695,14 @@ class samplingController(modelBaseController):
 
         # Compute the contact sequence and update the phase
         c_star, self.phase = self.gait_generator(f=f_star, d=d_star, phase=self.phase, horizon=1, dt=self._dt_out)
-        c0_star = c_star[:,:,0] # shape (batch_size, num_legs)
-
-        # Update c_prev : shape (batch_size, num_legs)
-        self.c_prev = c_star[:,:,0]
+        c0_star     = c_star[:,:,0] # shape (batch_size, num_legs)
+        self.c_prev = c_star[:,:,0] # shape (batch_size, num_legs)
 
         # Generate the swing trajectory
         pt_star_lw, full_pt_lw = self.full_swing_trajectory_generator(p_lw=p0_star_lw, c0=c0_star, d=d_star, f=f_star)
 
         return f_star, d_star, c0_star, p0_star_lw, F0_star_lw, pt_star_lw, full_pt_lw
+
 
 # ---------------------------------- Optimizer --------------------------------
 class SamplingOptimizer():
@@ -843,23 +847,28 @@ class SamplingOptimizer():
         self.F_best =     torch.zeros((1,self.num_legs,3,self.F_param ), device=device)
         self.F_best[:,:,2,:] = 50.0
 
-        # Create Variable for the Live plot
-        self.fig, self.ax = plt.subplots()
+        # # Create Variable for the Live plot
+        # self.fig, self.ax = plt.subplots()
 
-        # Plot lines and save them in a list
-        self.line1, = self.ax.plot(self.F_best[0,0,2,:].cpu().numpy(), label='FL')
-        self.line2, = self.ax.plot(self.F_best[0,1,2,:].cpu().numpy(), label='FR')
-        self.line3, = self.ax.plot(self.F_best[0,2,2,:].cpu().numpy(), label='RL')
-        self.line4, = self.ax.plot(self.F_best[0,3,2,:].cpu().numpy(), label='RR')
+        # # Plot lines and save them in a list
+        # self.line1, = self.ax.plot(self.F_best[0,0,2,:].cpu().numpy(), label='FL')
+        # self.line2, = self.ax.plot(self.F_best[0,1,2,:].cpu().numpy(), label='FR')
+        # self.line3, = self.ax.plot(self.F_best[0,2,2,:].cpu().numpy(), label='RL')
+        # self.line4, = self.ax.plot(self.F_best[0,3,2,:].cpu().numpy(), label='RR')
         
-        # Set limits and labels
-        self.ax.set_xlim(0, self.sampling_horizon-1)
-        self.ax.set_ylim(0, self.F_z_max)  
-        self.ax.set_xlabel('iteration')
-        self.ax.set_ylabel('Force Z [N]')
+        # # Set limits and labels
+        # self.ax.set_xlim(0, self.sampling_horizon-1)
+        # # self.ax.set_ylim(0, self.F_z_max)  
+        # self.ax.set_ylim(0-100, self.F_z_max+100)  
+        # self.ax.set_xlabel('iteration')
+        # self.ax.set_ylabel('Force Z [N]')
 
-        # Add a legend
-        self.ax.legend()
+        # # Add a legend
+        # self.ax.legend()
+
+        # For plotting
+        self.robot_height_list = [0.0]
+        self.cost_list = [0.0]
 
 
     def reset(self):
@@ -894,6 +903,7 @@ class SamplingOptimizer():
         # start_time = time.time()
 
         for i in range(self.num_optimizer_iterations):
+            print(f'\niteration {i}')
             # --- Step 1 : Generate the samples and bound them to valid input
             f_samples, d_samples, p_lw_samples, F_lw_samples = self.generate_samples(iter=i, f=f, d=d, p_lw=p_lw, F_lw=F_lw, height_map=height_map)
 
@@ -911,7 +921,7 @@ class SamplingOptimizer():
             # --- Step 4 : Given the samples cost, find the best control action
             p0_star_lw_2, F0_star_lw_2, best_index, best_cost = self.find_best_actions(action_seq_c_samples_jax, action_p_lw_samples_jax, action_F_lw_samples_jax, cost_samples_jax)
 
-            # --- Step 4 : Convert the optimal value back to torch.Tensor
+            # --- Step 5 : Convert the optimal value back to torch.Tensor
             f_star, d_star, p0_star_lw, F0_star_lw = self.retrieve_z_from_action_seq(best_index, f_samples, d_samples, p_lw_samples, F_lw_samples, c_samples, c_prev)
 
 
@@ -924,6 +934,11 @@ class SamplingOptimizer():
         # print('d - cum. diff. : %3.2f' % torch.sum(torch.abs(d_star - d)))
         # print('p - cum. diff. : %3.2f' % torch.sum(torch.abs(p_star_lw - p_lw)))
         # print('F - cum. diff. : %5.1f' % torch.sum(torch.abs(F_star_lw - F_lw)))
+
+        # # Save cost for live plotting -> important for now to save sub cost also ! To see where it's breaking
+        # self.cost_list.append(best_cost)
+        # if len(self.cost_list) > 100 : self.cost_list.pop(0)
+        # np.savetxt('cost.csv', [self.cost_list], delimiter=',', fmt='%.3f')
 
         return f_star, d_star, p0_star_lw, F0_star_lw # p_star_lw, F_star_lw
 
@@ -971,7 +986,10 @@ class SamplingOptimizer():
         # Compute proprioceptive height
         if (feet_in_contact == 0).all() : feet_in_contact = torch.ones_like(feet_in_contact) # if no feet in contact : robot is in the air, we use all feet to compute the height, not correct but avoid div by zero
         com_pos_lw[2] = robot.data.root_pos_w[:,2] - (torch.sum(((robot.data.body_pos_w[:, foot_idx,2]).squeeze(0)) * feet_in_contact)) / (torch.sum(feet_in_contact)) # height is proprioceptive
-
+        
+        self.robot_height_list.append(com_pos_lw[2].cpu().numpy())
+        if len(self.robot_height_list) > 100 : self.robot_height_list.pop(0)
+        np.savetxt('height.csv', [self.robot_height_list], delimiter=',', fmt='%.3f')
         # print('robot\'s height :',com_pos_lw[2])
 
         # Retrieve the robot orientation in lw as euler angle ZXY of shape(3)
@@ -1068,6 +1086,9 @@ class SamplingOptimizer():
         action_seq_c_samples_jax        = torch_to_jax(action_seq_c_samples)                   # of shape(num_samples,      sampling_horizon, num_legs)
         action_p_lw_samples_jax         = torch_to_jax(action_p_lw_samples)                    # of shape(num_samples,      num_legs,         3*p_param)
         action_F_lw_samples_jax         = torch_to_jax(action_F_lw_samples)                    # of shape(num_samples,      num_legs,         3*F_param)
+
+        if reference_seq_state_jax[0,2] != 0.38 :
+            print('!!! Problem !!!')
         
         # torch.cuda.synchronize(device=self.device)
         # stop_time3 = time.time()
@@ -1107,18 +1128,12 @@ class SamplingOptimizer():
         # Update previous best solution
         self.f_best, self.d_best, self.p_best, self.F_best = f_star, d_star, p_star_lw, F_star_lw
 
-        # if next stime step feet is in swing : set F_best to zero
-        # self.F_best = c_samples[best_index.item(),:,1].unsqueeze(0).unsqueeze(2).unsqueeze(3) * F_star_lw
-        # self.F_best[c_samples[best_index.item(),:,1].unsqueeze(0)] = 200/torch.sum(c_samples[best_index.item(),:,1])
-
         # reset the delta of the actions if contact ended (ie. started swing phase)
-        lift_off_mask = ((c_prev[:,:] == 1) * (c_star[:,:,0] == 0)) # shape (1,num_legs) 
+        lift_off_mask = ((c_prev[:,:] == 1) * (c_star[:,:,0] == 0)) # shape (1,num_legs) # /!\ c_prev is incremented with sim_dt, while c_star with mpc_dt : Thus, 
         self.F_best[lift_off_mask] = 0.0
         self.F_best[lift_off_mask,:,2] = (self.robot_model.mass*9.81)/2 #(torch.sum(c_star[:,:,0]+1).clamp(min=1))
 
         print('lift off mask', lift_off_mask)
-
-        # breakpoint()
 
         # Retrive action to be applied at next time step
         # p : Foot touch Down
@@ -1133,10 +1148,10 @@ class SamplingOptimizer():
         elif self.cfg.parametrization_F == 'discrete':
             F0_star_lw = F_star_lw[...,0]
 
-        print('f - cum. diff. : %3.2f' % torch.sum(torch.abs(f_star - f_samples[0,...])))
-        print('d - cum. diff. : %3.2f' % torch.sum(torch.abs(d_star - d_samples[0,...])))
-        print('p - cum. diff. : %3.2f' % torch.sum(torch.abs(p_star_lw - p_star_lw[0,...])))
-        print('F - cum. diff. : %5.1f' % torch.sum(torch.abs(F_star_lw - F_star_lw[0,...])))
+        # if self.optimize_f : print('f - cum. diff. : %3.2f' % torch.sum(torch.abs(f_star - f_samples[0,...])))
+        # if self.optimize_d : print('d - cum. diff. : %3.2f' % torch.sum(torch.abs(d_star - d_samples[0,...])))
+        # if self.optimize_p : print('p - cum. diff. : %3.2f' % torch.sum(torch.abs(p_star_lw - p_lw_samples[0,...])))
+        # if self.optimize_F : print('F - cum. diff. : %5.1f' % torch.sum(torch.abs(F_star_lw - F_lw_samples[0,...])))
 
         return f_star, d_star, p0_star_lw, F0_star_lw
 
@@ -1157,7 +1172,7 @@ class SamplingOptimizer():
             best_index                     (int): Index of the sample with the smallest cost
         """
 
-        print('\ncost sample ',cost_samples)
+        print('cost sample ',cost_samples)
         if jnp.isnan(cost_samples).all():print('all NaN')
 
         # Saturate the cost in case of NaN or inf
@@ -1168,7 +1183,15 @@ class SamplingOptimizer():
         best_index = jnp.nanargmin(cost_samples)
         best_cost = cost_samples[best_index] # cost_samples.take(best_index)
 
+        self.cost_list.append(best_cost)
+        if len(self.cost_list) > 100 : self.cost_list.pop(0)
+        np.savetxt('cost.csv', [self.cost_list], delimiter=',', fmt='%.3f')
+
         print('Best cost :', best_cost, ', best index :', best_index)
+
+        if best_cost > 10000:
+            print('oulala')
+            pass
 
         # # Retrieve the best action in jax
         # best_c_seq_jax = action_seq_c_samples_jax[best_index] # shape (sampling_horizon, num_legs) 
@@ -1250,9 +1273,6 @@ class SamplingOptimizer():
         else :
             num_samples_previous_best = self.num_samples
             num_samples_RL = 0
-
-        print('num samples best',num_samples_previous_best)
-        print('num samples RL',num_samples_RL)
 
         # Samples from the previous best solution
         f_samples_best    = self.sampling_law(num_samples=num_samples_previous_best, mean=self.f_best[0], std=self.std_f, clip=self.clip_sample)
@@ -1408,7 +1428,7 @@ class SamplingOptimizer():
             
         Returns:
             cost_samples_jax                (jnp.array): costs of the rollouts                      of shape(num_samples)   
-        """  
+        """ 
 
         def iterate_fun(n, carry):
             # --- Step 1 : Prepare variables
@@ -1454,6 +1474,9 @@ class SamplingOptimizer():
             input_cost  = input_error.T @ self.R @ input_error
 
             step_cost = state_cost #+ input_cost
+
+            # jax.debug.print("iter {i} - Alo {x}", i=n, x=step_cost) 
+            # step_cost = check_threshold(step_cost)
 
             return (cost + step_cost, state_next)
 
@@ -1606,7 +1629,7 @@ class SamplingOptimizer():
         # ...
 
         # Clip F
-        F_lw_samples[:,:,2,:] = F_lw_samples[:,:,2,:].clamp(min=self.F_z_min, max=self.F_z_max)
+        F_lw_samples[:,:,2,:] = F_lw_samples[:,:,2,:].clamp(min=self.F_z_min, max=self.F_z_max) # TODO This clip also spline param 0 and 3, which may be restrictive
 
 
         # --- Step 2 : Add Constraints
@@ -1672,18 +1695,18 @@ class SamplingOptimizer():
         return roll, pitch, yaw
 
 
-    def animate(self, frame):
-        self.line1.set_ydata(self.F_best[0,0,2,:].cpu().numpy())
-        self.line2.set_ydata(self.F_best[0,1,2,:].cpu().numpy())
-        self.line3.set_ydata(self.F_best[0,2,2,:].cpu().numpy())
-        self.line4.set_ydata(self.F_best[0,3,2,:].cpu().numpy())
-        return [self.line1, self.line2, self.line3, self.line4]
+    # def animate(self, frame):
+    #     self.line1.set_ydata(self.F_best[0,0,2,:].cpu().numpy())
+    #     self.line2.set_ydata(self.F_best[0,1,2,:].cpu().numpy())
+    #     self.line3.set_ydata(self.F_best[0,2,2,:].cpu().numpy())
+    #     self.line4.set_ydata(self.F_best[0,3,2,:].cpu().numpy())
+    #     return [self.line1, self.line2, self.line3, self.line4]
 
 
-    def start_animation(self, interval=100):
-        self.ani = FuncAnimation(self.fig, self.animate, frames=itertools.count(), blit=True, interval=interval)
-        plt.show()
+    # def start_animation(self, interval=100):
+    #     self.ani = FuncAnimation(self.fig, self.animate, frames=itertools.count(), blit=True, interval=interval)
+    #     plt.show()
 
 
-    def start(self):
+    # def start(self):
         threading.Thread(target=self.start_animation).start()

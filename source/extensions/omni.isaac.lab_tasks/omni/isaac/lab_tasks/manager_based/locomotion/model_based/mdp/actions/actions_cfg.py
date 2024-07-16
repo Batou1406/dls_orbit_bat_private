@@ -56,7 +56,7 @@ class ModelBaseActionCfg(ActionTermCfg):
         discretization_time: float = 0.02 # 0.04
         """ Duration of a time step in seconds for the predicitve optimization """
 
-        num_samples: int = 10000
+        num_samples: int = 5000
         """ Number of samples used if the optimizerType is 'sampling' """
 
         parametrization_F: Literal['discrete', 'cubic spline'] = 'cubic spline'
@@ -83,19 +83,19 @@ class ModelBaseActionCfg(ActionTermCfg):
         optimize_F: bool = True
         """ If enabled, Ground Reaction Forces will be optimized"""
 
-        propotion_previous_solution: float = 0.2
+        propotion_previous_solution: float = 1.0
         """ Proportion of the previous solution that will be used to generate samples"""
 
         num_optimizer_iterations: int = 1
         """ Number of time the sampling optiizer will iterate """
 
-        sampling_law: Literal['normal', 'uniform'] = 'uniform'
+        sampling_law: Literal['normal', 'uniform'] = 'normal'
         """ Sampling law to sample from in ['normal', 'uniform'] """
 
-        clip_sample: bool = True 
+        clip_sample: bool = False 
         """ Wether to clip or not the samples to a range of the standard deviation """
 
-        debug_apply_action: Literal[None, 'full stance', 'trot'] = None
+        debug_apply_action: Literal[None, 'full stance', 'trot'] = 'trot' #None
         """ Wether to deactivate f,d,and p from RL and change that with another static gait"""
 
     optimizerCfg: OptimizerCfg | None = None
