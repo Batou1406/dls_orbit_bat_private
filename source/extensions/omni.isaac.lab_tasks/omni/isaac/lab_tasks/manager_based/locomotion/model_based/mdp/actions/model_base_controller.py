@@ -1,19 +1,20 @@
 from abc import ABC
 from collections.abc import Sequence
 import torch
-from torch.distributions.constraints import real
+import time
+import numpy as np
 
-import jax.numpy as jnp
 
-import omni.isaac.lab.utils.math as math_utils
-
+# TODO put relevant thing into typechecking to avoid circular import ie. articulation and env
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     pass
+
+import omni.isaac.lab.utils.math as math_utils
 from omni.isaac.lab.assets.articulation import Articulation
 from omni.isaac.lab.envs import ManagerBasedRLEnv
 
-
+import jax.numpy as jnp
 import jax
 import jax.dlpack
 import torch
@@ -35,23 +36,10 @@ def torch_to_jax(x_torch):
     # time.sleep(0.005)
     return x_jax.reshape(shape)
 
+
+# to remove
 from .quadrupedpympc.sampling.centroidal_model_jax import Centroidal_Model_JAX
 
-import time
-
-
-# import matplotlib.pyplot as plt
-# from matplotlib.animation import FuncAnimation
-# import threading
-# import itertools
-import numpy as np
-# import matplotlib.pyplot as plt
-# np.set_printoptions(precision=2, linewidth=200)
-# force=[[],[],[],[],[],[],[],[],[],[],[],[]]
-# torque=[[],[],[],[],[],[],[],[],[],[],[],[]]
-# pos_tracking_error = [[],[],[],[]]
-# vel_tracking_error = [[],[],[],[]]
-# acc_tracking_error = [[],[],[],[]]
 
 class baseController(ABC):
     """
@@ -654,9 +642,6 @@ class samplingController(modelBaseController):
         # To enable or not the optimizer at run time
         self.optimizer_active = True
 
-        # To Start Live plot of GRF
-        # self.samplingOptimizer.start()
-
 
     def reset(self, env_ids: Sequence[int] | None,  p_default_lw: torch.Tensor) -> None:
         """ Reset the sampling optimizer internal values"""
@@ -688,7 +673,7 @@ class samplingController(modelBaseController):
         """
 
         # Call the optimizer
-        if self.optimizer_active:
+        if self.optimizer_active: # To enable or not optimization in real time
             f_star, d_star, p0_star_lw, F0_star_lw = self.samplingOptimizer.optimize_latent_variable(env=env, f=f, d=d, p_lw=p_lw, F_lw=F_lw, phase=self.phase, c_prev=self.c_prev, height_map=height_map)
         else : f_star, d_star, p0_star_lw, F0_star_lw = f, d, p_lw[:,:,:,0], F_lw[:,:,:,0]
 
@@ -772,6 +757,9 @@ class SamplingOptimizer():
         self.F_z_min = 0
         self.F_z_max = self.robot_model.mass*9.81
         self.mu = optimizerCfg.mu
+        self.gravity = torch.tensor((0.0, 0.0, -9.81), device=self.device) #self._env.sim.cfg.gravity
+        self.robot_mass = 23.0
+
 
         # Boolean to enable variable optimization or not
         self.optimize_f = optimizerCfg.optimize_f
@@ -847,25 +835,6 @@ class SamplingOptimizer():
         self.F_best =     torch.zeros((1,self.num_legs,3,self.F_param ), device=device)
         self.F_best[:,:,2,:] = 50.0
 
-        # # Create Variable for the Live plot
-        # self.fig, self.ax = plt.subplots()
-
-        # # Plot lines and save them in a list
-        # self.line1, = self.ax.plot(self.F_best[0,0,2,:].cpu().numpy(), label='FL')
-        # self.line2, = self.ax.plot(self.F_best[0,1,2,:].cpu().numpy(), label='FR')
-        # self.line3, = self.ax.plot(self.F_best[0,2,2,:].cpu().numpy(), label='RL')
-        # self.line4, = self.ax.plot(self.F_best[0,3,2,:].cpu().numpy(), label='RR')
-        
-        # # Set limits and labels
-        # self.ax.set_xlim(0, self.sampling_horizon-1)
-        # # self.ax.set_ylim(0, self.F_z_max)  
-        # self.ax.set_ylim(0-100, self.F_z_max+100)  
-        # self.ax.set_xlabel('iteration')
-        # self.ax.set_ylabel('Force Z [N]')
-
-        # # Add a legend
-        # self.ax.legend()
-
         # For plotting
         self.robot_height_list = [0.0]
         self.cost_list = [0.0]
@@ -899,8 +868,6 @@ class SamplingOptimizer():
             F_star_lw (Tensor): ground Reaction Forces       of shape(batch_size, num_leg, 3, F_param)
         """
         print()
-        # torch.cuda.synchronize(device=self.device)
-        # start_time = time.time()
 
         for i in range(self.num_optimizer_iterations):
             print(f'\niteration {i}')
@@ -923,22 +890,6 @@ class SamplingOptimizer():
 
             # --- Step 5 : Convert the optimal value back to torch.Tensor
             f_star, d_star, p0_star_lw, F0_star_lw = self.retrieve_z_from_action_seq(best_index, f_samples, d_samples, p_lw_samples, F_lw_samples, c_samples, c_prev)
-
-
-        # torch.cuda.synchronize(device=self.device)
-        # stop_time = time.time()
-        # elapsed_time_ms = (stop_time - start_time) * 1000
-        # print(f"Execution time: {elapsed_time_ms:.2f} ms")
-
-        # print('f - cum. diff. : %3.2f' % torch.sum(torch.abs(f_star - f)))
-        # print('d - cum. diff. : %3.2f' % torch.sum(torch.abs(d_star - d)))
-        # print('p - cum. diff. : %3.2f' % torch.sum(torch.abs(p_star_lw - p_lw)))
-        # print('F - cum. diff. : %5.1f' % torch.sum(torch.abs(F_star_lw - F_lw)))
-
-        # # Save cost for live plotting -> important for now to save sub cost also ! To see where it's breaking
-        # self.cost_list.append(best_cost)
-        # if len(self.cost_list) > 100 : self.cost_list.pop(0)
-        # np.savetxt('cost.csv', [self.cost_list], delimiter=',', fmt='%.3f')
 
         return f_star, d_star, p0_star_lw, F0_star_lw # p_star_lw, F_star_lw
 
@@ -1693,20 +1644,41 @@ class SamplingOptimizer():
         yaw   = ((yaw   - torch.pi) % (2*torch.pi)) - torch.pi
 
         return roll, pitch, yaw
+    
+
+    def centroidal_model_step(self, state, input, contact):
+        """
+        TODO
+
+        Note 
+            Angelo's paper with the model's explanation : https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=9564053
+            
+        Args : 
+            state     (dict): Dictionnary containing the robot's state
+                pos_com         (tensor): CoM position in TODO frame                of shape(num_samples, 3)
+                lin_com_vel     (tensor): CoM linear velocity in TODO frame         of shape(num_samples, 3)
+                orientation_com (tensor): CoM orientation in TODO frame xyz         of shape(num_samples, 3)
+                ang_vel_com     (tensor): CoM angular velocity as roll pitch yaw    of shape(num_samples, 3)
+
+            input     (dict): Dictionnary containing the robot's input
+                F_lw        (tensor): Ground Reaction Forces in TODO frame      of shape(num_samples, num_legs, 3)
+
+            contact (tensor): Foot contact status (stance=1, swing=0)           of shape(num_samples, num_legs)
+
+        Return :
+            new_state TODO
+        """
+
+        # --- Step 1 : Compute linear velocity
+        lin_com_vel = state.lin_com_vel     # shape (num_samples, 3)
+
+        # --- Step 2 : Compute linear acceleration  as sum of forces divide by mass
+        linear_com_acc = torch.sum(input.F_lw * contact.unsqueeze(-1), dim=1) + self.gravity.unsqueeze(0) # shape (num_samples, 3)
+
+        # --- Step 3 : Compute angular velocity
 
 
-    # def animate(self, frame):
-    #     self.line1.set_ydata(self.F_best[0,0,2,:].cpu().numpy())
-    #     self.line2.set_ydata(self.F_best[0,1,2,:].cpu().numpy())
-    #     self.line3.set_ydata(self.F_best[0,2,2,:].cpu().numpy())
-    #     self.line4.set_ydata(self.F_best[0,3,2,:].cpu().numpy())
-    #     return [self.line1, self.line2, self.line3, self.line4]
+        # --- Step 4 : Compute angular acceleration
 
 
-    # def start_animation(self, interval=100):
-    #     self.ani = FuncAnimation(self.fig, self.animate, frames=itertools.count(), blit=True, interval=interval)
-    #     plt.show()
-
-
-    # def start(self):
-        threading.Thread(target=self.start_animation).start()
+        # --- Step 5 : Perform forward integration of the model (as simple forward euler)
