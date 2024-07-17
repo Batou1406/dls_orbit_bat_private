@@ -50,7 +50,7 @@ class ModelBaseActionCfg(ActionTermCfg):
         optimizerType:str = 'sampling'
         """ Different type of optimizer. For now, only 'sampling' is implemented """
 
-        prevision_horizon: int = 5 # 15
+        prevision_horizon: int = 4 # 15
         """ Prevision horizon for predictive optimization (in number of time steps) """
 
         discretization_time: float = 0.02 # 0.04
@@ -59,10 +59,10 @@ class ModelBaseActionCfg(ActionTermCfg):
         num_samples: int = 5000
         """ Number of samples used if the optimizerType is 'sampling' """
 
-        parametrization_F: Literal['discrete', 'cubic spline'] = 'cubic spline'
+        parametrization_F: Literal['discrete', 'cubic spline'] = 'discrete'
         """ Define how F, Ground Reaction Forces, are encoded : can be 'discrete' or 'cubic spline', this modify F_param """
 
-        parametrization_p: Literal['discrete', 'cubic spline'] = 'cubic spline'
+        parametrization_p: Literal['discrete', 'cubic spline'] = 'discrete'
         """ Define how p, foot touch down position, are encoded : can be 'discrete' or 'cubic spline', this modify p_param  """
 
         height_ref: float = 0.38
