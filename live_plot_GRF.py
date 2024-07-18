@@ -26,7 +26,7 @@ ax.set_ylabel('Force Z [N]')
 ax.legend(loc='best')
 
 ax.set_xlim(-0.1, 3.1)
-ax.set_ylim(-70, 70)
+ax.set_ylim(-10, 150)
 
 def init():
     for line in lines.values():
@@ -49,12 +49,12 @@ def update(frame):
                 print(f"File {file_path} does not exist.")
         
         # Adjust x and y limits based on the data
-        # all_y_data = [lines[label].get_ydata() for label in file_paths.keys()]
-        # if all_y_data:
-        #     y_min = min(np.min(y) for y in all_y_data)
-        #     y_max = max(np.max(y) for y in all_y_data)
-        #     ax.set_xlim(0, len(data_to_plot) - 1)
-        #     ax.set_ylim(y_min, y_max)
+        all_y_data = [lines[label].get_ydata() for label in file_paths.keys()]
+        if all_y_data:
+            y_min = min(-10, min(np.min(y) for y in all_y_data))
+            y_max = max(150, max(np.max(y) for y in all_y_data))
+            ax.set_xlim(0, len(data_to_plot))
+            ax.set_ylim(y_min, y_max)
 
     except Exception as e:
         print(f"Error reading or processing the file: {e}")

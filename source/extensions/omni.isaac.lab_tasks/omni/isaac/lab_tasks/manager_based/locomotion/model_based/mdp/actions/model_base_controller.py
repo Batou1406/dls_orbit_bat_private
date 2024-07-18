@@ -718,18 +718,12 @@ class SamplingOptimizer():
         self.state_dim = 24 # CoM_pos(3) + lin_vel(3) + CoM_pose(3) + ang_vel(3) + foot_pos(12) 
         self.input_dim = 12 # GRF(12) (foot touch down pos is state and an input)
 
-        # Initialize the robot model with the centroidal model
-        # self.robot_model = Centroidal_Model_JAX(self.dt,self.device_jax)
-
-        # Add the 'samples' dimension on the last for input variable, and on the output
-        # self.parallel_compute_rollout = jax.vmap(self.compute_rollout, in_axes=(None, None, 0, 0, 0, 0), out_axes=0)
-        # self.jit_parallel_compute_rollout = jax.jit(self.parallel_compute_rollout, device=self.device_jax)
-        # self.jit_parallel_compute_rollout = self.parallel_compute_rollout
 
         # TODO Get these value properly
         self.mu = optimizerCfg.mu
         self.gravity_lw = torch.tensor((0.0, 0.0, -9.81), device=self.device) # shape(3) #self._env.sim.cfg.gravity
-        self.robot_mass = 24.64
+        # self.robot_mass = 24.64
+        self.robot_mass = 20.6380
         self.robot_inertia = torch.tensor([[ 0.2310941359705289,   -0.0014987128245817424, -0.021400468992761768 ], # shape (3,3)
                                            [-0.0014987128245817424, 1.4485084687476608,     0.0004641447134275615],
                                            [-0.021400468992761768,  0.0004641447134275615,  1.503217877350808    ]],device=self.device)
@@ -829,6 +823,8 @@ class SamplingOptimizer():
 
             # --- Step 2 : Given f and d samples -> generate the contact sequence for the samples
             c_samples, new_phase = self.gait_generator(f_samples=f_samples, d_samples=d_samples, phase=phase.squeeze(0), sampling_horizon=self.sampling_horizon, dt=self.dt)
+
+            # F_lw_samples[:,:,2,:] = F_lw_samples[:,:,2,:] + (c_samples.unsqueeze(-1)) * ((self.robot_mass*9.81) / torch.sum(c_samples, dim=1).unsqueeze(1))
 
             # --- Step 2 : prepare the variables : convert from torch.Tensor to Jax
             initial_state, reference_seq_state, reference_seq_input_samples, action_param_samples = self.prepare_variable_for_compute_rollout(env=env, c_samples=c_samples, p_lw_samples=p_lw_samples, F_lw_samples=F_lw_samples, feet_in_contact=c_prev[0,])
@@ -1024,15 +1020,21 @@ class SamplingOptimizer():
         p_star_lw = p_lw_samples[best_index].unsqueeze(0)     # shape(1, num_leg, 3, p_param)
         F_star_lw = F_lw_samples[best_index].unsqueeze(0)     # shape(1, num_leg, 3, F_param)
 
+        if self.live_plot:
+            np.savetxt("F_best_FL.csv", F_star_lw[0,0,:,:].cpu().numpy(), delimiter=",")
+            np.savetxt("F_best_FR.csv", F_star_lw[0,1,:,:].cpu().numpy(), delimiter=",")
+            np.savetxt("F_best_RL.csv", F_star_lw[0,2,:,:].cpu().numpy(), delimiter=",")
+            np.savetxt("F_best_RR.csv", F_star_lw[0,3,:,:].cpu().numpy(), delimiter=",")
+
         # Update previous best solution
         self.f_best, self.d_best, self.p_best, self.F_best = f_star, d_star, p_star_lw, F_star_lw
+        self.f_best, self.d_best, self.p_best, self.F_best = self.shift_actions(f=self.f_best, d=self.d_best, p=self.p_best, F=self.F_best)
 
         # reset the delta of the actions if contact ended (ie. started swing phase)
-        # lift_off_mask = ((c_prev[:,:] == 1) * (c_star[:,:,0] == 0)) # shape (1,num_legs) # /!\ c_prev is incremented with sim_dt, while c_star with mpc_dt : Thus, 
-        # self.F_best[lift_off_mask] = 0.0
-        # self.F_best[lift_off_mask,:,2] = (self.robot_mass*9.81)/2 #(torch.sum(c_star[:,:,0]+1).clamp(min=1))
-
-        # print('lift off mask', lift_off_mask)
+        lift_off_mask = ((c_prev[:,:] == 1) * (c_star[:,:,0] == 0)) # shape (1,num_legs) # /!\ c_prev is incremented with sim_dt, while c_star with mpc_dt : Thus, 
+        self.F_best[lift_off_mask] = 0.0
+        self.F_best[lift_off_mask,:,2] = (self.robot_mass*9.81)/2 #(torch.sum(c_star[:,:,0]+1).clamp(min=1))
+        print('lift off mask', lift_off_mask)
 
         # Retrive action to be applied at next time step
         # p : Foot touch Down
@@ -1047,18 +1049,26 @@ class SamplingOptimizer():
         elif self.cfg.parametrization_F == 'discrete':
             F0_star_lw = F_star_lw[...,0]
 
-        if self.live_plot:
-            np.savetxt("F_best_FL.csv", F_star_lw[0,0,:,:].cpu().numpy(), delimiter=",")
-            np.savetxt("F_best_FR.csv", F_star_lw[0,1,:,:].cpu().numpy(), delimiter=",")
-            np.savetxt("F_best_RL.csv", F_star_lw[0,2,:,:].cpu().numpy(), delimiter=",")
-            np.savetxt("F_best_RR.csv", F_star_lw[0,3,:,:].cpu().numpy(), delimiter=",")
-
         if self.optimize_f : print('f - cum. diff. : %3.2f' % torch.sum(torch.abs(f_star - f_samples[0,...])))
         if self.optimize_d : print('d - cum. diff. : %3.2f' % torch.sum(torch.abs(d_star - d_samples[0,...])))
         if self.optimize_p : print('p - cum. diff. : %3.2f' % torch.sum(torch.abs(p_star_lw - p_lw_samples[0,...])))
         if self.optimize_F : print('F - cum. diff. : %5.1f' % torch.sum(torch.abs(F_star_lw - F_lw_samples[0,...])))
 
+        # F0_star_lw -= c_star[:,:,0].unsqueeze(-1) * self.gravity_lw.unsqueeze(0).unsqueeze(0) * self.robot_mass / torch.sum(c_star[:,:,0].unsqueeze(0).unsqueeze(-1)) # shape(1, num_legs, 3)
+
         return f_star, d_star, p0_star_lw, F0_star_lw
+
+
+    def shift_actions(self, f: torch.Tensor, d: torch.Tensor, p: torch.Tensor,F: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """
+        Shift the actions from one time step and copy the last action
+        """
+        f[...,0:-1] = f[...,1:].clone()
+        d[...,0:-1] = d[...,1:].clone()
+        p[...,0:-1] = p[...,1:].clone()
+        F[...,0:-1] = F[...,1:].clone()
+
+        return f, d, p, F
 
 
     def generate_samples(self, iter:int, f:torch.Tensor, d:torch.Tensor, p_lw:torch.Tensor, F_lw:torch.Tensor, height_map:torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -1271,12 +1281,15 @@ class SamplingOptimizer():
         for i in range(self.sampling_horizon):
             # --- Step 1 : prepare the inputs
             # Find the current action given the actions parameters
-            input['p_lw'] = self.interpolation_p(parameters=action_param_samples['p_lw'], step=i, horizon=self.sampling_horizon)
-            input['F_lw'] = self.interpolation_F(parameters=action_param_samples['F_lw'], step=i, horizon=self.sampling_horizon)
-            contact = c_samples[:,:,i]
+            input['p_lw'] = self.interpolation_p(parameters=action_param_samples['p_lw'], step=i, horizon=self.sampling_horizon)# shape(num_samples, num_legs, 3)
+            input['F_lw'] = self.interpolation_F(parameters=action_param_samples['F_lw'], step=i, horizon=self.sampling_horizon)# shape(num_samples, num_legs, 3)
+            contact = c_samples[:,:,i]                                                                                          # shape(num_samples, num_legs)
+
+            # Add gravity compensation
+            # input['F_lw'] -= contact.unsqueeze(-1) * (self.gravity_lw.unsqueeze(0).unsqueeze(0) * self.robot_mass) / torch.sum(contact, dim=1).unsqueeze(-1).unsqueeze(-1)     
 
             # Enforce force constraints (Friction cone constraints)
-            input['F_lw'] = self.enforce_friction_cone_constraints_torch(F=input['F_lw'], mu=self.mu) 
+            input['F_lw'] = self.enforce_friction_cone_constraints_torch(F=input['F_lw'], mu=self.mu)                           # shape(num_samples, num_legs, 3)
 
 
             # --- Step 2 : Step the model
@@ -1285,22 +1298,21 @@ class SamplingOptimizer():
 
 
             # --- Step 3 : compute the step cost
-            state_vector     = torch.cat([vector.view(self.num_samples, -1) for vector in state.values()], dim=1)                             # Shape: (num_samples, state_dim)
-            # ref_state_vector = torch.cat([vector.select(-1, i).view(self.num_samples, -1) for vector in reference_seq_state.values()], dim=1) # Shape: (state_dim)
-            ref_state_vector = torch.cat([vector.select(-1, i).view(-1) for vector in reference_seq_state.values()], dim=0) # Shape: (state_dim)
+            state_vector     = torch.cat([vector.view(self.num_samples, -1) for vector in state.values()], dim=1)               # Shape: (num_samples, state_dim)
+            ref_state_vector = torch.cat([vector.select(-1, i).view(-1) for vector in reference_seq_state.values()], dim=0)     # Shape: (state_dim)
             
             # Compute the state cost
-            state_error = state_vector - ref_state_vector.unsqueeze(0)                   # shape (num_samples, state_dim)
-            state_cost  = torch.sum(self.Q_vec.unsqueeze(0) * (state_error ** 2), dim=1) # Shape (num_samples)
+            state_error = state_vector - ref_state_vector.unsqueeze(0)                                                          # shape (num_samples, state_dim)
+            state_cost  = torch.sum(self.Q_vec.unsqueeze(0) * (state_error ** 2), dim=1)                                        # Shape (num_samples)
 
             # Compute the input cost
-            input_error = (input['F_lw'] - reference_seq_input_samples['F_lw'][:,:,:,i]).flatten(1,2) # shape (num_samples, action_dim)
-            input_cost  = torch.sum(self.R_vec.unsqueeze(0) * (input_error ** 2), dim=1)              # Shape (num_samples)
+            input_error = (input['F_lw'] - reference_seq_input_samples['F_lw'][:,:,:,i]).flatten(1,2)                           # shape (num_samples, action_dim)
+            input_cost  = torch.sum(self.R_vec.unsqueeze(0) * (input_error ** 2), dim=1)                                        # Shape (num_samples)
 
-            step_cost = state_cost #+ input_cost # shape(num_samples)
+            step_cost = state_cost #+ input_cost                                                                                # shape(num_samples)
 
             # Update the trajectory cost
-            cost_samples += step_cost # shape(num_samples)
+            cost_samples += step_cost                                                                                           # shape(num_samples)
 
         return cost_samples
 
@@ -1309,12 +1321,12 @@ class SamplingOptimizer():
         """ Given a set of spline parameters, and the point in the trajectory return the function value 
         
         Args :
-            parameters (jnp.array): of shape(num_legs, spline_param*3) 
-            step             (int): The point in the curve in [0, horizon]
-            horizon          (int): The length of the curve
+            parameters (Tensor): Spline action parameter      of shape(batch, num_legs, 3, spline_param)              
+            step          (int): The point in the curve in [0, horizon]
+            horizon       (int): The length of the curve
             
         Returns : 
-            actions    (jnp.array): The action of shape(num_legs*3) (can be p or F)
+            actions    (Tensor): Discrete action              of shape(batch, num_legs, 3)
         """
         # Find the point in the curve q in [0,1]
         tau = step/(horizon)        
@@ -1326,26 +1338,12 @@ class SamplingOptimizer():
         c = -2*q*q*q + 3*q*q
         d =    q*q*q -   q*q
 
-        # Compute the phi parameters
-        phi_x      = (1./2.)*(parameters[:,2]  - parameters[:,0])
-        phi_next_x = (1./2.)*(parameters[:,3]  - parameters[:,1])
+        # Compute intermediary parameters 
+        phi_1 = 0.5*(parameters[...,2]  - parameters[...,0]) # shape (batch, num_legs, 3)
+        phi_2 = 0.5*(parameters[...,3]  - parameters[...,1]) # shape (batch, num_legs, 3)
 
-        phi_y      = (1./2.)*(parameters[:,6]  - parameters[:,4])
-        phi_next_y = (1./2.)*(parameters[:,7]  - parameters[:,5])
-
-        phi_z      = (1./2.)*(parameters[:,10] - parameters[:,8])
-        phi_next_z = (1./2.)*(parameters[:,11] - parameters[:,9])
-
-        # Compute the function value f(x)
-        action_x = a*parameters[:,1] + b*phi_x + c*parameters[:,2]  + d*phi_next_x # shape(4)
-        action_y = a*parameters[:,5] + b*phi_y + c*parameters[:,6]  + d*phi_next_y # shape(4)
-        action_z = a*parameters[:,9] + b*phi_z + c*parameters[:,10] + d*phi_next_z # shape(4)
-
-        # # Stack the variable to have only one variable
-        # actions = jnp.stack((action_x, action_y, action_z), axis=-1)
-        # actions = jnp.reshape(actions, (-1,))   # shape(12)
-        
-        actions = ...
+        # Compute the spline
+        actions = a*parameters[...,1] + b*phi_1 + c*parameters[...,2]  + d*phi_2 # shape (batch, num_legs, 3)
 
         return actions
 
@@ -1401,7 +1399,7 @@ class SamplingOptimizer():
         # ...
 
         # Clip F
-        F_lw_samples[:,:,2,:] = F_lw_samples[:,:,2,:].clamp(min=self.F_z_min, max=self.F_z_max) # TODO This clip also spline param 0 and 3, which may be restrictive
+        # F_lw_samples[:,:,2,:] = F_lw_samples[:,:,2,:].clamp(min=self.F_z_min, max=self.F_z_max) # TODO This clip also spline param 0 and 3, which may be restrictive
 
 
         # --- Step 2 : Add Constraints
@@ -1409,7 +1407,7 @@ class SamplingOptimizer():
         # p_lw_samples[:,:,2,:] = 0.0*torch.ones_like(p_lw_samples[:,:,2,:])
       
         # F : Ensure Friction Cone constraints (Bounding spline means quasi bounding trajectory)
-        F_lw_samples = self.enforce_friction_cone_constraints_torch(F=F_lw_samples, mu=self.mu)
+        # F_lw_samples = self.enforce_friction_cone_constraints_torch(F=F_lw_samples, mu=self.mu)
 
 
         return f_samples, d_samples, p_lw_samples, F_lw_samples
@@ -1504,7 +1502,7 @@ class SamplingOptimizer():
 
 
         # --- Step 2 : Compute linear acceleration  as sum of forces divide by mass
-        linear_com_acc_lw = torch.sum(input['F_lw'] * contact.unsqueeze(-1), dim=1) + self.gravity_lw.unsqueeze(0) # shape (num_samples, 3)
+        linear_com_acc_lw = (torch.sum(input['F_lw'] * contact.unsqueeze(-1), dim=1) / self.robot_mass) + self.gravity_lw.unsqueeze(0) # shape (num_samples, 3)
 
 
         # --- Step 3 : Compute angular velocity (as euler rate to increment euler angles) : Given by eq. 27 in 'Note' paper
@@ -1535,3 +1533,4 @@ class SamplingOptimizer():
         # new_state['p_lw']            = state['p_lw']*contact.unsqueeze(-1) + input['p_lw']*contact.unsqueeze(-1)
 
         return new_state
+    
