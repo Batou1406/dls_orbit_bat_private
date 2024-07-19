@@ -46,10 +46,6 @@ import os
 import torch
 import torch.distributions.constraints
 
-# Jax prealoccate memory
-import os
-os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
-
 from rsl_rl.runners import OnPolicyRunner
 
 import omni.isaac.lab_tasks  # noqa: F401
@@ -114,20 +110,12 @@ def main():
     # reset environment
     obs, _ = env.get_observations()
 
-    abs_list = []
     # simulate environment
     while simulation_app.is_running():
         # run everything in inference mode
         with torch.inference_mode():
             # agent stepping
             actions = policy(obs)
-
-            # abs_list.append(torch.sum(actions[0,256].abs()).cpu())
-            # if(len(abs_list)>80):
-            #     plt.plot(abs_list)
-            #     plt.yscale("log")
-            #     plt.show()
-            #     return 
 
             # env stepping
             obs, _, _, _ = env.step(actions) 

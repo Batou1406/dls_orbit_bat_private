@@ -50,10 +50,10 @@ class ModelBaseActionCfg(ActionTermCfg):
         optimizerType:str = 'sampling'
         """ Different type of optimizer. For now, only 'sampling' is implemented """
 
-        prevision_horizon: int = 5 # 15
+        prevision_horizon: int = 15 # 15
         """ Prevision horizon for predictive optimization (in number of time steps) """
 
-        discretization_time: float = 0.02 # 0.04
+        discretization_time: float = 0.01 # 0.04
         """ Duration of a time step in seconds for the predicitve optimization """
 
         num_samples: int = 5000
@@ -95,7 +95,7 @@ class ModelBaseActionCfg(ActionTermCfg):
         clip_sample: bool = False 
         """ Wether to clip or not the samples to a range of the standard deviation """
 
-        debug_apply_action: Literal[None, 'full stance', 'trot'] = 'trot' #None
+        debug_apply_action: Literal[None, 'full stance', 'trot'] = 'full stance' #None
         """ Wether to deactivate f,d,and p from RL and change that with another static gait"""
 
     optimizerCfg: OptimizerCfg | None = None

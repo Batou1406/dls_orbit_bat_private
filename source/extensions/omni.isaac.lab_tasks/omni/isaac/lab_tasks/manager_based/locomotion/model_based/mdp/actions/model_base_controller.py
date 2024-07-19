@@ -164,7 +164,7 @@ class modelBaseController(baseController):
         """
         super().__init__(verbose_md, device, num_envs, num_legs, dt_out, decimation, dt_in)
         self.phase = torch.zeros(num_envs, num_legs, device=device)
-        self.phase[:,(0,3)] = 0.5 # Init phase [0.5, 0, 0.5, 0]
+        self.phase[:,(0,3)] = 0.5 # Init phase [0.5, 0, 0, 0.5]
         self.p0_lw = p_default_lw.clone().detach()
         self.swing_time = torch.zeros(num_envs, num_legs, device=device)
         self.p_lw_sim_prev = p_default_lw.clone().detach()
@@ -1036,24 +1036,29 @@ class SamplingOptimizer():
         self.F_best[lift_off_mask,:,2] = (self.robot_mass*9.81)/2 #(torch.sum(c_star[:,:,0]+1).clamp(min=1))
         print('lift off mask', lift_off_mask)
 
-        # Retrive action to be applied at next time step
-        # p : Foot touch Down
-        if   self.cfg.parametrization_p == 'cubic spline':
-            p0_star_lw = p_star_lw[...,1]
-        elif self.cfg.parametrization_p == 'discrete':
-            p0_star_lw = p_star_lw[...,0]
+        # # Retrive action to be applied at next time step
+        # # p : Foot touch Down
+        # if   self.cfg.parametrization_p == 'cubic spline':
+        #     p0_star_lw = p_star_lw[...,1]
+        # elif self.cfg.parametrization_p == 'discrete':
+        #     p0_star_lw = p_star_lw[...,0]
 
-        # F : GRF
-        if   self.cfg.parametrization_F == 'cubic spline':
-            F0_star_lw = F_star_lw[...,1]
-        elif self.cfg.parametrization_F == 'discrete':
-            F0_star_lw = F_star_lw[...,0]
+        # # F : GRF
+        # if   self.cfg.parametrization_F == 'cubic spline':
+        #     F0_star_lw = F_star_lw[...,1]
+        # elif self.cfg.parametrization_F == 'discrete':
+        #     F0_star_lw = F_star_lw[...,0]
+
+        # Retrive action to be applied at next time step
+        p0_star_lw = self.interpolation_p(parameters=p_star_lw, step=0, horizon=self.sampling_horizon) # shape(1, num_legs, 3)
+        F0_star_lw = self.interpolation_F(parameters=F_star_lw, step=0, horizon=self.sampling_horizon) # shape(1, num_legs, 3)
 
         if self.optimize_f : print('f - cum. diff. : %3.2f' % torch.sum(torch.abs(f_star - f_samples[0,...])))
         if self.optimize_d : print('d - cum. diff. : %3.2f' % torch.sum(torch.abs(d_star - d_samples[0,...])))
         if self.optimize_p : print('p - cum. diff. : %3.2f' % torch.sum(torch.abs(p_star_lw - p_lw_samples[0,...])))
         if self.optimize_F : print('F - cum. diff. : %5.1f' % torch.sum(torch.abs(F_star_lw - F_lw_samples[0,...])))
 
+        # Add gravity compensation
         # F0_star_lw -= c_star[:,:,0].unsqueeze(-1) * self.gravity_lw.unsqueeze(0).unsqueeze(0) * self.robot_mass / torch.sum(c_star[:,:,0].unsqueeze(0).unsqueeze(-1)) # shape(1, num_legs, 3)
 
         return f_star, d_star, p0_star_lw, F0_star_lw
@@ -1399,7 +1404,7 @@ class SamplingOptimizer():
         # ...
 
         # Clip F
-        # F_lw_samples[:,:,2,:] = F_lw_samples[:,:,2,:].clamp(min=self.F_z_min, max=self.F_z_max) # TODO This clip also spline param 0 and 3, which may be restrictive
+        F_lw_samples[:,:,2,:] = F_lw_samples[:,:,2,:].clamp(min=self.F_z_min, max=self.F_z_max) # TODO This clip also spline param 0 and 3, which may be restrictive
 
 
         # --- Step 2 : Add Constraints
@@ -1407,7 +1412,7 @@ class SamplingOptimizer():
         # p_lw_samples[:,:,2,:] = 0.0*torch.ones_like(p_lw_samples[:,:,2,:])
       
         # F : Ensure Friction Cone constraints (Bounding spline means quasi bounding trajectory)
-        # F_lw_samples = self.enforce_friction_cone_constraints_torch(F=F_lw_samples, mu=self.mu)
+        F_lw_samples = self.enforce_friction_cone_constraints_torch(F=F_lw_samples, mu=self.mu)
 
 
         return f_samples, d_samples, p_lw_samples, F_lw_samples
