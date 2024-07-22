@@ -909,7 +909,7 @@ class SamplingOptimizer():
         com_pos_lw[2] = robot.data.root_pos_w[:,2] - (torch.sum(((robot.data.body_pos_w[:, foot_idx,2]).squeeze(0)) * feet_in_contact)) / (torch.sum(feet_in_contact)) # height is proprioceptive
 
         # Retrieve the robot orientation in lw as euler angle ZXY of shape(3)
-        roll, pitch, yaw = math_utils.euler_xyz_from_quat(robot.data.root_quat_w) # TODO Check the angles !
+        roll, pitch, yaw = math_utils.euler_xyz_from_quat(robot.data.root_quat_w) 
         roll, pitch, yaw = self.from_zero_twopi_to_minuspi_pluspi(roll, pitch, yaw) 
         euler_xyz_angle = torch.tensor((roll, pitch, yaw), device=self.device)
 
@@ -940,14 +940,28 @@ class SamplingOptimizer():
         euler_xyz_angle_ref_seq      = torch.zeros_like(com_pos_ref_seq_lw) # shape(3, sampling_horizon)
         euler_xyz_angle_ref_seq[2,:] = euler_xyz_angle[2] + (torch.arange(self.sampling_horizon, device=self.device) * (self.dt * speed_command_b[2])) # shape(sampling_horizon)
 
+        # The linear speed reference is (x_dot_ref_b, y_dot_ref_b, 0) in base frame and must be rotated in world frame
+        com_lin_vel_ref_seq_b = torch.zeros(3, device=self.device) # shape(3)
+        com_lin_vel_ref_seq_b[0] = speed_command_b[0] # foward  velocity reference
+        com_lin_vel_ref_seq_b[1] = speed_command_b[1] # lateral velocity reference
 
-        # The speed reference is tracked for x_b, y_b and yaw, other are zero -> must be converted accordingly from base frame to world frame
-        com_lin_vel_ref_seq_w = torch.zeros_like(com_pos_ref_seq_lw) # shape(3, sampling_horizon)
+        # Retrieve the robot base orientation in the world frame as quaternions : shape(batch_size, 4)
+        quat_robot_base_w = robot.data.root_quat_w 
+
+        # From the quaternions compute the rotation matrix that rotates from base frame b to world frame w: shape(batch_size, 3,3) -> shape(3,3)
+        R_b_to_w = math_utils.matrix_from_quat(quat_robot_base_w).squeeze(0)
+
+        # Rotate the speed reference in world frame and expand to get the sampling horizon
+        com_lin_vel_ref_seq_w = torch.matmul(R_b_to_w, com_lin_vel_ref_seq_b.unsqueeze(-1)).expand(3, self.sampling_horizon).clone().detach() # shape (3,3)@(3,1) -> (3,1) -> shape(3, sampling_horizon)
+
+        # Add the effect of the yaw rate in world frame
+        delta_yaw_seq = self.dt * speed_command_b[2] * torch.arange(0, self.sampling_horizon, device=self.device) # shape(sampling_horizon)
+
+        com_lin_vel_ref_seq_w[0,:] = ((com_lin_vel_ref_seq_w[0,:] * torch.cos(delta_yaw_seq)) - (com_lin_vel_ref_seq_w[1,:] * torch.sin(delta_yaw_seq))) # shape(sampling_horizon)
+        com_lin_vel_ref_seq_w[1,:] = ((com_lin_vel_ref_seq_w[0,:] * torch.sin(delta_yaw_seq)) + (com_lin_vel_ref_seq_w[1,:] * torch.cos(delta_yaw_seq))) # shape(sampling_horizon)
+
+        # Get the angular velocity reference in base frame as euler rates : (0, 0, yaw rate)
         com_ang_vel_ref_seq_b = torch.zeros_like(com_pos_ref_seq_lw) # shape(3, sampling_horizon)
-
-        # TODO Convert speed xy ref from base to world frame + add the yaw along the prediction horizon
-        # com_lin_vel_ref_seq_w[0] = speed_command_b[0]*torch.cos(com_pose_ref_w[2]) - speed_command_b[1]*torch.sin(com_pose_ref_w[2]) # shape(t_h*t_h - t_h*t_h) -> t_h #TODO Check that the rotation is correct
-        # com_lin_vel_ref_seq_w[1] = speed_command_b[0]*torch.sin(com_pose_ref_w[2]) + speed_command_b[1]*torch.cos(com_pose_ref_w[2]) # shape(t_h*t_h - t_h*t_h) -> t_h
 
         # Angular velocity reference is base frame (roll_rate=0, pitch_rate=0, yaw_rate=yaw_rate_ref)
         com_ang_vel_ref_seq_b[2,:] = speed_command_b[2]  # shape(3, sampling_horizon)
@@ -1001,8 +1015,6 @@ class SamplingOptimizer():
             self.RR_foot_list.append(initial_state['p_lw'][3,:].cpu().numpy())
             if len(self.RR_foot_list) > 100 : self.RR_foot_list.pop(0)
             np.savetxt('live_variable/RR_foot.csv', self.RR_foot_list, delimiter=',', fmt='%.3f')
-
-
 
 
         return initial_state, reference_seq_state, reference_seq_input_samples, action_param_samples

@@ -1023,12 +1023,17 @@ class ModelBaseAction(ActionTerm):
         if   gait == 'full_stance':
             f = 0.0 * torch.ones_like(f)
             d = 1.0 * torch.ones_like(d)
-            p_norm = torch.zeros_like(p_norm)
+            p_norm = torch.zeros_like(p_norm) # shape (batch_size, num_legs, 2, p_param)
 
         elif gait == 'trot':
             f = 2.5 * torch.ones_like(f)
             d = 0.65 * torch.ones_like(d)
-            p_norm = torch.zeros_like(p_norm)
+            p_norm = torch.zeros_like(p_norm) # shape (batch_size, num_legs, 2, p_param)
+            
+            speed_command_b = (self._env.command_manager.get_command("base_velocity")).squeeze(0) # shape(3)
+
+            p_norm[:,:,0] = speed_command_b[0] * (1/(2*2.5))
+            p_norm[:,:,1] = speed_command_b[1] * (1/(2*2.5))
 
         return f, d, p_norm
 

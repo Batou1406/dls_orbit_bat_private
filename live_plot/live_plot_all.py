@@ -178,7 +178,7 @@ axFootZ.legend(loc='upper right')
 axFootZ.set_title('Foot Height')
 
 axFootZ.set_xlim(-0.1, 100.1)
-axFootZ.set_ylim(0.25, 0.50)
+axFootZ.set_ylim(-0.0, 0.10)
 
 count=0
 
@@ -283,8 +283,8 @@ def update(frame):
         # Adjust x and y limits based on the data
         all_y_data = [lines_foot_x[label].get_ydata() for label in file_paths_foot_x.keys()]
         if all_y_data:
-            y_min = min(-0.35,min(np.min(y) - 0.02 for y in all_y_data))
-            y_max = max(0.35,max(np.max(y) + 0.02 for y in all_y_data))
+            y_min = min(np.min(y) - 0.03 for y in all_y_data)
+            y_max = max(np.max(y) + 0.03 for y in all_y_data)
             axFootX.set_xlim(0, len(data_to_plot) + 5) # Plus 5 to give an impression of live data
             axFootX.set_ylim(y_min, y_max)
     except Exception as e: print(f"Error reading or processing the file: {e}")
@@ -305,8 +305,8 @@ def update(frame):
         # Adjust x and y limits based on the data
         all_y_data = [lines_foot_y[label].get_ydata() for label in file_paths_foot_y.keys()]
         if all_y_data:
-            y_min = min(-0.15,min(np.min(y) - 0.02 for y in all_y_data))
-            y_max = max(0.35,max(np.max(y) + 0.02 for y in all_y_data))
+            y_min = min(np.min(y) - 0.03 for y in all_y_data)
+            y_max = max(np.max(y) + 0.03 for y in all_y_data)
             axFootY.set_xlim(0, len(data_to_plot) + 5) # Plus 5 to give an impression of live data
             axFootY.set_ylim(y_min, y_max)
 
@@ -328,8 +328,8 @@ def update(frame):
         # Adjust x and y limits based on the data
         all_y_data = [lines_foot_z[label].get_ydata() for label in file_paths_foot_z.keys()]
         if all_y_data:
-            y_min = min(-0.05,min(np.min(y) - 0.02 for y in all_y_data))
-            y_max = max(0.15,max(np.max(y) + 0.02 for y in all_y_data))
+            y_min = min(-0.0,min(np.min(y) - 0.02 for y in all_y_data))
+            y_max = max(0.10,max(np.max(y) + 0.02 for y in all_y_data))
             axFootZ.set_xlim(0, len(data_to_plot) + 5) # Plus 5 to give an impression of live data
             axFootZ.set_ylim(y_min, y_max)
     except Exception as e: print(f"Error reading or processing the file: {e}")
