@@ -173,7 +173,7 @@ class BatManagerBasedRLEnvWindow(BaseEnvWindow):
                     "label": "Debug Gait",
                     "type": "dropdown",
                     "default_val": 0,
-                    "items": [name.replace("_", " ").title() for name in ['None', 'full stance', 'trot']], # TODO hardcoded for now... Do better
+                    "items": [name.replace("_", " ").title() for name in ['None', 'full_stance', 'trot']], # TODO hardcoded for now... Do better
                     "tooltip": "Disable RL action (f,d,p) and apply a static gait",
                     "on_clicked_fn": self._set_debug_gait,
                 }
@@ -420,7 +420,7 @@ class BatManagerBasedRLEnvWindow(BaseEnvWindow):
     def _set_debug_gait(self, value: str): 
         # value is modified and comes with a capital letter first
         if   value == 'None'        : self.modelBaseAction.debug_apply_action_status = None
-        if   value == 'Full Stance' : self.modelBaseAction.debug_apply_action_status = 'full stance'
+        if   value == 'Full_Stance' : self.modelBaseAction.debug_apply_action_status = 'full_stance'
         if   value == 'Trot'        : self.modelBaseAction.debug_apply_action_status = 'trot'
 
     def _set_velocity_fn(self, model: omni.ui.SimpleFloatModel):

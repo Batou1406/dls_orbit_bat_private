@@ -65,3 +65,5 @@ dataset/*
 model/*
 
 **/quadrupedpympc/*
+
+live_variable/

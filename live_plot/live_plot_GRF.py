@@ -5,10 +5,10 @@ import os
 
 # File paths
 file_paths = {
-    'FL': 'F_best_FL.csv',
-    'FR': 'F_best_FR.csv',
-    'RL': 'F_best_RL.csv',
-    'RR': 'F_best_RR.csv'
+    'FL': 'live_variable/F_best_FL.csv',
+    'FR': 'live_variable/F_best_FR.csv',
+    'RL': 'live_variable/F_best_RL.csv',
+    'RR': 'live_variable/F_best_RR.csv'
 }
 
 # Initialize the plot

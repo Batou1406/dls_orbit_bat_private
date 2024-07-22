@@ -50,10 +50,10 @@ class ModelBaseActionCfg(ActionTermCfg):
         optimizerType:str = 'sampling'
         """ Different type of optimizer. For now, only 'sampling' is implemented """
 
-        prevision_horizon: int = 15 # 15
+        prevision_horizon: int = 5 # 15
         """ Prevision horizon for predictive optimization (in number of time steps) """
 
-        discretization_time: float = 0.01 # 0.04
+        discretization_time: float = 0.02 # 0.04
         """ Duration of a time step in seconds for the predicitve optimization """
 
         num_samples: int = 5000
@@ -68,7 +68,7 @@ class ModelBaseActionCfg(ActionTermCfg):
         height_ref: float = 0.35 #0.38
         """ Height reference for the optimization, defined as mean distance between legs in contact and base """
 
-        mu : float = 0.4
+        mu : float = 0.5
         """ Coefficient of friction imposed for the friction cone constraints """
 
         optimize_f: bool = False
@@ -95,7 +95,7 @@ class ModelBaseActionCfg(ActionTermCfg):
         clip_sample: bool = False 
         """ Wether to clip or not the samples to a range of the standard deviation """
 
-        debug_apply_action: Literal[None, 'full stance', 'trot'] = 'full stance' #None
+        debug_apply_action: Literal[None, 'full_stance', 'trot'] = 'trot' #None
         """ Wether to deactivate f,d,and p from RL and change that with another static gait"""
 
     optimizerCfg: OptimizerCfg | None = None
@@ -118,7 +118,7 @@ class ModelBaseActionCfg(ActionTermCfg):
     class SwingControllerCfg:
         """ Config class for swing foot trajectory controller hyperparameters
         """
-        swing_ctrl_pos_gain_fb: float = 5000.0
+        swing_ctrl_pos_gain_fb: float = 10000.0 #5000.0
         """ Position gain feedback for swing trajectory tracking in [0, +inf] """
 
         swing_ctrl_vel_gain_fb: float = 100.0

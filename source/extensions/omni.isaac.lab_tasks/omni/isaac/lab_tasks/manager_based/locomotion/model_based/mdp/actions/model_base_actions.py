@@ -1013,21 +1013,21 @@ class ModelBaseAction(ActionTerm):
         return height_scan_index.to(torch.int) 
 
 
-    def debug_disable_action(self, f: torch.Tensor,d: torch.Tensor, p_norm: torch.Tensor, gait: Literal['full stance', 'trot']) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def debug_disable_action(self, f: torch.Tensor,d: torch.Tensor, p_norm: torch.Tensor, gait: Literal['full_stance', 'trot']) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """For debugging purposes, fix duty cycle, leg frequency and foot touch down position
         
         Args:
-            gait (str) : The imposed gait, can be 'full stance' or 'trot'
+            gait (str) : The imposed gait, can be 'full_stance' or 'trot'
         """
 
-        if   gait == 'full stance':
+        if   gait == 'full_stance':
             f = 0.0 * torch.ones_like(f)
             d = 1.0 * torch.ones_like(d)
             p_norm = torch.zeros_like(p_norm)
 
         elif gait == 'trot':
-            f = 1.4 * torch.ones_like(f)
-            d = 0.6 * torch.ones_like(d)
+            f = 2.5 * torch.ones_like(f)
+            d = 0.65 * torch.ones_like(d)
             p_norm = torch.zeros_like(p_norm)
 
         return f, d, p_norm

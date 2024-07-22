@@ -693,8 +693,9 @@ class SamplingOptimizer():
         # Optimizer configuration
         self.num_samples = optimizerCfg.num_samples
         self.sampling_horizon = optimizerCfg.prevision_horizon
-        self.dt = optimizerCfg.discretization_time    
+        self.dt = optimizerCfg.discretization_time    # TODO rename dt to a less confusing name eg. mpc_dt
         self.num_optimizer_iterations = optimizerCfg.num_optimizer_iterations
+        self.mu = optimizerCfg.mu
 
         # Define Interpolation method for GRF and interfer GRF input size 
         if   optimizerCfg.parametrization_F == 'cubic spline' : 
@@ -714,13 +715,12 @@ class SamplingOptimizer():
             self.p_param = self.sampling_horizon
         else : raise NotImplementedError('Request interpolation method is not implemented yet')
 
-        # Input and State dimension for centroidal model : hardcoded because the centroidal model is hardcoded
+        # Input and State dimension for centroidal model : hardcoded because the centroidal model is hardcoded # TODO get rid of these
         self.state_dim = 24 # CoM_pos(3) + lin_vel(3) + CoM_pose(3) + ang_vel(3) + foot_pos(12) 
         self.input_dim = 12 # GRF(12) (foot touch down pos is state and an input)
 
 
         # TODO Get these value properly
-        self.mu = optimizerCfg.mu
         self.gravity_lw = torch.tensor((0.0, 0.0, -9.81), device=self.device) # shape(3) #self._env.sim.cfg.gravity
         # self.robot_mass = 24.64
         self.robot_mass = 20.6380
@@ -750,7 +750,7 @@ class SamplingOptimizer():
         # Define the height reference for the tracking
         self.height_ref = optimizerCfg.height_ref
 
-        # Define Variance for the sampling law
+        # Define Variance for the sampling law TODO Get the value properly
         self.std_f = torch.tensor((0.05), device=device)
         self.std_d = torch.tensor((0.05), device=device)
         self.std_p = torch.tensor((0.02), device=device)
@@ -784,7 +784,12 @@ class SamplingOptimizer():
         # For plotting
         self.live_plot = True
         self.robot_height_list = [0.0]
+        self.robot_height_ref_list = [0.0]
         self.cost_list = [0.0]
+        self.FL_foot_list = [np.array([0.0, 0.0, 0.0])]
+        self.FR_foot_list = [np.array([0.0, 0.0, 0.0])]
+        self.RL_foot_list = [np.array([0.0, 0.0, 0.0])]
+        self.RR_foot_list = [np.array([0.0, 0.0, 0.0])]
 
 
     def reset(self):
@@ -902,12 +907,6 @@ class SamplingOptimizer():
         # Compute proprioceptive height
         if (feet_in_contact == 0).all() : feet_in_contact = torch.ones_like(feet_in_contact) # if no feet in contact : robot is in the air, we use all feet to compute the height, not correct but avoid div by zero
         com_pos_lw[2] = robot.data.root_pos_w[:,2] - (torch.sum(((robot.data.body_pos_w[:, foot_idx,2]).squeeze(0)) * feet_in_contact)) / (torch.sum(feet_in_contact)) # height is proprioceptive
-        
-        # Save variable for live plotting
-        if self.live_plot : 
-            self.robot_height_list.append(com_pos_lw[2].cpu().numpy())
-            if len(self.robot_height_list) > 100 : self.robot_height_list.pop(0)
-            np.savetxt('height.csv', [self.robot_height_list], delimiter=',', fmt='%.3f')
 
         # Retrieve the robot orientation in lw as euler angle ZXY of shape(3)
         roll, pitch, yaw = math_utils.euler_xyz_from_quat(robot.data.root_quat_w) # TODO Check the angles !
@@ -977,6 +976,35 @@ class SamplingOptimizer():
         action_param_samples['F_lw'] = F_lw_samples # Ground Reaction Forces samples      # shape(num_samples, num_legs, 3 F_param)
 
 
+        # ----- Step 4 : Save variable for live plotting
+        if self.live_plot : 
+            # Save Robot's Height
+            self.robot_height_list.append(com_pos_lw[2].cpu().numpy())
+            if len(self.robot_height_list) > 100 : self.robot_height_list.pop(0)
+            np.savetxt('live_variable/height.csv', [self.robot_height_list], delimiter=',', fmt='%.3f')
+
+            # Save Robot's Height reference
+            self.robot_height_ref_list.append(self.height_ref)
+            if len(self.robot_height_ref_list) > 100 : self.robot_height_ref_list.pop(0)
+            np.savetxt('live_variable/height_ref.csv', [self.robot_height_ref_list], delimiter=',', fmt='%.3f')
+
+            # Save foot position's
+            self.FL_foot_list.append(initial_state['p_lw'][0,:].cpu().numpy())
+            if len(self.FL_foot_list) > 100 : self.FL_foot_list.pop(0)
+            np.savetxt('live_variable/FL_foot.csv', self.FL_foot_list, delimiter=',', fmt='%.3f')
+            self.FR_foot_list.append(initial_state['p_lw'][1,:].cpu().numpy())
+            if len(self.FR_foot_list) > 100 : self.FR_foot_list.pop(0)
+            np.savetxt('live_variable/FR_foot.csv', self.FR_foot_list, delimiter=',', fmt='%.3f')
+            self.RL_foot_list.append(initial_state['p_lw'][2,:].cpu().numpy())
+            if len(self.RL_foot_list) > 100 : self.RL_foot_list.pop(0)
+            np.savetxt('live_variable/RL_foot.csv', self.RL_foot_list, delimiter=',', fmt='%.3f')
+            self.RR_foot_list.append(initial_state['p_lw'][3,:].cpu().numpy())
+            if len(self.RR_foot_list) > 100 : self.RR_foot_list.pop(0)
+            np.savetxt('live_variable/RR_foot.csv', self.RR_foot_list, delimiter=',', fmt='%.3f')
+
+
+
+
         return initial_state, reference_seq_state, reference_seq_input_samples, action_param_samples
 
 
@@ -1008,11 +1036,6 @@ class SamplingOptimizer():
         print('cost sample ',cost_samples)
         print('Best cost :', best_cost, ', best index :', best_index)
 
-        if self.live_plot:
-            self.cost_list.append(best_cost.cpu().numpy())
-            if len(self.cost_list) > 100 : self.cost_list.pop(0)
-            np.savetxt('cost.csv', [self.cost_list], delimiter=',', fmt='%.3f')
-
         # Retrieve best sample, given the best index
         f_star = f_samples[best_index].unsqueeze(0)           # shape(1, num_leg)
         d_star = d_samples[best_index].unsqueeze(0)           # shape(1, num_leg)
@@ -1020,46 +1043,44 @@ class SamplingOptimizer():
         p_star_lw = p_lw_samples[best_index].unsqueeze(0)     # shape(1, num_leg, 3, p_param)
         F_star_lw = F_lw_samples[best_index].unsqueeze(0)     # shape(1, num_leg, 3, F_param)
 
+        # Save live variable to enable live plotting
         if self.live_plot:
-            np.savetxt("F_best_FL.csv", F_star_lw[0,0,:,:].cpu().numpy(), delimiter=",")
-            np.savetxt("F_best_FR.csv", F_star_lw[0,1,:,:].cpu().numpy(), delimiter=",")
-            np.savetxt("F_best_RL.csv", F_star_lw[0,2,:,:].cpu().numpy(), delimiter=",")
-            np.savetxt("F_best_RR.csv", F_star_lw[0,3,:,:].cpu().numpy(), delimiter=",")
+            # Save best cost
+            self.cost_list.append(best_cost.cpu().numpy())
+            if len(self.cost_list) > 100 : self.cost_list.pop(0)
+            np.savetxt('live_variable/cost.csv', [self.cost_list], delimiter=',', fmt='%.3f')
+            
+            # Save best GRF
+            np.savetxt("live_variable/F_best_FL.csv", F_star_lw[0,0,:,:].cpu().numpy(), delimiter=",")
+            np.savetxt("live_variable/F_best_FR.csv", F_star_lw[0,1,:,:].cpu().numpy(), delimiter=",")
+            np.savetxt("live_variable/F_best_RL.csv", F_star_lw[0,2,:,:].cpu().numpy(), delimiter=",")
+            np.savetxt("live_variable/F_best_RR.csv", F_star_lw[0,3,:,:].cpu().numpy(), delimiter=",")
 
         # Update previous best solution
         self.f_best, self.d_best, self.p_best, self.F_best = f_star, d_star, p_star_lw, F_star_lw
-        self.f_best, self.d_best, self.p_best, self.F_best = self.shift_actions(f=self.f_best, d=self.d_best, p=self.p_best, F=self.F_best)
+        # self.f_best, self.d_best, self.p_best, self.F_best = self.shift_actions(f=self.f_best, d=self.d_best, p=self.p_best, F=self.F_best)
 
         # reset the delta of the actions if contact ended (ie. started swing phase)
         lift_off_mask = ((c_prev[:,:] == 1) * (c_star[:,:,0] == 0)) # shape (1,num_legs) # /!\ c_prev is incremented with sim_dt, while c_star with mpc_dt : Thus, 
         self.F_best[lift_off_mask] = 0.0
-        self.F_best[lift_off_mask,:,2] = (self.robot_mass*9.81)/2 #(torch.sum(c_star[:,:,0]+1).clamp(min=1))
-        print('lift off mask', lift_off_mask)
-
-        # # Retrive action to be applied at next time step
-        # # p : Foot touch Down
-        # if   self.cfg.parametrization_p == 'cubic spline':
-        #     p0_star_lw = p_star_lw[...,1]
-        # elif self.cfg.parametrization_p == 'discrete':
-        #     p0_star_lw = p_star_lw[...,0]
-
-        # # F : GRF
-        # if   self.cfg.parametrization_F == 'cubic spline':
-        #     F0_star_lw = F_star_lw[...,1]
-        # elif self.cfg.parametrization_F == 'discrete':
-        #     F0_star_lw = F_star_lw[...,0]
+        # self.F_best[lift_off_mask,:,2] = (self.robot_mass*9.81)/2 #(torch.sum(c_star[:,:,0]+1).clamp(min=1))
+        # print('lift off mask', lift_off_mask)
 
         # Retrive action to be applied at next time step
         p0_star_lw = self.interpolation_p(parameters=p_star_lw, step=0, horizon=self.sampling_horizon) # shape(1, num_legs, 3)
         F0_star_lw = self.interpolation_F(parameters=F_star_lw, step=0, horizon=self.sampling_horizon) # shape(1, num_legs, 3)
 
+        # Print difference with RL warm start
         if self.optimize_f : print('f - cum. diff. : %3.2f' % torch.sum(torch.abs(f_star - f_samples[0,...])))
         if self.optimize_d : print('d - cum. diff. : %3.2f' % torch.sum(torch.abs(d_star - d_samples[0,...])))
         if self.optimize_p : print('p - cum. diff. : %3.2f' % torch.sum(torch.abs(p_star_lw - p_lw_samples[0,...])))
         if self.optimize_F : print('F - cum. diff. : %5.1f' % torch.sum(torch.abs(F_star_lw - F_lw_samples[0,...])))
 
         # Add gravity compensation
-        # F0_star_lw -= c_star[:,:,0].unsqueeze(-1) * self.gravity_lw.unsqueeze(0).unsqueeze(0) * self.robot_mass / torch.sum(c_star[:,:,0].unsqueeze(0).unsqueeze(-1)) # shape(1, num_legs, 3)
+        F0_star_lw -= c_star[:,:,0].unsqueeze(-1) * self.gravity_lw.unsqueeze(0).unsqueeze(0) * self.robot_mass / torch.sum(c_star[:,:,0].unsqueeze(0).unsqueeze(-1)) # shape(1, num_legs, 3)
+
+        # Enforce force constraints (Friction cone constraints)
+        F0_star_lw = self.enforce_friction_cone_constraints_torch(F=F0_star_lw, mu=self.mu)                           # shape(num_samples, num_legs, 3)
 
         return f_star, d_star, p0_star_lw, F0_star_lw
 
@@ -1237,7 +1258,7 @@ class SamplingOptimizer():
         new_phase_samples = new_phases_samples[..., 0]
 
         # Make comparaison to return discret contat sequence : c = 1 if phase < d, 0 otherwise
-        #(samples, legs, sampling_horizon) <= (samples, legs, 1) -> shape(num_samples, num_legs, sampling_horizon)
+        # (samples, legs, sampling_horizon) <= (samples, legs, 1) -> shape(num_samples, num_legs, sampling_horizon)
         c_samples = new_phases_samples <= d_samples.unsqueeze(-1)
 
         return c_samples, new_phase_samples
@@ -1291,7 +1312,7 @@ class SamplingOptimizer():
             contact = c_samples[:,:,i]                                                                                          # shape(num_samples, num_legs)
 
             # Add gravity compensation
-            # input['F_lw'] -= contact.unsqueeze(-1) * (self.gravity_lw.unsqueeze(0).unsqueeze(0) * self.robot_mass) / torch.sum(contact, dim=1).unsqueeze(-1).unsqueeze(-1)     
+            input['F_lw'] -= contact.unsqueeze(-1) * (self.gravity_lw.unsqueeze(0).unsqueeze(0) * self.robot_mass) / torch.sum(contact, dim=1).unsqueeze(-1).unsqueeze(-1)      
 
             # Enforce force constraints (Friction cone constraints)
             input['F_lw'] = self.enforce_friction_cone_constraints_torch(F=input['F_lw'], mu=self.mu)                           # shape(num_samples, num_legs, 3)
@@ -1403,8 +1424,8 @@ class SamplingOptimizer():
         # Clip p - is already in lw frame... can't clip it in this frame
         # ...
 
-        # Clip F
-        F_lw_samples[:,:,2,:] = F_lw_samples[:,:,2,:].clamp(min=self.F_z_min, max=self.F_z_max) # TODO This clip also spline param 0 and 3, which may be restrictive
+        # Clip F - /!\ Can't work if we are sampling over a delta ! Must be after the gravity compensation /!\
+        # F_lw_samples[:,:,2,:] = F_lw_samples[:,:,2,:].clamp(min=self.F_z_min, max=self.F_z_max) # TODO This clip also spline param 0 and 3, which may be restrictive
 
 
         # --- Step 2 : Add Constraints
@@ -1412,7 +1433,7 @@ class SamplingOptimizer():
         # p_lw_samples[:,:,2,:] = 0.0*torch.ones_like(p_lw_samples[:,:,2,:])
       
         # F : Ensure Friction Cone constraints (Bounding spline means quasi bounding trajectory)
-        F_lw_samples = self.enforce_friction_cone_constraints_torch(F=F_lw_samples, mu=self.mu)
+        # F_lw_samples = self.enforce_friction_cone_constraints_torch(F=F_lw_samples, mu=self.mu)
 
 
         return f_samples, d_samples, p_lw_samples, F_lw_samples

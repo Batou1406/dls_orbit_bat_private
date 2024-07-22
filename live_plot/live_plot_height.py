@@ -5,8 +5,8 @@ import os
 
 # File paths
 file_paths = {
-    'height': 'height.csv',
-    'height_ref': 'height_ref.csv'
+    'height': 'live_variable/height.csv',
+    'height_ref': 'live_variable/height_ref.csv'
 }
 
 # Initialize the plot

@@ -9,7 +9,7 @@ print(matplotlib.get_backend())
 
 # File paths
 file_paths = {
-    'cost': 'cost.csv',
+    'cost': 'live_variable/cost.csv',
 }
 
 # Initialize the plot
