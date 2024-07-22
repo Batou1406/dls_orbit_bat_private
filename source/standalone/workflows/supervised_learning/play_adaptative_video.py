@@ -1,17 +1,15 @@
-# Copyright (c) 2022-2024, The lab Project Developers.
+# Copyright (c) 2022-2024, The LAB Project Developers.
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Script to play a checkpoint if an RL agent from RSL-RL."""
+"""Script to generate a dataset for supervised learning with RL agent from RSL-RL. 
+The action space consists of multiple actions of the original environment"""
 
 from __future__ import annotations
 
 """Launch Isaac Sim Simulator first."""
-
-
 import argparse
-
 from omni.isaac.lab.app import AppLauncher
 
 # local imports
@@ -19,13 +17,18 @@ import cli_args  # isort: skip
 
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Train an RL agent with RSL-RL.")
-parser.add_argument("--cpu", action="store_true", default=False, help="Use CPU pipeline.")
-parser.add_argument(
-    "--disable_fabric", action="store_true", default=False, help="Disable fabric and use USD I/O operations."
-)
-parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
-parser.add_argument("--task", type=str, default=None, help="Name of the task.")
-parser.add_argument("--seed", type=int, default=None, help="Seed used for the environment")
+parser.add_argument("--cpu", action="store_true",   default=False,                                  help="Use CPU pipeline.")
+parser.add_argument("--disable_fabric", action="store_true", default=False,                         help="Disable fabric and use USD I/O operations.")
+parser.add_argument("--num_envs", type=int,         default=1,                                      help="Number of environments to simulate.")
+parser.add_argument("--task", type=str,             default='Isaac-Model-Based-Base-Aliengo-v0',    help="Name of the task.")
+parser.add_argument("--seed", type=int,             default=None,                                   help="Seed used for the environment")
+# parser.add_argument("--controller_name", type=str,  default='aliengo_model_based_base',             help="Name of the controller")
+parser.add_argument("--controller_name", type=str,  default='Isaac-Model-Based-Base-Aliengo-v0',             help="Name of the controller")
+# parser.add_argument("--model_name", type=str,       default='baseTaskNoise5ActGood1/model1',   help="Name of the model to load (in /model/controller/)")
+# parser.add_argument("--model_name", type=str,       default='baseGiulio2/model1',   help="Name of the model to load (in /model/controller/)")
+# parser.add_argument("--model_name", type=str,       default='test1/modelDagger1',   help="Name of the model to load (in /model/controller/)")
+parser.add_argument("--model_name", type=str,       default='goodPolicy1/dagger50hz4Act',   help="Name of the model to load (in /model/controller/)")
+
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
 # append AppLauncher cli args
@@ -41,21 +44,35 @@ simulation_app = app_launcher.app
 import gymnasium as gym
 import os
 import torch
-import random
+import torch.distributions.constraints
 
 from rsl_rl.runners import OnPolicyRunner
 
-# import omni.isaac.contrib_tasks  # noqa: F401
 import omni.isaac.lab_tasks  # noqa: F401
 from omni.isaac.lab_tasks.utils import get_checkpoint_path, parse_env_cfg
-from omni.isaac.lab_tasks.utils.wrappers.rsl_rl import (
-    RslRlOnPolicyRunnerCfg,
-    RslRlVecEnvWrapper,
-    export_policy_as_onnx,
-)
+from omni.isaac.lab_tasks.utils.wrappers.rsl_rl import RslRlVecEnvWrapper
+
+from train import Model
+
+import matplotlib.pyplot as plt
+
+
+def infer_input_output_sizes(state_dict):
+    # Find the first layer's weight (input size)
+    first_layer_key = next(iter(state_dict.keys()))
+    input_size = state_dict[first_layer_key].shape[1]
+    
+    # Find the last layer's weight (output size)
+    last_layer_key = list(state_dict.keys())[-2]  # Assuming the last layer is a Linear layer with weights and biases
+    output_size = state_dict[last_layer_key].shape[0]
+    
+    return input_size, output_size
+
+
 
 from omni.isaac.lab.envs import ManagerBasedRLEnv
 import math
+import random
 def move_camera(env: ManagerBasedRLEnv, w: float):
     """ Update default cam eye to rotate arround the target"""
 
@@ -106,46 +123,52 @@ def change_camera_target(env: ManagerBasedRLEnv):
     # Update the target index of the camera
     env.viewport_camera_controller.cfg.env_index = new_robot_index
 
+""" --- Main --- """
 def main():
     """Play with RSL-RL agent."""
     # parse configuration
-    env_cfg = parse_env_cfg(
-        args_cli.task, use_gpu=not args_cli.cpu, num_envs=args_cli.num_envs, use_fabric=not args_cli.disable_fabric
-    )
-    agent_cfg: RslRlOnPolicyRunnerCfg = cli_args.parse_rsl_rl_cfg(args_cli.task, args_cli)
+    env_cfg = parse_env_cfg(args_cli.task, use_gpu=not args_cli.cpu, num_envs=args_cli.num_envs, use_fabric=not args_cli.disable_fabric)
+    # agent_cfg: RslRlOnPolicyRunnerCfg = cli_args.parse_rsl_rl_cfg(args_cli.task, args_cli)
 
     # create isaac environment
-    env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array")
+    env = gym.make(args_cli.task, cfg=env_cfg,  render_mode="rgb_array")
 
     video_kwargs = {
         "video_folder": "videos",
         "name_prefix" : args_cli.task,
-        "step_trigger": lambda step: step == 11,
-        "video_length": 20,
+        "step_trigger": lambda step: step == 51,
+        "video_length": 600,
     }
     env = gym.wrappers.RecordVideo(env, **video_kwargs)
 
-    # wrap around environment for rsl-rl
-    env = RslRlVecEnvWrapper(env)
+    # wrap around environment for rsl-rl -> usefull to get the properties and method 
+    env = RslRlVecEnvWrapper(env) 
 
-    # specify directory for logging experiments
-    log_root_path = os.path.join("logs", "rsl_rl", agent_cfg.experiment_name)
-    log_root_path = os.path.abspath(log_root_path)
-    print(f"[INFO] Loading experiment from directory: {log_root_path}")
-    resume_path = get_checkpoint_path(log_root_path, agent_cfg.load_run, agent_cfg.load_checkpoint)
-    print(f"[INFO]: Loading model checkpoint from: {resume_path}")
+    # Construct the model path
+    model_path = 'model/' + args_cli.controller_name + '/' + args_cli.model_name + '.pt'
 
-    # load previously trained model
-    ppo_runner = OnPolicyRunner(env, agent_cfg.to_dict(), log_dir=None, device=agent_cfg.device)
-    ppo_runner.load(resume_path)
-    print(f"[INFO]: Loading model checkpoint from: {resume_path}")
+    # Load the state dictionary and retrieve input and output size from the network
+    model_as_state_dict = torch.load(model_path)
+    input_size, output_size = infer_input_output_sizes(model_as_state_dict)
 
-    # obtain the trained policy for inference
-    policy = ppo_runner.get_inference_policy(device=env.unwrapped.device)
+    # Load the model
+    policy = Model(input_size, output_size)
+    policy.load_state_dict(torch.load(model_path))
+    policy = policy.to(env.device)
 
-    # export policy to onnx
-    export_model_dir = os.path.join(os.path.dirname(resume_path), "exported")
-    export_policy_as_onnx(ppo_runner.alg.actor_critic, export_model_dir, filename="policy.onnx")
+    # From model output and env actions, retrieve the buffer size
+    # buffer_size = output_size // env.num_actions 
+    buffer_size = (output_size - 8) // 20
+
+    # Print
+    print('\nModel : ',args_cli.model_name)
+    print('Task  : ',args_cli.controller_name)
+    print('Path  : ', model_path,'\n')
+    print('Model Input  size :',input_size)
+    print('Model Output size :',output_size)
+    print('   Buffer    size :',buffer_size)
+    print(' Env  Action size :',env.num_actions)
+    print(' Env   Obs   size :',env.num_obs,'\n')
 
     # variable for moving target
     update_target = 0
@@ -153,14 +176,16 @@ def main():
 
     # reset environment
     obs, _ = env.get_observations()
+
     # simulate environment
     while simulation_app.is_running():
         # run everything in inference mode
         with torch.inference_mode():
             # agent stepping
             actions = policy(obs)
+
             # env stepping
-            obs, _, _, _ = env.step(actions)
+            obs, _, _, _ = env.step(actions) 
 
             # Update the camera tracking, camera angular speed in radian per second
             move_camera(env=env.unwrapped, w=w)
@@ -168,7 +193,13 @@ def main():
             update_target += 1
             if update_target == 80:
                 update_target = 0
-                change_camera_target(env=env.unwrapped)
+                # change_camera_target(env=env.unwrapped)
+
+            if not (torch.isfinite(obs).all()):
+                print('Problem with NaN value in observation')
+                obs, _ = env.reset()
+
+
 
 
     # close the simulator

@@ -254,7 +254,7 @@ class BatManagerBasedRLEnvWindow(BaseEnvWindow):
                     omni.isaac.ui.ui_utils.add_line_rect_flourish()
 
                 # create a Dropdown menu to select the sampling law
-                viewer_follow_cfg = {
+                sampling_law_cfg = {
                     "label": "Sampling Law",
                     "type": "dropdown",
                     "default_val": {'normal':0, 'uniform':1}[self.modelBaseAction.cfg.optimizerCfg.sampling_law],
@@ -262,7 +262,7 @@ class BatManagerBasedRLEnvWindow(BaseEnvWindow):
                     "tooltip": "The sampling to generate samples from",
                     "on_clicked_fn": self._set_sampling_law,
                 }
-                self.ui_window_elements["viewer_follow"] = omni.isaac.ui.ui_utils.dropdown_builder(**viewer_follow_cfg)
+                self.ui_window_elements["sampling_law"] = omni.isaac.ui.ui_utils.dropdown_builder(**sampling_law_cfg)
 
                 # Create a button to enable or not sample clipping
                 with omni.ui.HStack():
@@ -420,7 +420,7 @@ class BatManagerBasedRLEnvWindow(BaseEnvWindow):
     def _set_debug_gait(self, value: str): 
         # value is modified and comes with a capital letter first
         if   value == 'None'        : self.modelBaseAction.debug_apply_action_status = None
-        if   value == 'Full_Stance' : self.modelBaseAction.debug_apply_action_status = 'full_stance'
+        if   value == 'Full Stance' : self.modelBaseAction.debug_apply_action_status = 'full_stance'
         if   value == 'Trot'        : self.modelBaseAction.debug_apply_action_status = 'trot'
 
     def _set_velocity_fn(self, model: omni.ui.SimpleFloatModel):
