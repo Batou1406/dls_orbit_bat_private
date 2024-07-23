@@ -374,7 +374,7 @@ class RewardsCfg:
     penalty_stance_foot_vel = RewTerm(func=mdp.penalize_foot_in_contact_displacement_l2, weight=-1.0)
     penalty_CoT             = RewTerm(func=mdp.penalize_cost_of_transport, weight=-0.1)
     penalty_close_feet      = RewTerm(func=mdp.penalize_close_feet, weight=-1e-3, params={"threshold": 0.05})
-    penalize_foot_trac_err  = RewTerm(func=mdp.penalize_foot_trajectory_tracking_error, weight=0.01)
+    penalize_foot_trac_err  = RewTerm(func=mdp.penalize_foot_trajectory_tracking_error, weight=-0.01)
 
 
     # -- Model based penalty : Positive weight -> penalty is already negative
