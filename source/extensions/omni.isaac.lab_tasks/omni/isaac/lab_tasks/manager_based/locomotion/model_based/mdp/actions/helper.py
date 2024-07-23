@@ -101,3 +101,52 @@ def rotation_matrix_from_w_to_b(euler_xyz_angle: torch.Tensor) -> torch.Tensor:
     rotation_matrix_from_w_to_b[:, 2, 2] = cos_roll*cos_pitch                               # shape(batch)
 
     return rotation_matrix_from_w_to_b
+
+
+@torch.jit.script
+def gait_generator(f: torch.Tensor, d: torch.Tensor, phase: torch.Tensor, horizon: int, dt: float) -> tuple[torch.Tensor, torch.Tensor]:
+    """ Implement a gait generator that return a contact sequence given a leg frequency and a leg duty cycle
+    Increment phase by dt*f 
+    restart if needed
+    return contact : 1 if phase < duty cyle, 0 otherwise  
+    c == 1 : Leg is in contact (stance)
+    c == 0 : Leg is in swing
+
+    Note:
+        No properties used, no for loop : purely functional -> made to be jitted
+        parallel_rollout : this is optional, it will work without the parallel rollout dimension
+
+    Args:
+        - f     (Tensor): Leg frequency samples                 of shape(batch, num_legs)
+        - d     (Tensor): Stepping duty cycle samples in [0,1]  of shape(batch, num_legs)
+        - phase (Tensor): phase of leg samples in [0,1]         of shape((optionnally batch), num_legs)
+        - horizon  (int): Time horizon for the contact sequence
+
+    Returns:
+        - c     (t.bool): Foot contact sequence samples         of shape(batch, num_legs, sampling_horizon)
+        - phase (Tensor): The phase samples updated by 1 dt     of shape(batch, num_legs)
+    """
+    
+    # Increment phase of f*dt: new_phases[0] : incremented of 1 step, new_phases[1] incremented of 2 steps, etc. without a for loop.
+    # new_phases = phase + f*dt*[1,2,...,sampling_horizon]
+    #                    (1 or n, num_legs, 1)                 + (samples, legs, 1)       * (1, 1, sampling_horizon) -> shape(samples, legs, sampling_horizon)
+    if phase.dim() == 1 : 
+        phase = phase.unsqueeze(0)
+    new_phases = phase.unsqueeze(-1) + (f.unsqueeze(-1) * torch.linspace(start=1, end=horizon, steps=horizon, device=f.device).unsqueeze(0).unsqueeze(1)*dt)
+
+    # Make the phases circular (like sine) (% is modulo operation)
+    new_phases = new_phases%1
+
+    # Save first phase -> shape(num_samples, num_legs)
+    new_phase = new_phases[..., 0]
+
+    # Make comparaison to return discret contat sequence : c = 1 if phase < d, 0 otherwise
+    # (samples, legs, sampling_horizon) <= (samples, legs, 1) -> shape(num_samples, num_legs, sampling_horizon)
+    c = new_phases <= d.unsqueeze(-1)
+
+    return c, new_phase
+
+
+
+
+

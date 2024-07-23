@@ -1346,7 +1346,7 @@ class ModelBaseAction(ActionTerm):
         # angle : u dot v = cos(angle) -> angle = acos(u*v) : for unit vector # Need to take the opposite angle in order to make appropriate rotation
         angle = -torch.acos(torch.tensordot(normalize_F, torch.tensor([1.0,0.0,0.0], device=self.device), dims=1)) # shape(batch*num_legs, 3) -> (batch*num_legs)
         # Axis : Cross product between u^v (for unit vectors)
-        axis = torch.cross(normalize_F, torch.tensor([1.0,0.0,0.0], device=self.device).unsqueeze(0).expand(normalize_F.shape))
+        axis = torch.cross(normalize_F, torch.tensor([1.0,0.0,0.0], device=self.device).unsqueeze(0).expand(normalize_F.shape),  dim=1)
         marker_orientations = quat_from_angle_axis(angle=angle, axis=axis)
 
         # Scale GRF

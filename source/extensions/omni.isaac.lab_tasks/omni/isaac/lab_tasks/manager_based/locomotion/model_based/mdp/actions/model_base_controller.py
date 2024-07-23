@@ -14,7 +14,7 @@ import omni.isaac.lab.utils.math as math_utils
 from omni.isaac.lab.assets.articulation import Articulation
 from omni.isaac.lab.envs import ManagerBasedRLEnv
 
-from .helper import inverse_conjugate_euler_xyz_rate_matrix, rotation_matrix_from_w_to_b
+from .helper import inverse_conjugate_euler_xyz_rate_matrix, rotation_matrix_from_w_to_b, gait_generator
 
 
 class baseController(ABC):
@@ -35,8 +35,6 @@ class baseController(ABC):
         - reset(env_ids) : Reset controller variables upon environment reset if needed
         - process_latent_variable(f, d, p, F) -> p*, F*, c*, pt*
         - compute_control_output(F0*, c0*, pt01*) -> T
-        - gait_generator(f, d, phase) -> c, new_phase
-
     """
 
     def __init__(self, verbose_md, device, num_envs, num_legs, dt_out, decimation, dt_in):
@@ -136,7 +134,6 @@ class modelBaseController(baseController):
         - reset(env_ids) : Reset controller variables upon environment reset if needed                                  Inherited from baseController (not implemented)
         - process_latent_variable(f, d, p, F) -> p*, F*, c*, pt*                                                       Inherited from baseController (not implemented)
         - compute_control_output(F0*, c0*, pt01*) -> T                                                                  Inherited from baseController (not implemented)
-        - gait_generator(f, d, phase) -> c, new_phase                                                                   Inherited from baseController (not implemented)
         - full_swing_trajectory_generator(p_b, c, decimation) -> pt_b
         - swing_leg_controller(c0*, pt01*) -> T_swing
         - stance_leg_controller(F0*, c0*) -> T_stance
@@ -226,7 +223,8 @@ class modelBaseController(baseController):
         f_star, d_star, p0_star_lw, F0_star_lw = f, d, p_lw[:,:,:,0], F_lw[:,:,:,0]
 
         # Compute the contact sequence and update the phase
-        c_star, self.phase = self.gait_generator(f=f_star, d=d_star, phase=self.phase, horizon=1, dt=self._dt_out)
+        # c_star, self.phase = self.gait_generator(f=f_star, d=d_star, phase=self.phase, horizon=1, dt=self._dt_out)
+        c_star, self.phase = gait_generator(f=f_star, d=d_star, phase=self.phase, horizon=1, dt=self._dt_out)
         c0_star = c_star[:,:,0] # shape (batch_size, num_legs)
 
         # Generate the swing trajectory
@@ -235,44 +233,44 @@ class modelBaseController(baseController):
         return f_star, d_star, c0_star, p0_star_lw, F0_star_lw, pt_star_lw, full_pt_lw
     
 
-    def gait_generator(self, f: torch.Tensor, d: torch.Tensor, phase: torch.Tensor, horizon: int, dt) -> tuple[torch.Tensor, torch.Tensor]:
-        """ Implement a gait generator that return a contact sequence given a leg frequency and a leg duty cycle
-        Increment phase by dt*f 
-        restart if needed
-        return contact : 1 if phase < duty cyle, 0 otherwise  
-        c == 1 : Leg is in contact (stance)
-        c == 0 : Leg is in swing
+    # def gait_generator(self, f: torch.Tensor, d: torch.Tensor, phase: torch.Tensor, horizon: int, dt) -> tuple[torch.Tensor, torch.Tensor]:
+    #     """ Implement a gait generator that return a contact sequence given a leg frequency and a leg duty cycle
+    #     Increment phase by dt*f 
+    #     restart if needed
+    #     return contact : 1 if phase < duty cyle, 0 otherwise  
+    #     c == 1 : Leg is in contact (stance)
+    #     c == 0 : Leg is in swing
 
-        Note:
-            No properties used, no for loop : purely functional -> made to be jitted
-            parallel_rollout : this is optional, it will work without the parallel rollout dimension
+    #     Note:
+    #         No properties used, no for loop : purely functional -> made to be jitted
+    #         parallel_rollout : this is optional, it will work without the parallel rollout dimension
 
-        Args:
-            - f   (torch.Tensor): Leg frequency                         of shape(batch_size, num_legs)
-            - d   (torch.Tensor): Stepping duty cycle in [0,1]          of shape(batch_size, num_legs)
-            - phase (tch.Tensor): phase of leg in [0,1]                 of shape(batch_size, num_legs)
-            - horizon (int): Time horizon for the contact sequence
+    #     Args:
+    #         - f   (torch.Tensor): Leg frequency                         of shape(batch_size, num_legs)
+    #         - d   (torch.Tensor): Stepping duty cycle in [0,1]          of shape(batch_size, num_legs)
+    #         - phase (tch.Tensor): phase of leg in [0,1]                 of shape(batch_size, num_legs)
+    #         - horizon (int): Time horizon for the contact sequence
 
-        Returns:
-            - c     (torch.bool): Foot contact sequence                 of shape(batch_size, num_legs, horizon)
-            - phase (tch.Tensor): The phase updated by one time steps   of shape(batch_size, num_legs)
-        """
+    #     Returns:
+    #         - c     (torch.bool): Foot contact sequence                 of shape(batch_size, num_legs, horizon)
+    #         - phase (tch.Tensor): The phase updated by one time steps   of shape(batch_size, num_legs)
+    #     """
         
-        # Increment phase of f*dt: new_phases[0] : incremented of 1 step, new_phases[1] incremented of 2 steps, etc. without a for loop.
-        # new_phases = phase + f*dt*[1,2,...,horizon]
-        # phase and f must be exanded from (batch_size, num_legs) to (batch_size, num_legs, horizon) in order to perform the operations
-        new_phases = phase.unsqueeze(-1).expand(*[-1] * len(phase.shape),horizon) + f.unsqueeze(-1).expand(*[-1] * len(f.shape),horizon)*torch.linspace(start=1, end=horizon, steps=horizon, device=self._device)*dt
+    #     # Increment phase of f*dt: new_phases[0] : incremented of 1 step, new_phases[1] incremented of 2 steps, etc. without a for loop.
+    #     # new_phases = phase + f*dt*[1,2,...,horizon]
+    #     # phase and f must be exanded from (batch_size, num_legs) to (batch_size, num_legs, horizon) in order to perform the operations
+    #     new_phases = phase.unsqueeze(-1).expand(*[-1] * len(phase.shape),horizon) + f.unsqueeze(-1).expand(*[-1] * len(f.shape),horizon)*torch.linspace(start=1, end=horizon, steps=horizon, device=self._device)*dt
 
-        # Make the phases circular (like sine) (% is modulo operation)
-        new_phases = new_phases%1
+    #     # Make the phases circular (like sine) (% is modulo operation)
+    #     new_phases = new_phases%1
 
-        # Save first phase
-        new_phase = new_phases[..., 0]
+    #     # Save first phase
+    #     new_phase = new_phases[..., 0]
 
-        # Make comparaison to return discret contat sequence : c = 1 if phase < d, 0 otherwise
-        c = new_phases <= d.unsqueeze(-1).expand(*[-1] * len(d.shape), horizon)
+    #     # Make comparaison to return discret contat sequence : c = 1 if phase < d, 0 otherwise
+    #     c = new_phases <= d.unsqueeze(-1).expand(*[-1] * len(d.shape), horizon)
 
-        return c, new_phase
+    #     return c, new_phase
 
 
     def full_swing_trajectory_generator(self, p_lw: torch.Tensor, c0: torch.Tensor, f: torch.Tensor, d: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
@@ -655,7 +653,8 @@ class samplingController(modelBaseController):
 
 
         # Compute the contact sequence and update the phase
-        c_star, self.phase = self.gait_generator(f=f_star, d=d_star, phase=self.phase, horizon=1, dt=self._dt_out)
+        # c_star, self.phase = self.gait_generator(f=f_star, d=d_star, phase=self.phase, horizon=1, dt=self._dt_out)
+        c_star, self.phase = gait_generator(f=f_star, d=d_star, phase=self.phase, horizon=1, dt=self._dt_out)
         c0_star     = c_star[:,:,0] # shape (batch_size, num_legs)
         self.c_prev = c_star[:,:,0] # shape (batch_size, num_legs)
 
@@ -827,9 +826,8 @@ class SamplingOptimizer():
             f_samples, d_samples, p_lw_samples, F_lw_samples = self.generate_samples(iter=i, f=f, d=d, p_lw=p_lw, F_lw=F_lw, height_map=height_map)
 
             # --- Step 2 : Given f and d samples -> generate the contact sequence for the samples
-            c_samples, new_phase = self.gait_generator(f_samples=f_samples, d_samples=d_samples, phase=phase.squeeze(0), sampling_horizon=self.sampling_horizon, dt=self.dt)
-
-            # F_lw_samples[:,:,2,:] = F_lw_samples[:,:,2,:] + (c_samples.unsqueeze(-1)) * ((self.robot_mass*9.81) / torch.sum(c_samples, dim=1).unsqueeze(1))
+            # c_samples, new_phase = self.gait_generator(f_samples=f_samples, d_samples=d_samples, phase=phase.squeeze(0), sampling_horizon=self.sampling_horizon, dt=self.dt)
+            c_samples, new_phase = gait_generator(f=f_samples, d=d_samples, phase=phase.squeeze(0), horizon=self.sampling_horizon, dt=self.dt)
 
             # --- Step 2 : prepare the variables : convert from torch.Tensor to Jax
             initial_state, reference_seq_state, reference_seq_input_samples, action_param_samples = self.prepare_variable_for_compute_rollout(env=env, c_samples=c_samples, p_lw_samples=p_lw_samples, F_lw_samples=F_lw_samples, feet_in_contact=c_prev[0,])
@@ -1235,45 +1233,45 @@ class SamplingOptimizer():
         return samples
 
 
-    def gait_generator(self, f_samples: torch.Tensor, d_samples: torch.Tensor, phase: torch.Tensor, sampling_horizon: int, dt) -> tuple[torch.Tensor, torch.Tensor]:
-        """ Implement a gait generator that return a contact sequence given a leg frequency and a leg duty cycle
-        Increment phase by dt*f 
-        restart if needed
-        return contact : 1 if phase < duty cyle, 0 otherwise  
-        c == 1 : Leg is in contact (stance)
-        c == 0 : Leg is in swing
+    # def gait_generator(self, f_samples: torch.Tensor, d_samples: torch.Tensor, phase: torch.Tensor, sampling_horizon: int, dt) -> tuple[torch.Tensor, torch.Tensor]:
+    #     """ Implement a gait generator that return a contact sequence given a leg frequency and a leg duty cycle
+    #     Increment phase by dt*f 
+    #     restart if needed
+    #     return contact : 1 if phase < duty cyle, 0 otherwise  
+    #     c == 1 : Leg is in contact (stance)
+    #     c == 0 : Leg is in swing
 
-        Note:
-            No properties used, no for loop : purely functional -> made to be jitted
-            parallel_rollout : this is optional, it will work without the parallel rollout dimension
+    #     Note:
+    #         No properties used, no for loop : purely functional -> made to be jitted
+    #         parallel_rollout : this is optional, it will work without the parallel rollout dimension
 
-        Args:
-            - f_samples     (Tensor): Leg frequency samples                 of shape(num_samples, num_legs)
-            - d_samples     (Tensor): Stepping duty cycle samples in [0,1]  of shape(num_samples, num_legs)
-            - phase         (Tensor): phase of leg samples in [0,1]         of shape(num_legs)
-            - sampling_horizon (int): Time horizon for the contact sequence
+    #     Args:
+    #         - f_samples     (Tensor): Leg frequency samples                 of shape(num_samples, num_legs)
+    #         - d_samples     (Tensor): Stepping duty cycle samples in [0,1]  of shape(num_samples, num_legs)
+    #         - phase         (Tensor): phase of leg samples in [0,1]         of shape(num_legs)
+    #         - sampling_horizon (int): Time horizon for the contact sequence
 
-        Returns:
-            - c_samples     (t.bool): Foot contact sequence samples         of shape(num_samples, num_legs, sampling_horizon)
-            - phase_samples (Tensor): The phase samples updated by 1 dt     of shape(num_samples, num_legs)
-        """
+    #     Returns:
+    #         - c_samples     (t.bool): Foot contact sequence samples         of shape(num_samples, num_legs, sampling_horizon)
+    #         - phase_samples (Tensor): The phase samples updated by 1 dt     of shape(num_samples, num_legs)
+    #     """
         
-        # Increment phase of f*dt: new_phases[0] : incremented of 1 step, new_phases[1] incremented of 2 steps, etc. without a for loop.
-        # new_phases = phase + f*dt*[1,2,...,sampling_horizon]
-        #            (1, num_legs, 1)                  +  (samples, legs, 1)      * (1, 1, sampling_horizon) -> shape(samples, legs, sampling_horizon)
-        new_phases_samples = phase.unsqueeze(0).unsqueeze(-1) + (f_samples.unsqueeze(-1) * torch.linspace(start=1, end=sampling_horizon, steps=sampling_horizon, device=self.device).unsqueeze(0).unsqueeze(1)*dt)
+    #     # Increment phase of f*dt: new_phases[0] : incremented of 1 step, new_phases[1] incremented of 2 steps, etc. without a for loop.
+    #     # new_phases = phase + f*dt*[1,2,...,sampling_horizon]
+    #     #            (1, num_legs, 1)                  +  (samples, legs, 1)      * (1, 1, sampling_horizon) -> shape(samples, legs, sampling_horizon)
+    #     new_phases_samples = phase.unsqueeze(0).unsqueeze(-1) + (f_samples.unsqueeze(-1) * torch.linspace(start=1, end=sampling_horizon, steps=sampling_horizon, device=self.device).unsqueeze(0).unsqueeze(1)*dt)
 
-        # Make the phases circular (like sine) (% is modulo operation)
-        new_phases_samples = new_phases_samples%1
+    #     # Make the phases circular (like sine) (% is modulo operation)
+    #     new_phases_samples = new_phases_samples%1
 
-        # Save first phase -> shape(num_samples, num_legs)
-        new_phase_samples = new_phases_samples[..., 0]
+    #     # Save first phase -> shape(num_samples, num_legs)
+    #     new_phase_samples = new_phases_samples[..., 0]
 
-        # Make comparaison to return discret contat sequence : c = 1 if phase < d, 0 otherwise
-        # (samples, legs, sampling_horizon) <= (samples, legs, 1) -> shape(num_samples, num_legs, sampling_horizon)
-        c_samples = new_phases_samples <= d_samples.unsqueeze(-1)
+    #     # Make comparaison to return discret contat sequence : c = 1 if phase < d, 0 otherwise
+    #     # (samples, legs, sampling_horizon) <= (samples, legs, 1) -> shape(num_samples, num_legs, sampling_horizon)
+    #     c_samples = new_phases_samples <= d_samples.unsqueeze(-1)
 
-        return c_samples, new_phase_samples
+    #     return c_samples, new_phase_samples
 
 
     def compute_rollout(self, initial_state: dict, reference_seq_state: dict, reference_seq_input_samples: dict, action_param_samples: dict, c_samples: torch.Tensor) -> torch.Tensor:

@@ -221,7 +221,7 @@ def penalize_foot_in_contact_displacement_l2(env: ManagerBasedRLEnv, actionName:
     p_dot_w = torch.norm(robot.data.body_lin_vel_w[:, action.foot_idx,:], dim=2)
 
     # Retrieve which foot is in contact : True if foot in contact, False in in swing, shape (batch_size, num_legs)
-    in_contact = action.c_star[:,:,0] == 1
+    in_contact = action.c0_star == 1
 
     # Sum the foot velocity for only for legs in contact : shape(batch_size)
     penalty = torch.sum(p_dot_w * in_contact, dim=1)
@@ -454,4 +454,42 @@ def penalize_close_feet(env: ManagerBasedRLEnv, assetName: str="robot", threshol
         penalty = torch.sum(foot_distances_diag < threshold,dim=1).float()
 
     return penalty
+
+
+def penalize_foot_trajectory_tracking_error(env: ManagerBasedRLEnv, assetName: str="robot", actionName: str="model_base_variable", footName: str=".*foot"): 
+    """ Penalize for error between the desired foot touch down position and the actual foot touch down position (in the xy plane only)
+
+    Args :
+        assetName        (str): Name of the 'robot' in the scene manage
+        actionName       (str): Name of the action term (ModelBasedAction) in the action manager
+        footName         (str): Regex Epression to retrieve the foot indexes in the robot 'articulation'
+
+    Returns :
+        penalty (torch.Tensor): penalty term in [0, +inf]
+    """
+    # extract the used quantities (to enable type-hinting)
+    robot: Articulation = env.scene[assetName]
+    action: ModelBaseAction = env.action_manager.get_term(actionName)
+
+    # Retrieve the foot idx
+    foot_idx = robot.find_bodies(footName)[0]
+
+   # Retrieve foot position in local world frame
+    foot_xy_pos_lw = robot.data.body_pos_w[:,foot_idx,:2] - env.scene.env_origins[:,:2].unsqueeze(1)  # shape (num_envs, num_foot, 2)
+
+    # Retrieve foot desired trajectory in local world frame
+    pt0_star_xy_lw = action.pt_star_lw[:,:,:2,0] # shape (num_envs, num_foot, 2)
+
+    # Compute the penalty for the leg in swing
+    penalty = torch.sum((~action.c0_star) * torch.sum(torch.square(foot_xy_pos_lw - pt0_star_xy_lw), dim=-1), dim=-1) # shape (num_envs, num_foot, 2) -> (num_envs, num_foot) -> (num_envs)
+
+    return penalty
+
+
+
+
+
+
+
+
 
