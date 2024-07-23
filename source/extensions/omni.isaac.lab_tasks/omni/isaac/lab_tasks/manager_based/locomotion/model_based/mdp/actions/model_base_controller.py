@@ -14,7 +14,7 @@ import omni.isaac.lab.utils.math as math_utils
 from omni.isaac.lab.assets.articulation import Articulation
 from omni.isaac.lab.envs import ManagerBasedRLEnv
 
-from .helper import inverse_conjugate_euler_xyz_rate_matrix, rotation_matrix_from_w_to_b, gait_generator
+from .helper import inverse_conjugate_euler_xyz_rate_matrix, rotation_matrix_from_w_to_b, gait_generator, compute_cubic_spline, compute_discrete, normal_sampling, uniform_sampling
 
 
 class baseController(ABC):
@@ -223,7 +223,6 @@ class modelBaseController(baseController):
         f_star, d_star, p0_star_lw, F0_star_lw = f, d, p_lw[:,:,:,0], F_lw[:,:,:,0]
 
         # Compute the contact sequence and update the phase
-        # c_star, self.phase = self.gait_generator(f=f_star, d=d_star, phase=self.phase, horizon=1, dt=self._dt_out)
         c_star, self.phase = gait_generator(f=f_star, d=d_star, phase=self.phase, horizon=1, dt=self._dt_out)
         c0_star = c_star[:,:,0] # shape (batch_size, num_legs)
 
@@ -231,46 +230,6 @@ class modelBaseController(baseController):
         pt_star_lw, full_pt_lw = self.full_swing_trajectory_generator(p_lw=p0_star_lw, c0=c0_star, d=d_star, f=f_star)
 
         return f_star, d_star, c0_star, p0_star_lw, F0_star_lw, pt_star_lw, full_pt_lw
-    
-
-    # def gait_generator(self, f: torch.Tensor, d: torch.Tensor, phase: torch.Tensor, horizon: int, dt) -> tuple[torch.Tensor, torch.Tensor]:
-    #     """ Implement a gait generator that return a contact sequence given a leg frequency and a leg duty cycle
-    #     Increment phase by dt*f 
-    #     restart if needed
-    #     return contact : 1 if phase < duty cyle, 0 otherwise  
-    #     c == 1 : Leg is in contact (stance)
-    #     c == 0 : Leg is in swing
-
-    #     Note:
-    #         No properties used, no for loop : purely functional -> made to be jitted
-    #         parallel_rollout : this is optional, it will work without the parallel rollout dimension
-
-    #     Args:
-    #         - f   (torch.Tensor): Leg frequency                         of shape(batch_size, num_legs)
-    #         - d   (torch.Tensor): Stepping duty cycle in [0,1]          of shape(batch_size, num_legs)
-    #         - phase (tch.Tensor): phase of leg in [0,1]                 of shape(batch_size, num_legs)
-    #         - horizon (int): Time horizon for the contact sequence
-
-    #     Returns:
-    #         - c     (torch.bool): Foot contact sequence                 of shape(batch_size, num_legs, horizon)
-    #         - phase (tch.Tensor): The phase updated by one time steps   of shape(batch_size, num_legs)
-    #     """
-        
-    #     # Increment phase of f*dt: new_phases[0] : incremented of 1 step, new_phases[1] incremented of 2 steps, etc. without a for loop.
-    #     # new_phases = phase + f*dt*[1,2,...,horizon]
-    #     # phase and f must be exanded from (batch_size, num_legs) to (batch_size, num_legs, horizon) in order to perform the operations
-    #     new_phases = phase.unsqueeze(-1).expand(*[-1] * len(phase.shape),horizon) + f.unsqueeze(-1).expand(*[-1] * len(f.shape),horizon)*torch.linspace(start=1, end=horizon, steps=horizon, device=self._device)*dt
-
-    #     # Make the phases circular (like sine) (% is modulo operation)
-    #     new_phases = new_phases%1
-
-    #     # Save first phase
-    #     new_phase = new_phases[..., 0]
-
-    #     # Make comparaison to return discret contat sequence : c = 1 if phase < d, 0 otherwise
-    #     c = new_phases <= d.unsqueeze(-1).expand(*[-1] * len(d.shape), horizon)
-
-    #     return c, new_phase
 
 
     def full_swing_trajectory_generator(self, p_lw: torch.Tensor, c0: torch.Tensor, f: torch.Tensor, d: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
@@ -425,77 +384,6 @@ class modelBaseController(baseController):
 
         # Save variables
         self.p_lw_sim_prev = p_lw # Used in genereate trajectory
-
-        # ---- Plot Torques ----
-        # if c0_star[0,0]:
-        #     torque[0].append(T_stance.cpu()[0,0,0])
-        #     torque[1].append(T_stance.cpu()[0,0,1])
-        #     torque[2].append(T_stance.cpu()[0,0,2])
-        # if c0_star[0,1]:
-        #     torque[3].append(T_stance.cpu()[0,1,0])
-        #     torque[4].append(T_stance.cpu()[0,1,1])
-        #     torque[5].append(T_stance.cpu()[0,1,2])
-        # if c0_star[0,2]:
-        #     torque[6].append(T_stance.cpu()[0,2,0])
-        #     torque[7].append(T_stance.cpu()[0,2,1])
-        #     torque[8].append(T_stance.cpu()[0,2,2])
-        # if c0_star[0,3]:
-        #     torque[9].append(T_stance.cpu()[0,3,0])
-        #     torque[10].append(T_stance.cpu()[0,3,1])
-        #     torque[11].append(T_stance.cpu()[0,3,2])
-        #
-        # if len(torque[0]) == 1000:
-        #     row_labels = ['FL [Nm]', 'FR [Nm]', 'RL [Nm]', 'RR [Nm]']
-        #     col_labels = ['Hip', 'Thigh', 'Calf']
-        #     fig, axs = plt.subplots(4, 3,sharey='col')
-        #     for i, ax in enumerate(axs.flat):
-        #         ax.plot(torque[i])
-        #         if (i%3) == 0:
-        #             ax.set_ylabel(row_labels[i//3])
-        #         if i >=9 :
-        #             ax.set_xlabel(col_labels[i-9])
-        #     fig.suptitle('Robot\'s Joint Torque over time', fontsize=16)
-        #     for i in range(len(torque)):
-        #         print('%s %s - mean:%2.2f \t std:%.2f' % (row_labels[i//3],col_labels[i%3],np.mean(torque[i]),np.std(torque[i])))
-        #     # plt.show()
-        #     plt.savefig("mygraph.png")
-
-        # ---- plot swing tracking error ----
-        # pos_err_rmse = (pt_i_star_lw[:,:,0:3] - p_lw).pow(2).mean(dim=-1).sqrt()
-        # vel_err_rmse = (pt_i_star_lw[:,:,3:6] - p_dot_lw).pow(2).mean(dim=-1).sqrt()
-        # if c0_star[0,0]:
-        #     if pos_err_rmse[0,0] < 0.2:
-        #         pos_tracking_error[0].append(pos_err_rmse[0,0].cpu())
-        #         vel_tracking_error[0].append(vel_err_rmse[0,0].cpu())
-        # if c0_star[0,1]:
-        #     if pos_err_rmse[0,1] < 0.2:
-        #         pos_tracking_error[1].append(pos_err_rmse[0,1].cpu())
-        #         vel_tracking_error[1].append(vel_err_rmse[0,1].cpu())
-        # if c0_star[0,2]:
-        #     if pos_err_rmse[0,2] < 0.2:
-        #         pos_tracking_error[2].append(pos_err_rmse[0,2].cpu())
-        #         vel_tracking_error[2].append(vel_err_rmse[0,2].cpu())
-        # if c0_star[0,3]:
-        #     if pos_err_rmse[0,3] < 0.2:
-        #         pos_tracking_error[3].append(pos_err_rmse[0,3].cpu())
-        #         vel_tracking_error[3].append(vel_err_rmse[0,3].cpu())
-        # if len(pos_tracking_error[0]) == 1000:
-        #     row_labels = ['FL [Nm]', 'FR [Nm]', 'RL [Nm]', 'RR [Nm]']
-        #     col_labels = ['Position RMSE', 'Velocity RMSE']
-        #     fig, axs = plt.subplots(4, 2, figsize=(19.20,10.80))#,sharey='col')
-        #     for i, ax in enumerate(axs.flat):
-        #         if (i%2) == 0:
-        #             ax.set_ylabel(row_labels[i//3])
-        #             ax.plot(pos_tracking_error[i//2][10:])
-        #         else:
-        #             ax.plot(vel_tracking_error[(i//2)][10:])
-        #         if i >=6 :
-        #             ax.set_xlabel(col_labels[i-6])
-        #     fig.suptitle('Swing Tracking Error', fontsize=16)
-        #     # for i in range(len(pos_tracking_error)):
-        #     #     print('%s %s - mean:%2.2f \t std:%.2f' % (row_labels[i//2],col_labels[i%2],(pos_tracking_error[i]).mean(),(pos_tracking_error[i]).std))
-        #     # plt.show()
-        #     plt.savefig("Tracking Error - Kp=10'000, Kd=-1.0, kff=1.png",dpi=600)
 
         return T
 
@@ -653,7 +541,6 @@ class samplingController(modelBaseController):
 
 
         # Compute the contact sequence and update the phase
-        # c_star, self.phase = self.gait_generator(f=f_star, d=d_star, phase=self.phase, horizon=1, dt=self._dt_out)
         c_star, self.phase = gait_generator(f=f_star, d=d_star, phase=self.phase, horizon=1, dt=self._dt_out)
         c0_star     = c_star[:,:,0] # shape (batch_size, num_legs)
         self.c_prev = c_star[:,:,0] # shape (batch_size, num_legs)
@@ -692,25 +579,25 @@ class SamplingOptimizer():
         # Optimizer configuration
         self.num_samples = optimizerCfg.num_samples
         self.sampling_horizon = optimizerCfg.prevision_horizon
-        self.dt = optimizerCfg.discretization_time    # TODO rename dt to a less confusing name eg. mpc_dt
+        self.mpc_dt = optimizerCfg.discretization_time 
         self.num_optimizer_iterations = optimizerCfg.num_optimizer_iterations
         self.mu = optimizerCfg.mu
 
         # Define Interpolation method for GRF and interfer GRF input size 
-        if   optimizerCfg.parametrization_F == 'cubic spline' : 
-            self.interpolation_F=self.compute_cubic_spline
+        if   optimizerCfg.parametrization_F == 'cubic_spline' : 
+            self.interpolation_F=compute_cubic_spline
             self.F_param = 4
         elif optimizerCfg.parametrization_F == 'discrete'     :
-            self.interpolation_F=self.compute_discrete
+            self.interpolation_F=compute_discrete
             self.F_param = self.sampling_horizon
         else : raise NotImplementedError('Request interpolation method is not implemented yet')
 
         # Define Interpolation method for foot touch down position and interfer foot touch down position input size 
-        if   optimizerCfg.parametrization_p == 'cubic spline' : 
-            self.interpolation_p=self.compute_cubic_spline
+        if   optimizerCfg.parametrization_p == 'cubic_spline' : 
+            self.interpolation_p=compute_cubic_spline
             self.p_param = 4
         elif optimizerCfg.parametrization_p == 'discrete'     : 
-            self.interpolation_p=self.compute_discrete
+            self.interpolation_p=compute_discrete
             self.p_param = self.sampling_horizon
         else : raise NotImplementedError('Request interpolation method is not implemented yet')
 
@@ -826,10 +713,9 @@ class SamplingOptimizer():
             f_samples, d_samples, p_lw_samples, F_lw_samples = self.generate_samples(iter=i, f=f, d=d, p_lw=p_lw, F_lw=F_lw, height_map=height_map)
 
             # --- Step 2 : Given f and d samples -> generate the contact sequence for the samples
-            # c_samples, new_phase = self.gait_generator(f_samples=f_samples, d_samples=d_samples, phase=phase.squeeze(0), sampling_horizon=self.sampling_horizon, dt=self.dt)
-            c_samples, new_phase = gait_generator(f=f_samples, d=d_samples, phase=phase.squeeze(0), horizon=self.sampling_horizon, dt=self.dt)
+            c_samples, new_phase = gait_generator(f=f_samples, d=d_samples, phase=phase.squeeze(0), horizon=self.sampling_horizon, dt=self.mpc_dt)
 
-            # --- Step 2 : prepare the variables : convert from torch.Tensor to Jax
+            # --- Step 2 : prepare the variables 
             initial_state, reference_seq_state, reference_seq_input_samples, action_param_samples = self.prepare_variable_for_compute_rollout(env=env, c_samples=c_samples, p_lw_samples=p_lw_samples, F_lw_samples=F_lw_samples, feet_in_contact=c_prev[0,])
 
             # --- Step 3 : Compute the rollouts to find the rollout cost : can't used named argument with VMAP...
@@ -936,7 +822,7 @@ class SamplingOptimizer():
 
         # The pose reference is (0,0) for roll and pitch, but the yaw must be integrated along the horizon (in world frame)
         euler_xyz_angle_ref_seq      = torch.zeros_like(com_pos_ref_seq_lw) # shape(3, sampling_horizon)
-        euler_xyz_angle_ref_seq[2,:] = euler_xyz_angle[2] + (torch.arange(self.sampling_horizon, device=self.device) * (self.dt * speed_command_b[2])) # shape(sampling_horizon)
+        euler_xyz_angle_ref_seq[2,:] = euler_xyz_angle[2] + (torch.arange(self.sampling_horizon, device=self.device) * (self.mpc_dt * speed_command_b[2])) # shape(sampling_horizon)
 
         # The linear speed reference is (x_dot_ref_b, y_dot_ref_b, 0) in base frame and must be rotated in world frame
         com_lin_vel_ref_seq_b = torch.zeros(3, device=self.device) # shape(3)
@@ -953,7 +839,7 @@ class SamplingOptimizer():
         com_lin_vel_ref_seq_w = torch.matmul(R_b_to_w, com_lin_vel_ref_seq_b.unsqueeze(-1)).expand(3, self.sampling_horizon).clone().detach() # shape (3,3)@(3,1) -> (3,1) -> shape(3, sampling_horizon)
 
         # Add the effect of the yaw rate in world frame
-        delta_yaw_seq = self.dt * speed_command_b[2] * torch.arange(0, self.sampling_horizon, device=self.device) # shape(sampling_horizon)
+        delta_yaw_seq = self.mpc_dt * speed_command_b[2] * torch.arange(0, self.sampling_horizon, device=self.device) # shape(sampling_horizon)
 
         com_lin_vel_ref_seq_w[0,:] = ((com_lin_vel_ref_seq_w[0,:] * torch.cos(delta_yaw_seq)) - (com_lin_vel_ref_seq_w[1,:] * torch.sin(delta_yaw_seq))) # shape(sampling_horizon)
         com_lin_vel_ref_seq_w[1,:] = ((com_lin_vel_ref_seq_w[0,:] * torch.sin(delta_yaw_seq)) + (com_lin_vel_ref_seq_w[1,:] * torch.cos(delta_yaw_seq))) # shape(sampling_horizon)
@@ -1163,11 +1049,11 @@ class SamplingOptimizer():
         p_lw_samples[0,:,:,:] = p_lw[0,:,:,:]
         F_lw_samples[0,:,:,:] = F_lw[0,:,:,:]
 
-        # Put the Previous best actions as the second samples
-        f_samples[1,:]        = self.f_best[0,:]
-        d_samples[1,:]        = self.d_best[0,:]
-        p_lw_samples[1,:,:,:] = self.p_best[0,:,:,:]
-        F_lw_samples[1,:,:,:] = self.F_best[0,:,:,:]
+        # Put the Previous best actions as the last samples
+        f_samples[-1,:]        = self.f_best[0,:]
+        d_samples[-1,:]        = self.d_best[0,:]
+        p_lw_samples[-1,:,:,:] = self.p_best[0,:,:,:]
+        F_lw_samples[-1,:,:,:] = self.F_best[0,:,:,:]
 
         # If optimization is set to false, samples are feed with initial guess
         if not self.optimize_f : f_samples[:,:]        = f
@@ -1231,47 +1117,6 @@ class SamplingOptimizer():
         samples = mean + (std * torch.empty((num_samples,) + mean.shape, device=self.device).uniform_(-1.0, 1.0))
 
         return samples
-
-
-    # def gait_generator(self, f_samples: torch.Tensor, d_samples: torch.Tensor, phase: torch.Tensor, sampling_horizon: int, dt) -> tuple[torch.Tensor, torch.Tensor]:
-    #     """ Implement a gait generator that return a contact sequence given a leg frequency and a leg duty cycle
-    #     Increment phase by dt*f 
-    #     restart if needed
-    #     return contact : 1 if phase < duty cyle, 0 otherwise  
-    #     c == 1 : Leg is in contact (stance)
-    #     c == 0 : Leg is in swing
-
-    #     Note:
-    #         No properties used, no for loop : purely functional -> made to be jitted
-    #         parallel_rollout : this is optional, it will work without the parallel rollout dimension
-
-    #     Args:
-    #         - f_samples     (Tensor): Leg frequency samples                 of shape(num_samples, num_legs)
-    #         - d_samples     (Tensor): Stepping duty cycle samples in [0,1]  of shape(num_samples, num_legs)
-    #         - phase         (Tensor): phase of leg samples in [0,1]         of shape(num_legs)
-    #         - sampling_horizon (int): Time horizon for the contact sequence
-
-    #     Returns:
-    #         - c_samples     (t.bool): Foot contact sequence samples         of shape(num_samples, num_legs, sampling_horizon)
-    #         - phase_samples (Tensor): The phase samples updated by 1 dt     of shape(num_samples, num_legs)
-    #     """
-        
-    #     # Increment phase of f*dt: new_phases[0] : incremented of 1 step, new_phases[1] incremented of 2 steps, etc. without a for loop.
-    #     # new_phases = phase + f*dt*[1,2,...,sampling_horizon]
-    #     #            (1, num_legs, 1)                  +  (samples, legs, 1)      * (1, 1, sampling_horizon) -> shape(samples, legs, sampling_horizon)
-    #     new_phases_samples = phase.unsqueeze(0).unsqueeze(-1) + (f_samples.unsqueeze(-1) * torch.linspace(start=1, end=sampling_horizon, steps=sampling_horizon, device=self.device).unsqueeze(0).unsqueeze(1)*dt)
-
-    #     # Make the phases circular (like sine) (% is modulo operation)
-    #     new_phases_samples = new_phases_samples%1
-
-    #     # Save first phase -> shape(num_samples, num_legs)
-    #     new_phase_samples = new_phases_samples[..., 0]
-
-    #     # Make comparaison to return discret contat sequence : c = 1 if phase < d, 0 otherwise
-    #     # (samples, legs, sampling_horizon) <= (samples, legs, 1) -> shape(num_samples, num_legs, sampling_horizon)
-    #     c_samples = new_phases_samples <= d_samples.unsqueeze(-1)
-
-    #     return c_samples, new_phase_samples
 
 
     def compute_rollout(self, initial_state: dict, reference_seq_state: dict, reference_seq_input_samples: dict, action_param_samples: dict, c_samples: torch.Tensor) -> torch.Tensor:
@@ -1351,54 +1196,6 @@ class SamplingOptimizer():
             cost_samples += step_cost                                                                                           # shape(num_samples)
 
         return cost_samples
-
-
-    def compute_cubic_spline(self, parameters, step, horizon):
-        """ Given a set of spline parameters, and the point in the trajectory return the function value 
-        
-        Args :
-            parameters (Tensor): Spline action parameter      of shape(batch, num_legs, 3, spline_param)              
-            step          (int): The point in the curve in [0, horizon]
-            horizon       (int): The length of the curve
-            
-        Returns : 
-            actions    (Tensor): Discrete action              of shape(batch, num_legs, 3)
-        """
-        # Find the point in the curve q in [0,1]
-        tau = step/(horizon)        
-        q = (tau - 0.0)/(1.0-0.0)
-        
-        # Compute the spline interpolation parameters
-        a =  2*q*q*q - 3*q*q     + 1
-        b =    q*q*q - 2*q*q + q
-        c = -2*q*q*q + 3*q*q
-        d =    q*q*q -   q*q
-
-        # Compute intermediary parameters 
-        phi_1 = 0.5*(parameters[...,2]  - parameters[...,0]) # shape (batch, num_legs, 3)
-        phi_2 = 0.5*(parameters[...,3]  - parameters[...,1]) # shape (batch, num_legs, 3)
-
-        # Compute the spline
-        actions = a*parameters[...,1] + b*phi_1 + c*parameters[...,2]  + d*phi_2 # shape (batch, num_legs, 3)
-
-        return actions
-
-
-    def compute_discrete(self, parameters, step, horizon):
-        """ If actions are discrete actions, no interpolation are required.
-        This function simply return the action at the right time step
-
-        Args :
-            parameters (Tensor): Discrete action parameter    of shape(batch, num_legs, 3, sampling_horizon)
-            step          (int): The current step index along horizon
-            horizon       (int): Not used : here for compatibility
-
-        Returns :
-            actions    (Tensor): Discrete action              of shape(batch, num_legs, 3)
-        """
-
-        actions = parameters[:,:,:,step]
-        return actions
      
 
     def enforce_valid_input(self, f_samples: torch.Tensor, d_samples: torch.Tensor, p_lw_samples: torch.Tensor, F_lw_samples: torch.Tensor, height_map: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -1442,7 +1239,7 @@ class SamplingOptimizer():
         # p :  Ensure p on the ground TODO Implement
         # p_lw_samples[:,:,2,:] = 0.0*torch.ones_like(p_lw_samples[:,:,2,:])
       
-        # F : Ensure Friction Cone constraints (Bounding spline means quasi bounding trajectory)
+        # F : Ensure Friction Cone constraints (Bounding spline means quasi bounding trajectory) /!\ Can't work if we are sampling over a delta ! Must be after the gravity compensation /!\
         # F_lw_samples = self.enforce_friction_cone_constraints_torch(F=F_lw_samples, mu=self.mu)
 
 
@@ -1503,7 +1300,7 @@ class SamplingOptimizer():
 
     def centroidal_model_step(self, state, input, contact):
         """
-        TODO
+        Simulate one step of the forward dynamics, using the controidal model. 
 
         Note 
             Model used is described in 'Model Predictive Control With Environment Adaptation for Legged Locomotion'
@@ -1561,12 +1358,12 @@ class SamplingOptimizer():
 
 
         # --- Step 5 : Perform forward integration of the model (as simple forward euler)
-        new_state['pos_com_lw']      = state['pos_com_lw']      + self.dt*lin_com_vel_lw
-        new_state['lin_com_vel_lw']  = state['lin_com_vel_lw']  + self.dt*linear_com_acc_lw
-        new_state['euler_xyz_angle'] = state['euler_xyz_angle'] + self.dt*euler_xyz_rate
-        new_state['ang_vel_com_b']   = state['ang_vel_com_b']   + self.dt*ang_acc_com_b
-        new_state['p_lw']            = state['p_lw']
-        # new_state['p_lw']            = state['p_lw']*contact.unsqueeze(-1) + input['p_lw']*contact.unsqueeze(-1)
+        new_state['pos_com_lw']      = state['pos_com_lw']      + self.mpc_dt*lin_com_vel_lw
+        new_state['lin_com_vel_lw']  = state['lin_com_vel_lw']  + self.mpc_dt*linear_com_acc_lw
+        new_state['euler_xyz_angle'] = state['euler_xyz_angle'] + self.mpc_dt*euler_xyz_rate
+        new_state['ang_vel_com_b']   = state['ang_vel_com_b']   + self.mpc_dt*ang_acc_com_b
+        # new_state['p_lw']            = state['p_lw']
+        new_state['p_lw']            = state['p_lw']*(contact.unsqueeze(-1)) + input['p_lw']*(~contact.unsqueeze(-1))
 
         return new_state
     

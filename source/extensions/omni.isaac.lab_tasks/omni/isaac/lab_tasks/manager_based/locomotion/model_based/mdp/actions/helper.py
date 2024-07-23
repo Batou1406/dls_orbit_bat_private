@@ -1,6 +1,7 @@
 # Helper file witch mathematical functions
 import torch
 
+@torch.jit.script
 def inverse_conjugate_euler_xyz_rate_matrix(euler_xyz_angle: torch.Tensor) -> torch.Tensor:
     """
     Given euler angles in  the XYZ convention (ie. roll pitch yaw), return the inverse conjugate euler rate matrix.
@@ -51,6 +52,7 @@ def inverse_conjugate_euler_xyz_rate_matrix(euler_xyz_angle: torch.Tensor) -> to
     return inverse_conjugate_euler_xyz_rate_matrix
 
 
+@torch.jit.script
 def rotation_matrix_from_w_to_b(euler_xyz_angle: torch.Tensor) -> torch.Tensor:
     """
     Return the rotation matrix to transform value from wolrd frame orientation to base frame oriention
@@ -147,6 +149,109 @@ def gait_generator(f: torch.Tensor, d: torch.Tensor, phase: torch.Tensor, horizo
     return c, new_phase
 
 
+@torch.jit.script
+def compute_cubic_spline(parameters: torch.Tensor, step: int, horizon: int):
+    """ Given a set of spline parameters, and the point in the trajectory return the function value 
+    
+    Args :
+        parameters (Tensor): Spline action parameter      of shape(batch, num_legs, 3, spline_param)              
+        step          (int): The point in the curve in [0, horizon]
+        horizon       (int): The length of the curve
+        
+    Returns : 
+        actions    (Tensor): Discrete action              of shape(batch, num_legs, 3)
+    """
+    # Find the point in the curve q in [0,1]
+    tau = step/(horizon)        
+    q = (tau - 0.0)/(1.0-0.0)
+    
+    # Compute the spline interpolation parameters
+    a =  2*q*q*q - 3*q*q     + 1
+    b =    q*q*q - 2*q*q + q
+    c = -2*q*q*q + 3*q*q
+    d =    q*q*q -   q*q
+
+    # Compute intermediary parameters 
+    phi_1 = 0.5*(parameters[...,2]  - parameters[...,0]) # shape (batch, num_legs, 3)
+    phi_2 = 0.5*(parameters[...,3]  - parameters[...,1]) # shape (batch, num_legs, 3)
+
+    # Compute the spline
+    actions = a*parameters[...,1] + b*phi_1 + c*parameters[...,2]  + d*phi_2 # shape (batch, num_legs, 3)
+
+    return actions
 
 
+@torch.jit.script
+def compute_discrete(parameters: torch.Tensor, step: int, horizon: int):
+    """ If actions are discrete actions, no interpolation are required.
+    This function simply return the action at the right time step
 
+    Args :
+        parameters (Tensor): Discrete action parameter    of shape(batch, num_legs, 3, sampling_horizon)
+        step          (int): The current step index along horizon
+        horizon       (int): Not used : here for compatibility
+
+    Returns :
+        actions    (Tensor): Discrete action              of shape(batch, num_legs, 3)
+    """
+
+    actions = parameters[:,:,:,step]
+    return actions
+
+
+# Actually faster without the JIT as part of the class
+@torch.jit.script
+def normal_sampling(num_samples:int, mean:torch.Tensor, std:torch.Tensor|None=None, seed:int=-1, clip:bool=False) -> torch.Tensor:
+    """ Normal sampling law given mean and std -> return a samples
+    
+    Args :
+        mean     (Tensor): Mean of normal sampling law          of shape(num_dim1, num_dim2, etc.)
+        std      (Tensor): Standard dev of normal sampling law  of shape(num_dim1, num_dim2, etc.)
+        num_samples (int): Number of samples to generate
+        seed        (int): seed to generate random numbers (-1 for no seed)
+
+    Return :
+        samples  (Tensor): Samples generated with mean and std  of shape(num_sammple, num_dim1, num_dim2, etc.)
+    """
+
+    # Seed if provided
+    if seed == -1: 
+        torch.manual_seed(seed)
+
+    if std is None :
+        std = torch.ones_like(mean)
+
+    # Sample from a normal law with the provided parameters
+    if clip == True :
+        samples = mean + (std * torch.randn((num_samples,) + mean.shape, device=mean.device)).clamp(min=-2*std, max=2*std)
+    else :
+        samples = mean + (std * torch.randn((num_samples,) + mean.shape, device=mean.device))
+
+    return samples
+
+
+@torch.jit.script
+def uniform_sampling(num_samples:int, mean:torch.Tensor, std:torch.Tensor|None=None, seed:int=-1, clip:bool=False) -> torch.Tensor:
+    """ Normal sampling law given mean and std -> return a samples
+    
+    Args :
+        mean     (Tensor): Mean of normal sampling law          of shape(num_dim1, num_dim2, etc.)
+        std      (Tensor): Standard dev of normal sampling law  of shape(num_dim1, num_dim2, etc.)
+        num_samples (int): Number of samples to generate
+        seed        (int): seed to generate random numbers
+
+    Return :
+        samples  (Tensor): Samples generated with mean and std  of shape(num_sammple, num_dim1, num_dim2, etc.)
+    """
+
+    # Seed if provided
+    if seed == -1: 
+        torch.manual_seed(seed)
+
+    if std is None :
+        std = torch.ones_like(mean)
+
+    # Sample from a uniform law with the provided parameters
+    samples = mean + (std * torch.empty((num_samples,) + mean.shape, device=mean.device).uniform_(-1.0, 1.0))
+
+    return samples
