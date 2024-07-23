@@ -184,8 +184,8 @@ class ModelBaseActionCfg(ActionTermCfg):
         max_xy_F = None      # [N]
         min_xy_F = None      # [N]
 
-        mean_z_F = (200 / 2) # [N] : 200/2 ~= 20[kg_aliengo] * 9.81 [m/s²] / 2 [leg in contact]
-        std_z_F = mean_z_F/5   # [N]
+        mean_z_F = 0#(200 / 2) # [N] : 200/2 ~= 20[kg_aliengo] * 9.81 [m/s²] / 2 [leg in contact]
+        std_z_F = 20#mean_z_F/5   # [N]
         max_z_F = None       # [N]
         min_z_F = 0          # [N]
 

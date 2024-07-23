@@ -84,7 +84,7 @@ def penalize_large_steps_L1(env: ManagerBasedRLEnv, action_name: str, bound_x: t
         - penalty (torch.Tensor): penalty term in ]-inf, 0] for leg step size outside bound of shape(batch_size)
     """
     # Shape (batch_size, num_legs, 3, number_predict step) -> (batch_size, num_legs, 2)
-    p:torch.Tensor = env.action_manager.get_term(action_name).p_norm[...,0]
+    p:torch.Tensor = env.action_manager.get_term(action_name).delta_p_h[...,0]
 
     penalty_x = -torch.sum(torch.abs(p[:,:,0]-p[:,:,0].clamp(bound_x[0], bound_x[1])), dim=1)
     penalty_y = -torch.sum(torch.abs(p[:,:,1]-p[:,:,1].clamp(bound_y[0], bound_y[1])), dim=1)
@@ -154,8 +154,8 @@ def penalize_steps_variation_L2(env: ManagerBasedRLEnv, action_name: str) -> tor
         - penalty (torch.Tensor): penalty term in ]-inf, 0] for step variation of shape(batch_size)
     """
     # Shape (batch_size, num_legs, 3, number_predict step) -> (batch_size, num_legs * 3 * number_predict_step)
-    p:     torch.Tensor = env.action_manager.get_term(action_name).p_norm.flatten(1,-1)
-    p_prev:torch.Tensor = env.action_manager.get_term(action_name).p_norm_prev.flatten(1,-1)
+    p:     torch.Tensor = env.action_manager.get_term(action_name).delta_p_h.flatten(1,-1)
+    p_prev:torch.Tensor = env.action_manager.get_term(action_name).delta_p_h_prev.flatten(1,-1)
 
     penalty = -torch.sum(torch.square(p-p_prev), dim=1)
 
@@ -172,8 +172,8 @@ def penalize_Forces_variation_L2(env: ManagerBasedRLEnv, action_name: str) -> to
     action : ModelBaseAction = env.action_manager.get_term(action_name)
 
     # Shape (batch_size, num_legs, 3, prediction_horizon) -> (batch_size, num_legs * 3 * prediction_horizon)
-    F:     torch.Tensor = action.F_norm.flatten(1,-1)
-    F_prev:torch.Tensor = action.F_norm_prev.flatten(1,-1)
+    F:     torch.Tensor = action.delta_F_h.flatten(1,-1)
+    F_prev:torch.Tensor = action.delta_F_h_prev.flatten(1,-1)
 
     penalty = -torch.sum(torch.square(F-F_prev), dim=1)
 
