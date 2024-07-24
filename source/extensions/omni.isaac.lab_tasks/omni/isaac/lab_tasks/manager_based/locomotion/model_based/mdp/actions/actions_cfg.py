@@ -181,7 +181,7 @@ class ModelBaseActionCfg(ActionTermCfg):
 
         # Ground Reaction Forces : clipped to (min, max), not clipped if set to None
         # Every value is scale by the robot's mass
-        std_xy_F = (10 / 2)  # [N]
+        std_xy_F = 0.25 #(10 / 2)  # [N]
         max_xy_F = None      # [N]
         min_xy_F = None      # [N]
 
