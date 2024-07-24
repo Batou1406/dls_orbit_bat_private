@@ -493,7 +493,7 @@ class samplingController(modelBaseController):
     TODO
 
     Properties
-        c_prev  (Tensor): previous value used for contact       shape(batch_size, num_legs)
+        samplingOptimizer
     """
 
     def __init__(self, verbose_md, device, num_envs, num_legs, robot_mass, dt_out, decimation, dt_in, p_default_lw: torch.Tensor, step_height, foot_offset, swing_ctrl_pos_gain_fb, swing_ctrl_vel_gain_fb, env: ManagerBasedRLEnv, optimizerCfg):
@@ -503,8 +503,6 @@ class samplingController(modelBaseController):
         super().__init__(verbose_md, device, num_envs, num_legs, robot_mass, dt_out, decimation, dt_in, p_default_lw, step_height, foot_offset, swing_ctrl_pos_gain_fb, swing_ctrl_vel_gain_fb)
 
         self.samplingOptimizer = SamplingOptimizer(device=device,num_legs=num_legs,env=env, optimizerCfg=optimizerCfg)  
-        
-        self.c_prev = torch.ones(num_envs, num_legs, device=device)
 
         # To enable or not the optimizer at run time
         self.optimizer_active = True
@@ -539,7 +537,7 @@ class samplingController(modelBaseController):
 
         # Call the optimizer
         if self.optimizer_active: # To enable or not optimization in real time
-            f_star, d_star, p0_star_lw, F0_star_lw = self.samplingOptimizer.optimize_latent_variable(f=f, d=d, p_lw=p_lw, delta_F_lw=delta_F_lw, phase=self.phase, c_prev=self.c_prev)
+            f_star, d_star, p0_star_lw, F0_star_lw = self.samplingOptimizer.optimize_latent_variable(f=f, d=d, p_lw=p_lw, delta_F_lw=delta_F_lw, phase=self.phase)
         else : f_star, d_star, p0_star_lw, delta_F0_star_lw = f, d, p_lw[:,:,:,0], delta_F_lw[:,:,:,0]
 
         # Compute the contact sequence and update the phase
@@ -561,7 +559,12 @@ class samplingController(modelBaseController):
 
 # ---------------------------------- Optimizer --------------------------------
 class SamplingOptimizer():
-    """ Model Based optimizer based on the centroidal model """
+    """ Model Based optimizer based on the centroidal model 
+    
+    Properties
+        c_prev (Tensor): Contact sequence determined at previous iteration of shape (batch_size, num_leg)
+        
+    """
 
     def __init__(self, device, num_legs, env:ManagerBasedRLEnv, optimizerCfg):
         """ 
@@ -653,6 +656,9 @@ class SamplingOptimizer():
         self.std_p = torch.tensor((0.02), device=device)
         self.std_F = torch.tensor((5.00), device=device)
 
+        # Previous contact sequence : used to reset solution when switch to swing shape (batch_size, num_leg)
+        self.c_prev = torch.ones((1, self.num_legs), device=device)
+
         # State weight - shape(state_dim)
         self.Q_vec = torch.zeros(self.state_dim, device=self.device)
         self.Q_vec[0]  = 0.0        #com_x
@@ -698,7 +704,7 @@ class SamplingOptimizer():
         self.F_best[:,:,2,:] = 50.0
 
 
-    def optimize_latent_variable(self, f:torch.Tensor, d:torch.Tensor, p_lw:torch.Tensor, delta_F_lw:torch.Tensor, phase:torch.Tensor, c_prev:torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    def optimize_latent_variable(self, f:torch.Tensor, d:torch.Tensor, p_lw:torch.Tensor, delta_F_lw:torch.Tensor, phase:torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """ Given latent variable f,d,F,p, returns f*,d*,F*,p*, optimized with a sampling optimization 
         
         Args :
@@ -707,7 +713,6 @@ class SamplingOptimizer():
             p_lw   (Tensor): Foot touch down position     of shape(batch_size, num_leg, 3, p_param)
             F_lw   (Tensor): ground Reaction Forces       of shape(batch_size, num_leg, 3, F_param)
             phase  (Tensor): Current feet phase           of shape(batch_size, num_leg)
-            c_prev (Tensor): Contact sequence determined at previous iteration of shape (batch_size, num_leg)
 
         Returns :
             f_star    (Tensor): Leg frequency                of shape(batch_size, num_leg)
@@ -726,13 +731,13 @@ class SamplingOptimizer():
             c_samples, new_phase = gait_generator(f=f_samples, d=d_samples, phase=phase.squeeze(0), horizon=self.sampling_horizon, dt=self.mpc_dt)
 
             # --- Step 2 : prepare the variables 
-            initial_state, reference_seq_state, reference_seq_input_samples, action_param_samples = self.prepare_variable_for_compute_rollout(c_samples=c_samples, p_lw_samples=p_lw_samples, delta_F_lw_samples=delta_F_lw_samples, feet_in_contact=c_prev[0,])
+            initial_state, reference_seq_state, reference_seq_input_samples, action_param_samples = self.prepare_variable_for_compute_rollout(c_samples=c_samples, p_lw_samples=p_lw_samples, delta_F_lw_samples=delta_F_lw_samples, feet_in_contact=self.c_prev[0,])
 
             # --- Step 3 : Compute the rollouts to find the rollout cost : can't used named argument with VMAP...
             cost_samples = self.compute_rollout( initial_state, reference_seq_state, reference_seq_input_samples, action_param_samples, c_samples)
 
             # --- Step 4 : Given the samples cost, find the best control action
-            f_star, d_star, p0_star_lw, F0_star_lw = self.find_best_actions(cost_samples, f_samples, d_samples, c_samples, p_lw_samples, delta_F_lw_samples, c_prev)
+            f_star, d_star, p0_star_lw, F0_star_lw = self.find_best_actions(cost_samples, f_samples, d_samples, c_samples, p_lw_samples, delta_F_lw_samples)
 
 
         return f_star, d_star, p0_star_lw, F0_star_lw # p_star_lw, F_star_lw
@@ -914,7 +919,7 @@ class SamplingOptimizer():
         return initial_state, reference_seq_state, reference_seq_input_samples, action_param_samples
 
 
-    def find_best_actions(self,cost_samples, f_samples: torch.Tensor, d_samples: torch.Tensor, c_samples: torch.Tensor, p_lw_samples: torch.Tensor, delta_F_lw_samples: torch.Tensor, c_prev: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]: 
+    def find_best_actions(self,cost_samples, f_samples: torch.Tensor, d_samples: torch.Tensor, c_samples: torch.Tensor, p_lw_samples: torch.Tensor, delta_F_lw_samples: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]: 
         """ Given action samples and associated cost, filter invalid values and retrieves the best cost and associated actions
         
         Args 
@@ -967,8 +972,11 @@ class SamplingOptimizer():
         # self.f_best, self.d_best, self.p_best, self.F_best = self.shift_actions(f=self.f_best, d=self.d_best, p=self.p_best, F=self.F_best)
 
         # reset the delta of the actions if contact ended (ie. started swing phase)
-        lift_off_mask = ((c_prev[:,:] == 1) * (c_star[:,:,0] == 0)) # shape (1,num_legs) # /!\ c_prev is incremented with sim_dt, while c_star with mpc_dt : Thus, 
+        lift_off_mask = ((self.c_prev[:,:] == 1) * (c_star[:,:,0] == 0)) # shape (1,num_legs)
         self.F_best[lift_off_mask] = 0.0
+
+        # Update c_prev for next iteration
+        self.c_prev = c_star[:,:,0] # shape (batch_size, num_legs)
  
 
         # Retrive action to be applied at next time step
