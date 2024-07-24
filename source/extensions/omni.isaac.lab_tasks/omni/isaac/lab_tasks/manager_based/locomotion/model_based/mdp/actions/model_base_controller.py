@@ -512,11 +512,9 @@ class samplingController(modelBaseController):
         # Initialise the Model Base Controller
         super().__init__(verbose_md, device, num_envs, num_legs, dt_out, decimation, dt_in, p_default_lw, step_height, foot_offset, swing_ctrl_pos_gain_fb, swing_ctrl_vel_gain_fb)
 
-        self.samplingOptimizer = SamplingOptimizer(device=device,num_legs=num_legs, optimizerCfg=optimizerCfg)  
+        self.samplingOptimizer = SamplingOptimizer(device=device,num_legs=num_legs,env=env, optimizerCfg=optimizerCfg)  
         
         self.c_prev = torch.ones(num_envs, num_legs, device=device)
-
-        self._env: ManagerBasedRLEnv = env
 
         # To enable or not the optimizer at run time
         self.optimizer_active = True
@@ -549,7 +547,7 @@ class samplingController(modelBaseController):
 
         # Call the optimizer
         if self.optimizer_active: # To enable or not optimization in real time
-            f_star, d_star, delta_p0_star_h, delta_F0_star_h = self.samplingOptimizer.optimize_latent_variable(env=self._env, f=f, d=d, p_lw=delta_p_h, F_lw=delta_F_h, phase=self.phase, c_prev=self.c_prev)
+            f_star, d_star, delta_p0_star_h, delta_F0_star_h = self.samplingOptimizer.optimize_latent_variable(f=f, d=d, p_lw=delta_p_h, F_lw=delta_F_h, phase=self.phase, c_prev=self.c_prev)
         else : f_star, d_star, delta_p0_star_h, delta_F0_star_h = f, d, delta_p_h[:,:,:,0], delta_F_h[:,:,:,0]
 
         # Compute the contact sequence and update the phase
@@ -563,7 +561,7 @@ class samplingController(modelBaseController):
 class SamplingOptimizer():
     """ Model Based optimizer based on the centroidal model """
 
-    def __init__(self, device, num_legs, optimizerCfg):
+    def __init__(self, device, num_legs, env:ManagerBasedRLEnv, optimizerCfg):
         """ 
         Args :
             device                 : 'cuda' or 'cpu' 
@@ -576,6 +574,9 @@ class SamplingOptimizer():
             interpolation_p_method : Method to reconstruct foot touch down position action from provided warm start :
                                     can be 'discrete' (one action per time step is provided) or 'cubic spine' (a set of parameters for every time step)
         """
+
+        # Save the environment
+        self._env: ManagerBasedRLEnv = env
 
         # General variables
         self.device = device
@@ -695,7 +696,7 @@ class SamplingOptimizer():
         self.F_best[:,:,2,:] = 50.0
 
 
-    def optimize_latent_variable(self, env: ManagerBasedRLEnv, f:torch.Tensor, d:torch.Tensor, p_lw:torch.Tensor, F_lw:torch.Tensor, phase:torch.Tensor, c_prev:torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    def optimize_latent_variable(self, f:torch.Tensor, d:torch.Tensor, p_lw:torch.Tensor, F_lw:torch.Tensor, phase:torch.Tensor, c_prev:torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """ Given latent variable f,d,F,p, returns f*,d*,F*,p*, optimized with a sampling optimization 
         
         Args :
@@ -735,7 +736,7 @@ class SamplingOptimizer():
         return f_star, d_star, p0_star_lw, F0_star_lw # p_star_lw, F_star_lw
 
 
-    def prepare_variable_for_compute_rollout(self, env: ManagerBasedRLEnv, c_samples:torch.Tensor, p_lw_samples:torch.Tensor, F_lw_samples:torch.Tensor, feet_in_contact:torch.Tensor) -> tuple[dict, dict, dict, dict]:
+    def prepare_variable_for_compute_rollout(self, c_samples:torch.Tensor, p_lw_samples:torch.Tensor, F_lw_samples:torch.Tensor, feet_in_contact:torch.Tensor) -> tuple[dict, dict, dict, dict]:
         """ Helper function to modify the embedded state, reference and action to be used with the 'compute_rollout' function
 
         Note :
@@ -782,11 +783,11 @@ class SamplingOptimizer():
         action_param_samples = {}
 
         # Check that a single robot was provided
-        if env.num_envs > 1:
+        if self._env.num_envs > 1:
             assert ValueError('More than a single environment was provided to the sampling controller')
 
         # Retrieve robot from the scene : specify type to enable type hinting
-        robot: Articulation = env.scene["robot"]
+        robot: Articulation = self._env.scene["robot"]
 
         # Retrieve indexes
         foot_idx = robot.find_bodies(".*foot")[0]
@@ -794,7 +795,7 @@ class SamplingOptimizer():
 
         # ----- Step 1 : Retrieve the initial state
         # Retrieve the robot position in local world frame of shape(3)
-        com_pos_lw = (robot.data.root_pos_w - env.scene.env_origins).squeeze(0) # shape(3)
+        com_pos_lw = (robot.data.root_pos_w - self._env.scene.env_origins).squeeze(0) # shape(3)
         # Compute proprioceptive height
         if (feet_in_contact == 0).all() : feet_in_contact = torch.ones_like(feet_in_contact) # if no feet in contact : robot is in the air, we use all feet to compute the height, not correct but avoid div by zero
         com_pos_lw[2] = robot.data.root_pos_w[:,2] - (torch.sum(((robot.data.body_pos_w[:, foot_idx,2]).squeeze(0)) * feet_in_contact)) / (torch.sum(feet_in_contact)) # height is proprioceptive
@@ -810,7 +811,7 @@ class SamplingOptimizer():
 
         # Retrieve the feet position in local world frame of shape(num_legs*3)
         p_w = (robot.data.body_pos_w[:, foot_idx,:]).squeeze(0) # shape(num_legs, 3) - foot position in w
-        p_lw = p_w - env.scene.env_origins                      # shape(num_legs, 3) - foot position in lw
+        p_lw = p_w - self._env.scene.env_origins                      # shape(num_legs, 3) - foot position in lw
 
         # Prepare the state (at time t)
         initial_state['pos_com_lw']      = com_pos_lw       # shape(3)              # CoM position in local world frame, height is propriocetive
@@ -822,7 +823,7 @@ class SamplingOptimizer():
 
         # ----- Step 2 : Retrieve the robot's reference along the integration horizon
         # Retrieve the speed command : (lin_vel_x_b, lin_vel_y_b, ang_vel_yaw_b)
-        speed_command_b = (env.command_manager.get_command("base_velocity")).squeeze(0) # shape(3)
+        speed_command_b = (self._env.command_manager.get_command("base_velocity")).squeeze(0) # shape(3)
 
         # CoM reference position : tracked only for the height -> xy can be anything eg 0
         com_pos_ref_seq_lw = torch.tensor((0,0,self.height_ref), device=self.device).unsqueeze(1).expand(3, self.sampling_horizon) # shape(3, sampling_horizon)
