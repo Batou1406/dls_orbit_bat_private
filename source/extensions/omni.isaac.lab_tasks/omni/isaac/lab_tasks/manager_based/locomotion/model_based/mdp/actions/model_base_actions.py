@@ -715,8 +715,8 @@ class ModelBaseAction(ActionTerm):
         # shape(batch_size, num_legs, 3, F_param)
         if F is not None :            
             std_xy_F = (torch.tensor(param.std_xy_F, device=self.device)).unsqueeze(-1).unsqueeze(-1) # shape (batch_size,1,1)
-            F_x = F[:,:,0,:] * std_xy_F * self.robot_mass
-            F_y = F[:,:,1,:] * std_xy_F * self.robot_mass
+            F_x = F[:,:,0,:] * std_xy_F * (self.robot_mass * 9.81)
+            F_y = F[:,:,1,:] * std_xy_F * (self.robot_mass * 9.81)
 
             if param.min_xy_F is not None or param.max_xy_F is not None :
                 F_x = F_x.clamp(min=param.min_xy_F, max=param.max_xy_F)
@@ -724,7 +724,7 @@ class ModelBaseAction(ActionTerm):
 
             mean_z_F = (torch.tensor(param.mean_z_F, device=self.device)).unsqueeze(-1).unsqueeze(-1) 
             std_z_F  = (torch.tensor(param.std_z_F,  device=self.device)).unsqueeze(-1).unsqueeze(-1)
-            F_z = (F[:,:,2,:]  * (std_z_F) * self.robot_mass) + (mean_z_F * self.robot_mass)
+            F_z = (F[:,:,2,:]  * (std_z_F) * (self.robot_mass * 9.81)) + (mean_z_F * (self.robot_mass * 9.81))
 
             if param.min_z_F is not None or param.max_z_F is not None :
                 F_z = F_z.clamp(min=param.min_z_F, max=param.max_z_F)
@@ -782,12 +782,12 @@ class ModelBaseAction(ActionTerm):
         # shape(batch_size, num_legs, 3, F_param)
         if F is not None :            
             std_xy_F = (torch.tensor(param.std_xy_F, device=self.device)).unsqueeze(-1).unsqueeze(-1) # shape (batch_size,1,1)
-            F_x = F[:,:,0,:] / std_xy_F
-            F_y = F[:,:,1,:] / std_xy_F
+            F_x = F[:,:,0,:] / (std_xy_F * (self.robot_mass * 9.81))
+            F_y = F[:,:,1,:] / (std_xy_F * (self.robot_mass * 9.81))
 
             mean_z_F = (torch.tensor(param.mean_z_F, device=self.device)).unsqueeze(-1).unsqueeze(-1) 
             std_z_F  = (torch.tensor(param.std_z_F,  device=self.device)).unsqueeze(-1).unsqueeze(-1)
-            F_z = (F[:,:,2,:] - mean_z_F) / std_z_F 
+            F_z = (F[:,:,2,:] - (mean_z_F * (self.robot_mass * 9.81))) / (std_z_F * (self.robot_mass * 9.81)) 
 
             F = torch.cat((F_x, F_y, F_z), dim=2).reshape_as(F)
 

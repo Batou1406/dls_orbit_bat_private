@@ -88,7 +88,7 @@ class UnitreeAliengoClimbEnvCfg(LocomotionModelBasedEnvCfg):
 
 
         """ ----- Event randomization ----- """
-        Event = {'Base Mass'        : True, 
+        Event = {'Base Mass'        : False, 
                  'External Torque'  : False,
                  'External Force'   : False,
                  'Random joint pos' : False,

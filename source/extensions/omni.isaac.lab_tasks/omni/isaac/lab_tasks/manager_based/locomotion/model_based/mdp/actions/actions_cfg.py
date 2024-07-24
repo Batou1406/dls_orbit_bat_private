@@ -180,15 +180,15 @@ class ModelBaseActionCfg(ActionTermCfg):
         min_y_p = -0.20      # [m]
 
         # Ground Reaction Forces : clipped to (min, max), not clipped if set to None
-        # Every value is scale by the robot's mass
-        std_xy_F = 0.25 #(10 / 2)  # [N]
-        max_xy_F = None      # [N]
-        min_xy_F = None      # [N]
+        # mean and std are scale by mass*gravity
+        std_xy_F = 0.025     # [% of gravity]   # 5  
+        max_xy_F = None      # [% of gravity]
+        min_xy_F = None      # [% of gravity]
 
-        mean_z_F = 0.0 #(200 / 2) # [N] : 200/2 ~= 20[kg_aliengo] * 9.81 [m/s²] / 2 [leg in contact]
-        std_z_F  = 1.0 #mean_z_F/5   # [N]
-        max_z_F  = None       # [N]
-        min_z_F  = None #0          # [N]
+        mean_z_F = 0.0       # [% of gravity]   # 100 
+        std_z_F  = 0.1       # [% of gravity]   # 20
+        max_z_F  = None      # [% of gravity]
+        min_z_F  = None      # [% of gravity]   # 0
 
 
     actionNormalizationCfg = ActionNormalizationCfg()
