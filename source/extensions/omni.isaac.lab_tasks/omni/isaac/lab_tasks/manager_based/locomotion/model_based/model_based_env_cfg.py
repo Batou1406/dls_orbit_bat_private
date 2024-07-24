@@ -182,9 +182,9 @@ class ActionsCfg:
     model_base_variable = mdp.ModelBaseActionCfg(
         asset_name="robot",
         joint_names=[".*"], 
-        controller=mdp.samplingController,
-        optimizerCfg=mdp.ModelBaseActionCfg.OptimizerCfg(),
-        # controller=mdp.modelBaseController,
+        # controller=mdp.samplingController,
+        # optimizerCfg=mdp.ModelBaseActionCfg.OptimizerCfg(),
+        controller=mdp.modelBaseController,
         )
     
     # joint_pos = mdp.JointPositionActionCfg(asset_name="robot", joint_names=[".*"], scale=0.5, use_default_offset=True)
@@ -457,7 +457,7 @@ class LocomotionModelBasedEnvCfg(ManagerBasedRLEnvCfg):
     def __post_init__(self):
         """Post initialization."""
         # general settings
-        self.decimation = 2 #2
+        self.decimation = 4 #2
         self.episode_length_s = 15.0
         # simulation settings
         self.sim.dt = 0.005
