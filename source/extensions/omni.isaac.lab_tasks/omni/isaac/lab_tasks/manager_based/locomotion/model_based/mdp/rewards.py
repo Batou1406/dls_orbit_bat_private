@@ -104,7 +104,7 @@ def penalize_large_Forces_L1(env: ManagerBasedRLEnv, action_name: str, bound: tu
         - penalty (torch.Tensor): penalty term in ]-inf, 0] for Forces outside bound of shape(batch_size)
     """
     #shape (batch_size, num_legs, 3, time_horizon) ->(batch_size, num_legs, 3)
-    F:torch.Tensor = env.action_manager.get_term(action_name).F_lw[...,0]
+    F:torch.Tensor = env.action_manager.get_term(action_name).delta_F_lw[...,0]
 
     # Compute the norm -> shape(batch_size, num_legs)
     F = torch.linalg.vector_norm(F, dim=2)

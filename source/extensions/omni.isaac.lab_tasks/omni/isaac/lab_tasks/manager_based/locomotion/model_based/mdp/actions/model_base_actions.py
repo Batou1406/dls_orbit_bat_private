@@ -222,20 +222,20 @@ class ModelBaseAction(ActionTerm):
         self.F_raw  =     torch.zeros(self.num_envs, self._num_legs, 3, self._F_param, device=self.device)
 
         # Normalized RL output
-        self.f      = self.f_raw.clone().detach() 
-        self.d      = self.d_raw.clone().detach()
+        self.f         = self.f_raw.clone().detach() 
+        self.d         = self.d_raw.clone().detach()
         self.delta_p_h = self.p_raw.clone().detach() 
         self.delta_F_h = self.F_raw.clone().detach() 
 
         # Previous output - used for derivative computation
-        self.f_prev      = self.f_raw.clone().detach() 
-        self.d_prev      = self.d_raw.clone().detach() 
+        self.f_prev         = self.f_raw.clone().detach() 
+        self.d_prev         = self.d_raw.clone().detach() 
         self.delta_p_h_prev = self.p_raw.clone().detach() 
         self.delta_F_h_prev = self.F_raw.clone().detach() 
 
         # Normalized and transformed to frame RL output
-        self.p_lw   =     torch.zeros(self.num_envs, self._num_legs, 3, self._p_param, device=self.device) 
-        self.F_lw   =     torch.zeros(self.num_envs, self._num_legs, 3, self._F_param, device=self.device)
+        self.p_lw        = torch.zeros(self.num_envs, self._num_legs, 3, self._p_param, device=self.device) 
+        self.delta_F_lw  = torch.zeros(self.num_envs, self._num_legs, 3, self._F_param, device=self.device)
 
         # For ease of reshaping variables
         self.f_len = self.f_raw.shape[1:].numel()
@@ -244,7 +244,7 @@ class ModelBaseAction(ActionTerm):
         self.F_len = self.F_raw.shape[1:].numel()
 
         # create tensors for raw and processed actions
-        self._raw_actions = torch.zeros(self.num_envs, self.action_dim, device=self.device)
+        self._raw_actions       = torch.zeros(self.num_envs, self.action_dim, device=self.device)
         self._processed_actions = torch.zeros_like(self.raw_actions)   
 
         # Model-based optimized latent variable
@@ -283,7 +283,7 @@ class ModelBaseAction(ActionTerm):
         # Instance of control class. Gets Z and output u
         if cfg.controller == model_base_controller.modelBaseController:
             self.controller = cfg.controller(
-                verbose_md=verbose_mb, device=self.device, num_envs=self.num_envs, num_legs=self._num_legs,
+                verbose_md=verbose_mb, device=self.device, num_envs=self.num_envs, num_legs=self._num_legs, robot_mass=self.robot_mass,
                 dt_out=self._decimation*self._env.physics_dt, decimation=self._decimation, dt_in=self._env.physics_dt,
                 p_default_lw=self.get_reset_foot_position(), step_height=cfg.footTrajectoryCfg.step_height,
                 foot_offset=cfg.footTrajectoryCfg.foot_offset, swing_ctrl_pos_gain_fb=self.cfg.swingControllerCfg.swing_ctrl_pos_gain_fb , 
@@ -291,7 +291,7 @@ class ModelBaseAction(ActionTerm):
             )
         elif cfg.controller == model_base_controller.samplingController:
             self.controller = cfg.controller(
-                verbose_md=verbose_mb, device=self.device, num_envs=self.num_envs, num_legs=self._num_legs,
+                verbose_md=verbose_mb, device=self.device, num_envs=self.num_envs, num_legs=self._num_legs, robot_mass=self.robot_mass,
                 dt_out=self._decimation*self._env.physics_dt, decimation=self._decimation, dt_in=self._env.physics_dt,
                 p_default_lw=self.get_reset_foot_position(), step_height=cfg.footTrajectoryCfg.step_height,
                 foot_offset=cfg.footTrajectoryCfg.foot_offset, swing_ctrl_pos_gain_fb=self.cfg.swingControllerCfg.swing_ctrl_pos_gain_fb , 
@@ -388,7 +388,7 @@ class ModelBaseAction(ActionTerm):
         self.p_raw = (self._raw_actions[:, self.f_len + self.d_len              : self.f_len + self.d_len + self.p_len             ]).reshape_as(self.p_raw)
         self.F_raw = (self._raw_actions[:, self.f_len + self.d_len + self.p_len : self.f_len + self.d_len + self.p_len + self.F_len]).reshape_as(self.F_raw)
 
-        # Normalize the actions
+        # --- Step 1 : Normalization - Normalize the actions
         self.f, self.d, self.delta_p_h, self.delta_F_h = self.normalization(f=self.f_raw, d=self.d_raw, p=self.p_raw, F=self.F_raw)
 
         # Disable Action : useful for debug
@@ -396,27 +396,18 @@ class ModelBaseAction(ActionTerm):
             self.f, self.d, self.delta_p_h = self.debug_disable_action(f=self.f, d=self.d, delta_p_h=self.delta_p_h, gait=self.debug_apply_action_status)
 
 
-        # Add z dimension : TODO Fix this
-        delta_p_h_3D = torch.cat([self.delta_p_h, self.cfg.footTrajectoryCfg.foot_offset*torch.ones_like(self.delta_p_h[:, :, :1, :])], dim=2) 
-
-        # Process the latent variable (increment gait) and if optimizer availble, optimize the latent variable
-        self.f_star, self.d_star, self.c0_star, delta_p0_star_h_3D, self.delta_F0_star_h = self.controller.process_latent_variable(f=self.f, d=self.d, delta_p_h=delta_p_h_3D, delta_F_h=self.delta_F_h)
+        # --- Step 2 : Transformation - Apply Transformation to have the Actions in the correct Frame
+        self.f_star, self.d_star, self.p_lw, self.delta_F_lw = self.transformation(f=self.f_star, d=self.d_star, delta_p_h=self.delta_p_h, delta_F_h=self.delta_F_h)
         
-        # TODO fix this : remove the z dimension
-        self.delta_p0_star_h = delta_p0_star_h_3D[:,:,:2]
-
-
-        # Apply Transformation to have the Actions in the correct Frame
-        self.f_star, self.d_star, p_star_lw, F_star_lw = self.transformation(f=self.f_star, d=self.d_star, delta_p_h=self.delta_p0_star_h.unsqueeze(-1), delta_F_h=self.delta_F0_star_h.unsqueeze(-1), c0=self.c0_star)
-        self.p0_star_lw = p_star_lw.squeeze(-1)
-        self.F0_star_lw = F_star_lw.squeeze(-1)                
-
         # Store the processed Actions
-        self._processed_actions = torch.cat((self.f.flatten(1,-1), self.d.flatten(1,-1), self.p_lw.flatten(1,-1), self.F_lw.flatten(1,-1)),dim=1)
+        self._processed_actions = torch.cat((self.f.flatten(1,-1), self.d.flatten(1,-1), self.p_lw.flatten(1,-1), self.delta_F_lw.flatten(1,-1)),dim=1)
 
-        # Optimize the latent variable with the model base controller
-        self.pt_star_lw, self.full_pt_lw = self.controller.get_swing_trajectory(f=self.f_star, d=self.d_star, c0=self.c0_star, p0_lw=self.p0_star_lw) # TODO implement height map
 
+        # --- Step 3 : Optimization - Process the latent variable (increment gait) and if optimizer availble, optimize the latent variable and add gravity compensation
+        self.f_star, self.d_star, self.c0_star, self.p0_star_lw, self.F0_star_lw, self.pt_star_lw, self.full_pt_lw = self.controller.process_latent_variable(f=self.f, d=self.d, p_lw=self.p_lw, delta_F_lw=self.delta_F_lw)
+          
+
+        # --- Step 4 : Latter Processing
         # Enforce friction cone constraints for GRF : enforce only with sampling controller, because training should learn not to slip
         # if type(self.controller) == model_base_controller.samplingController: self.F0_star_lw = self.enforce_friction_cone_constraints(F=self.F0_star_lw.unsqueeze(-1), mu=self.cfg.optimizerCfg.mu).squeeze(-1)
 
@@ -494,7 +485,7 @@ class ModelBaseAction(ActionTerm):
 
         # Normalized and transformed to frame RL output
         self.p_lw[env_ids,...] = 0.0
-        self.F_lw[env_ids,...] = 0.0
+        self.delta_F_lw[env_ids,...] = 0.0
 
         # create tensors for raw and processed actions
         self._raw_actions[env_ids,...]       = 0.0
@@ -729,7 +720,7 @@ class ModelBaseAction(ActionTerm):
             if param.min_z_F is not None or param.max_z_F is not None :
                 F_z = F_z.clamp(min=param.min_z_F, max=param.max_z_F)
 
-            F = torch.cat((F_x, F_y, F_z), dim=2).reshape_as(self.F_lw)
+            F = torch.cat((F_x, F_y, F_z), dim=2).reshape_as(self.delta_F_lw)
 
 
         #--- Normalize p ---
@@ -804,7 +795,7 @@ class ModelBaseAction(ActionTerm):
         return f, d, p, F
 
 
-    def transformation(self, f:torch.Tensor, d:torch.Tensor, delta_p_h:torch.Tensor, delta_F_h:torch.Tensor, c0:torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    def transformation(self, f:torch.Tensor, d:torch.Tensor, delta_p_h:torch.Tensor, delta_F_h:torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """ Given the latent variable (f,d,p,F) in some frame usefull for the Network, return the latent variable (f,d,p,F)
         in a Frame usefull for the low level controller.
         
@@ -819,7 +810,7 @@ class ModelBaseAction(ActionTerm):
             f          (Tensor): No frame -> no transformation,                             shape(batch_size, num_legs)
             d          (Tensor): No frame -> no transformation,                             shape(batch_size, num_legs)
             p_lw       (Tensor): foot touch down pos. in local world frame,                 shape(batch_size, num_legs, 3, p_param)
-            F_lw       (Tensor): GRF in local world frame,                                  shape(batch_size, num_legs, 3, p_param)
+            delta_F_lw (Tensor): delta GRF in local world frame,                            shape(batch_size, num_legs, 3, p_param)
         """
         # --- f : no transformation
 
@@ -880,24 +871,20 @@ class ModelBaseAction(ActionTerm):
             p_lw[:,:,2] += terrain_height_feet.unsqueeze(-1) #shape (batch_size, num_legs, num_predict_step)
 
 
-        # --- F : Add gravity compensation and Rotate GRF from horizonzal frame (roll_w, pitch_w, yaw_b) to local wolrd frame
-        num_legs_in_contact = torch.sum(c0, dim=1).clamp_min(1) #shape(batch_size)
-        F_h = delta_F_h # shape(batch_size, num_legs, 3)
-        F_h[:,:,2] += (c0 * (self.robot_mass * 9.81) / num_legs_in_contact.unsqueeze(-1)).unsqueeze(-1) # shape(batch_size, num_legs, F_param)
-
+        # --- F : Rotate GRF from horizonzal frame (roll_w, pitch_w, yaw_b) to local wolrd frame
         # Find the robot's yaw in wolrd frame
         robot_yaw_in_w = math_utils.yaw_quat(self._asset.data.root_quat_w)
 
         # Transpose and Flatten to be able use efficiently 'transform_points'
-        F_h_flatten = F_h.transpose(2,3).reshape(F_h.shape[0], F_h.shape[1]*F_h.shape[3], F_h.shape[2])    # shape(batch_size, F_param*num_legs, 3)
+        delta_F_h_flatten = delta_F_h.transpose(2,3).reshape(delta_F_h.shape[0], delta_F_h.shape[1]*delta_F_h.shape[3], delta_F_h.shape[2])    # shape(batch_size, F_param*num_legs, 3)
 
         # Rotate from horizontal frame to local world frame
-        F_lw_flatten = math_utils.transform_points(F_h_flatten, quat=robot_yaw_in_w)                       # shape(batch_size, F_param*num_legs, 3)
+        delta_F_lw_flatten = math_utils.transform_points(delta_F_h_flatten, quat=robot_yaw_in_w)                       # shape(batch_size, F_param*num_legs, 3)
 
         # Reshape back into original shape
-        F_lw = F_lw_flatten.reshape(F_h.shape[0], F_h.shape[1], F_h.shape[3], F_h.shape[2]).transpose(2,3) # shape(batch_size, num_legs, 3, F_param)
+        delta_F_lw = delta_F_lw_flatten.reshape(delta_F_h.shape[0], delta_F_h.shape[1], delta_F_h.shape[3], delta_F_h.shape[2]).transpose(2,3) # shape(batch_size, num_legs, 3, F_param)
         
-        return f, d, p_lw, F_lw
+        return f, d, p_lw, delta_F_lw
 
 
     def inverse_transformation(self, f:torch.Tensor, d:torch.Tensor, p_lw:torch.Tensor, F_lw:torch.Tensor, c0:torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -1087,7 +1074,7 @@ class ModelBaseAction(ActionTerm):
                 # print('Track exp         : ',self._env.reward_manager._episode_sums["track_lin_vel_xy_exp"][0:4])
             # except : pass
 
-            if (self.F_lw[:,:,:,0] != self.F0_star_lw).any():
+            if (self.delta_F_lw[:,:,:,0] != self.F0_star_lw).any():
                 assert ValueError('F value don\'t match...')
 
         # --- Visualize foot position ---

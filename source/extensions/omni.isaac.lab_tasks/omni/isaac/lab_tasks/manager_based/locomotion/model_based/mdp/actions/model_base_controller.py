@@ -37,7 +37,7 @@ class baseController(ABC):
         - compute_control_output(F0*, c0*, pt01*) -> T
     """
 
-    def __init__(self, verbose_md, device, num_envs, num_legs, dt_out, decimation, dt_in):
+    def __init__(self, verbose_md, device, num_envs, num_legs, robot_mass, dt_out, decimation, dt_in):
         """ Initialise Model Base variable after the model base action class has been initialised
 
         Args : 
@@ -54,6 +54,7 @@ class baseController(ABC):
         self._num_envs = num_envs
         self._device = device
         self._num_legs = num_legs
+        self._robot_mass = robot_mass
         self._dt_out = dt_out
         self._decimation = decimation
         self._dt_in = dt_in
@@ -144,7 +145,7 @@ class modelBaseController(baseController):
     swing_time : torch.Tensor
     p_lw_sim_prev : torch.Tensor
 
-    def __init__(self, verbose_md, device, num_envs, num_legs, dt_out, decimation, dt_in, p_default_lw: torch.Tensor, step_height, foot_offset, swing_ctrl_pos_gain_fb, swing_ctrl_vel_gain_fb):
+    def __init__(self, verbose_md, device, num_envs, num_legs, robot_mass, dt_out, decimation, dt_in, p_default_lw: torch.Tensor, step_height, foot_offset, swing_ctrl_pos_gain_fb, swing_ctrl_vel_gain_fb):
         """ Initialise Model Base variable after the model base action class has been initialised
         Note :
             The variable are in the 'local' world frame _wl. This notation is introduced to avoid confusion with the 'global' world frame, where all the batches coexists.
@@ -159,7 +160,7 @@ class modelBaseController(baseController):
             - dt_in        (int): Inner loop delta t
             - p_default (Tensor): Default feet pos of robot when reset  of Shape (batch_size, num_legs, 3)
         """
-        super().__init__(verbose_md, device, num_envs, num_legs, dt_out, decimation, dt_in)
+        super().__init__(verbose_md, device, num_envs, num_legs, robot_mass, dt_out, decimation, dt_in)
         self.phase = torch.zeros(num_envs, num_legs, device=device)
         self.phase[:,(0,3)] = 0.5 # Init phase [0.5, 0, 0, 0.5]
         self.p0_lw = p_default_lw.clone().detach()
@@ -196,55 +197,44 @@ class modelBaseController(baseController):
 
 
 # ----------------------------------- Outer Loop ------------------------------
-    def process_latent_variable(self, f: torch.Tensor, d: torch.Tensor, delta_p_h: torch.Tensor, delta_F_h: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        """ Given the latent variable z=[f,d,p,F], return the optimize latent variable f*, d*, c*, p*, F*, 
+    def process_latent_variable(self, f: torch.Tensor, d: torch.Tensor, p_lw: torch.Tensor, delta_F_lw: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """ Given the latent variable z=[f,d,p,F], return the optimize latent variable f*, d*, c*, p*, F*, pt* full_pt
         Note :
             The variable are in the 'horizontal' frame _h : (x_b, y_b, z_w, 0, 0, yaw_b)
 
         Args:
             f            (Tensor): Prior leg frequency                             of shape (batch_size, num_legs)
             d            (Tensor): Prior stepping duty cycle                       of shape (batch_size, num_legs)
-            delta_p_h    (Tensor): Prior foot touch down delta seq. in _h          of shape (batch_size, num_legs, 3, p_param)
-            delta_F_h    (Tensor): Prior Ground Reac. Forces delta(GRF) seq.       of shape (batch_size, num_legs, 3, F_param)
+            p_lw         (Tensor): Prior foot touch down delta seq. in _h          of shape (batch_size, num_legs, 3, p_param)
+            delta_F_lw   (Tensor): Prior Ground Reac. Forces delta(GRF) seq.       of shape (batch_size, num_legs, 3, F_param)
 
         Returns:
             f*           (Tensor): Opt. leg frequency                              of shape (batch_size, num_legs)
             d*           (Tensor): Opt. leg duty cycle                             of shape (batch_size, num_legs)
             c0*          (Tensor): Optimized foot contact sequence                 of shape (batch_size, num_legs)
-            delta_p0*_lw (Tensor): Optimized foot touch down delta seq. in _h      of shape (batch_size, num_legs, 3)
-            delta_F0*_lw (Tensor): Opt. Gnd Reac. F. delta(GRF) seq.   in _h       of shape (batch_size, num_legs, 3)
+            p0*_lw       (Tensor): Optimized foot touch down delta seq. in _h      of shape (batch_size, num_legs, 3)
+            F0*_lw       (Tensor): Opt. Gnd Reac. F. delta(GRF) seq.   in _h       of shape (batch_size, num_legs, 3)
+            pt*_lw (torch.Tensor): Optimized foot swing traj.     in _lw of shape (batch_size, num_legs, 9, decimation)  (9 = pos, vel, acc)
+            full_pt_lw (t.Tensor): Full swing traj for ploting           of shape (batch_size, num_legs, 9, 22)
         """
 
         # No optimizer
-        f_star, d_star, delta_p0_star_h, delta_F0_star_h = f, d, delta_p_h[:,:,:,0], delta_F_h[:,:,:,0]
+        f_star, d_star, p0_star_lw, delta_F0_star_lw = f, d, p_lw[:,:,:,0], delta_F_lw[:,:,:,0]
 
         # Compute the contact sequence and update the phase
         c_star, self.phase = gait_generator(f=f_star, d=d_star, phase=self.phase, horizon=1, dt=self._dt_out)
         c0_star = c_star[:,:,0] # shape (batch_size, num_legs)
 
-        return f_star, d_star, c0_star, delta_p0_star_h, delta_F0_star_h
-
-
-    def get_swing_trajectory(self, f: torch.Tensor, d: torch.Tensor, c0: torch.Tensor, p0_lw: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        """ Given the latent variable z=[f,d,p,F], return the swing trajectory pt*
-        Note :
-            The variable are in the 'local' world frame _wl. This notation is introduced to avoid confusion with the 'global' world frame, where all the batches coexists.
-
-        Args:
-            f      (torch.Tensor): Opt. leg frequency                    of shape (batch_size, num_legs)
-            d      (torch.Tensor): Opt. leg duty cycle                   of shape (batch_size, num_legs)
-            c0     (torch.Tensor): Optimized foot contact sequence       of shape (batch_size, num_legs)
-            p_lw   (torch.Tensor): Prior foot touch down seq. in _lw      of shape (batch_size, num_legs, 3, p_param)
-
-        Returns:
-            pt_lw  (torch.Tensor): Optimized foot swing traj.     in _lw of shape (batch_size, num_legs, 9, decimation)  (9 = pos, vel, acc)
-            full_pt_lw (t.Tensor): Full swing traj for ploting           of shape (batch_size, num_legs, 9, 22)
-        """
-
         # Generate the swing trajectory
-        pt_star_lw, full_pt_lw = self.full_swing_trajectory_generator(p_lw=p0_lw, c0=c0, d=d, f=f)
+        pt_star_lw, full_pt_lw = self.full_swing_trajectory_generator(p_lw=p0_star_lw, c0=c0_star, d=d_star, f=f_star)
 
-        return pt_star_lw, full_pt_lw
+        # Add the gravity compensation
+        num_legs_in_contact = torch.sum(c0_star, dim=1).clamp_min(1) #shape(batch_size)
+        F0_star_lw = delta_F0_star_lw # shape(batch_size, num_legs, 3)
+        F0_star_lw[:,:,2] += (c0_star * (self._robot_mass * 9.81) / num_legs_in_contact.unsqueeze(-1)).unsqueeze(-1) # shape(batch_size, num_legs, F_param)
+        F0_star_lw[:,:,2] = F0_star_lw[:,:,2].clamp(min=0)
+
+        return f_star, d_star, c0_star, p0_star_lw, F0_star_lw, pt_star_lw, full_pt_lw
     
 
     def full_swing_trajectory_generator(self, p_lw: torch.Tensor, c0: torch.Tensor, f: torch.Tensor, d: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
@@ -506,11 +496,11 @@ class samplingController(modelBaseController):
         c_prev  (Tensor): previous value used for contact       shape(batch_size, num_legs)
     """
 
-    def __init__(self, verbose_md, device, num_envs, num_legs, dt_out, decimation, dt_in, p_default_lw: torch.Tensor, step_height, foot_offset, swing_ctrl_pos_gain_fb, swing_ctrl_vel_gain_fb, env: ManagerBasedRLEnv, optimizerCfg):
+    def __init__(self, verbose_md, device, num_envs, num_legs, robot_mass, dt_out, decimation, dt_in, p_default_lw: torch.Tensor, step_height, foot_offset, swing_ctrl_pos_gain_fb, swing_ctrl_vel_gain_fb, env: ManagerBasedRLEnv, optimizerCfg):
         """ Initial the Model Base Controller and define an optimizer """
 
         # Initialise the Model Base Controller
-        super().__init__(verbose_md, device, num_envs, num_legs, dt_out, decimation, dt_in, p_default_lw, step_height, foot_offset, swing_ctrl_pos_gain_fb, swing_ctrl_vel_gain_fb)
+        super().__init__(verbose_md, device, num_envs, num_legs, robot_mass, dt_out, decimation, dt_in, p_default_lw, step_height, foot_offset, swing_ctrl_pos_gain_fb, swing_ctrl_vel_gain_fb)
 
         self.samplingOptimizer = SamplingOptimizer(device=device,num_legs=num_legs,env=env, optimizerCfg=optimizerCfg)  
         
@@ -526,35 +516,47 @@ class samplingController(modelBaseController):
         self.samplingOptimizer.reset()
 
 
-    def process_latent_variable(self, f: torch.Tensor, d: torch.Tensor, delta_p_h: torch.Tensor, delta_F_h: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        """ Given the latent variable z=[f,d,p,F], return the optimize latent variable f*, d*, c*, p*, F*, 
+    def process_latent_variable(self, f: torch.Tensor, d: torch.Tensor, p_lw: torch.Tensor, delta_F_lw: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """ Given the latent variable z=[f,d,p,F], return the optimize latent variable f*, d*, c*, p*, F*, pt* full_pt
         Note :
             The variable are in the 'horizontal' frame _h : (x_b, y_b, z_w, 0, 0, yaw_b)
 
         Args:
             f            (Tensor): Prior leg frequency                             of shape (batch_size, num_legs)
             d            (Tensor): Prior stepping duty cycle                       of shape (batch_size, num_legs)
-            delta_p_h    (Tensor): Prior foot touch down delta seq. in _h          of shape (batch_size, num_legs, 3, p_param)
-            delta_F_h    (Tensor): Prior Ground Reac. Forces delta(GRF) seq.       of shape (batch_size, num_legs, 3, F_param)
+            p_lw         (Tensor): Prior foot touch down delta seq. in _h          of shape (batch_size, num_legs, 3, p_param)
+            delta_F_lw   (Tensor): Prior Ground Reac. Forces delta(GRF) seq.       of shape (batch_size, num_legs, 3, F_param)
 
         Returns:
             f*           (Tensor): Opt. leg frequency                              of shape (batch_size, num_legs)
             d*           (Tensor): Opt. leg duty cycle                             of shape (batch_size, num_legs)
             c0*          (Tensor): Optimized foot contact sequence                 of shape (batch_size, num_legs)
-            delta_p0*_lw (Tensor): Optimized foot touch down delta seq. in _h      of shape (batch_size, num_legs, 3)
-            delta_F0*_lw (Tensor): Opt. Gnd Reac. F. delta(GRF) seq.   in _h       of shape (batch_size, num_legs, 3)
+            p0*_lw       (Tensor): Optimized foot touch down delta seq. in _h      of shape (batch_size, num_legs, 3)
+            F0*_lw       (Tensor): Opt. Gnd Reac. F. delta(GRF) seq.   in _h       of shape (batch_size, num_legs, 3)
+            pt*_lw (torch.Tensor): Optimized foot swing traj.     in _lw of shape (batch_size, num_legs, 9, decimation)  (9 = pos, vel, acc)
+            full_pt_lw (t.Tensor): Full swing traj for ploting           of shape (batch_size, num_legs, 9, 22)
         """
 
         # Call the optimizer
         if self.optimizer_active: # To enable or not optimization in real time
-            f_star, d_star, delta_p0_star_h, delta_F0_star_h = self.samplingOptimizer.optimize_latent_variable(f=f, d=d, p_lw=delta_p_h, F_lw=delta_F_h, phase=self.phase, c_prev=self.c_prev)
-        else : f_star, d_star, delta_p0_star_h, delta_F0_star_h = f, d, delta_p_h[:,:,:,0], delta_F_h[:,:,:,0]
+            f_star, d_star, p0_star_lw, F0_star_lw = self.samplingOptimizer.optimize_latent_variable(f=f, d=d, p_lw=p_lw, delta_F_lw=delta_F_lw, phase=self.phase, c_prev=self.c_prev)
+        else : f_star, d_star, p0_star_lw, delta_F0_star_lw = f, d, p_lw[:,:,:,0], delta_F_lw[:,:,:,0]
 
         # Compute the contact sequence and update the phase
         c_star, self.phase = gait_generator(f=f_star, d=d_star, phase=self.phase, horizon=1, dt=self._dt_out)
         c0_star = c_star[:,:,0] # shape (batch_size, num_legs)
 
-        return f_star, d_star, c0_star, delta_p0_star_h, delta_F0_star_h
+        # Generate the swing trajectory
+        pt_star_lw, full_pt_lw = self.full_swing_trajectory_generator(p_lw=p0_star_lw, c0=c0_star, d=d_star, f=f_star)
+
+        # If no optimizer -> Add the gravity compensation
+        if not self.optimizer_active:
+            num_legs_in_contact = torch.sum(c0_star, dim=1).clamp_min(1) #shape(batch_size)
+            F0_star_lw = delta_F0_star_lw # shape(batch_size, num_legs, 3)
+            F0_star_lw[:,:,2] += (c0_star * (self._robot_mass * 9.81) / num_legs_in_contact.unsqueeze(-1)).unsqueeze(-1) # shape(batch_size, num_legs, F_param)
+            F0_star_lw[:,:,2] = F0_star_lw[:,:,2].clamp(min=0)
+
+        return f_star, d_star, c0_star, p0_star_lw, F0_star_lw, pt_star_lw, full_pt_lw 
 
 
 # ---------------------------------- Optimizer --------------------------------
@@ -696,7 +698,7 @@ class SamplingOptimizer():
         self.F_best[:,:,2,:] = 50.0
 
 
-    def optimize_latent_variable(self, f:torch.Tensor, d:torch.Tensor, p_lw:torch.Tensor, F_lw:torch.Tensor, phase:torch.Tensor, c_prev:torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    def optimize_latent_variable(self, f:torch.Tensor, d:torch.Tensor, p_lw:torch.Tensor, delta_F_lw:torch.Tensor, phase:torch.Tensor, c_prev:torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """ Given latent variable f,d,F,p, returns f*,d*,F*,p*, optimized with a sampling optimization 
         
         Args :
@@ -718,25 +720,25 @@ class SamplingOptimizer():
         for i in range(self.num_optimizer_iterations):
             print(f'\niteration {i}')
             # --- Step 1 : Generate the samples and bound them to valid input
-            f_samples, d_samples, p_lw_samples, F_lw_samples = self.generate_samples(iter=i, f=f, d=d, p_lw=p_lw, F_lw=F_lw)
+            f_samples, d_samples, p_lw_samples, delta_F_lw_samples = self.generate_samples(iter=i, f=f, d=d, p_lw=p_lw, delta_F_lw=delta_F_lw)
 
             # --- Step 2 : Given f and d samples -> generate the contact sequence for the samples
             c_samples, new_phase = gait_generator(f=f_samples, d=d_samples, phase=phase.squeeze(0), horizon=self.sampling_horizon, dt=self.mpc_dt)
 
             # --- Step 2 : prepare the variables 
-            initial_state, reference_seq_state, reference_seq_input_samples, action_param_samples = self.prepare_variable_for_compute_rollout(env=env, c_samples=c_samples, p_lw_samples=p_lw_samples, F_lw_samples=F_lw_samples, feet_in_contact=c_prev[0,])
+            initial_state, reference_seq_state, reference_seq_input_samples, action_param_samples = self.prepare_variable_for_compute_rollout(c_samples=c_samples, p_lw_samples=p_lw_samples, delta_F_lw_samples=delta_F_lw_samples, feet_in_contact=c_prev[0,])
 
             # --- Step 3 : Compute the rollouts to find the rollout cost : can't used named argument with VMAP...
             cost_samples = self.compute_rollout( initial_state, reference_seq_state, reference_seq_input_samples, action_param_samples, c_samples)
 
             # --- Step 4 : Given the samples cost, find the best control action
-            f_star, d_star, p0_star_lw, F0_star_lw = self.find_best_actions(cost_samples, f_samples, d_samples, c_samples, p_lw_samples, F_lw_samples, c_prev)
+            f_star, d_star, p0_star_lw, F0_star_lw = self.find_best_actions(cost_samples, f_samples, d_samples, c_samples, p_lw_samples, delta_F_lw_samples, c_prev)
 
 
         return f_star, d_star, p0_star_lw, F0_star_lw # p_star_lw, F_star_lw
 
 
-    def prepare_variable_for_compute_rollout(self, c_samples:torch.Tensor, p_lw_samples:torch.Tensor, F_lw_samples:torch.Tensor, feet_in_contact:torch.Tensor) -> tuple[dict, dict, dict, dict]:
+    def prepare_variable_for_compute_rollout(self, c_samples:torch.Tensor, p_lw_samples:torch.Tensor, delta_F_lw_samples:torch.Tensor, feet_in_contact:torch.Tensor) -> tuple[dict, dict, dict, dict]:
         """ Helper function to modify the embedded state, reference and action to be used with the 'compute_rollout' function
 
         Note :
@@ -775,7 +777,7 @@ class SamplingOptimizer():
 
             action_param_samples  (dict): Dictionnary containing the robot's actions along the prediction horizon 
                 p_lw            (Tensor): Foot touch down position in local world frame                 of shape(num_samples, num_legs, 3, p_param)
-                F_lw            (Tensor): GRF parameters in local world frame                           of shape(num_samples, num_legs, 3, F_param)
+                delta_F_lw      (Tensor): delta GRF parameters in local world frame                     of shape(num_samples, num_legs, 3, F_param)
         """
         initial_state = {}
         reference_seq_state = {}
@@ -878,8 +880,8 @@ class SamplingOptimizer():
 
 
         # ----- Step 3 : Retrieve the actions and prepare them with the correct method
-        action_param_samples['p_lw'] = p_lw_samples # Foot touch down position samples    # shape(num_samples, num_legs, 3 p_param)
-        action_param_samples['F_lw'] = F_lw_samples # Ground Reaction Forces samples      # shape(num_samples, num_legs, 3 F_param)
+        action_param_samples['p_lw']       = p_lw_samples       # Foot touch down position samples          # shape(num_samples, num_legs, 3 p_param)
+        action_param_samples['delta_F_lw'] = delta_F_lw_samples # Delta Ground Reaction Forces samples      # shape(num_samples, num_legs, 3 F_param)
 
 
         # ----- Step 4 : Save variable for live plotting
@@ -912,22 +914,22 @@ class SamplingOptimizer():
         return initial_state, reference_seq_state, reference_seq_input_samples, action_param_samples
 
 
-    def find_best_actions(self,cost_samples, f_samples: torch.Tensor, d_samples: torch.Tensor, c_samples: torch.Tensor, p_lw_samples: torch.Tensor, F_lw_samples: torch.Tensor, c_prev: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]: 
+    def find_best_actions(self,cost_samples, f_samples: torch.Tensor, d_samples: torch.Tensor, c_samples: torch.Tensor, p_lw_samples: torch.Tensor, delta_F_lw_samples: torch.Tensor, c_prev: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]: 
         """ Given action samples and associated cost, filter invalid values and retrieves the best cost and associated actions
         
         Args 
-            cost_samples (Tensor): Associated trajectory cost          of shape(num_samples)
-            f_samples    (Tensor): Leg frequency samples               of shape(num_samples, num_leg)
-            d_samples    (Tensor): Leg duty cycle samples              of shape(num_samples, num_leg)
-            c_samples    (Tensor): Leg contact sequence samples        of shape(num_samples, num_legs, time_horizon)
-            p_lw_samples (Tensor): Foot touch down position samples    of shape(num_samples, num_leg, 3, p_param)
-            F_lw_samples (Tensor): Ground Reaction forces samples      of shape(num_samples, num_leg, 3, F_param)
+            cost_samples       (Tensor): Associated trajectory cost          of shape(num_samples)
+            f_samples          (Tensor): Leg frequency samples               of shape(num_samples, num_leg)
+            d_samples          (Tensor): Leg duty cycle samples              of shape(num_samples, num_leg)
+            c_samples          (Tensor): Leg contact sequence samples        of shape(num_samples, num_legs, time_horizon)
+            p_lw_samples       (Tensor): Foot touch down position samples    of shape(num_samples, num_leg, 3, p_param)
+            delta_F_lw_samples (Tensor): Ground Reaction forces samples      of shape(num_samples, num_leg, 3, F_param)
              
         Returns
-            f_star    (Tensor): Best leg frequency                     of shape(1, num_leg)
-            d_star    (Tensor): Best leg duty cycle                    of shape(1, num_leg)
-            p0_star_lw (Tensor): Best foot touch down position         of shape(1, num_leg, 3)
-            F0_star_lw (Tensor): Best ground Reaction Forces           of shape(1, num_leg, 3)  
+            f_star             (Tensor): Best leg frequency                  of shape(1, num_leg)
+            d_star             (Tensor): Best leg duty cycle                 of shape(1, num_leg)
+            p0_star_lw         (Tensor): Best foot touch down position       of shape(1, num_leg, 3)
+            F0_star_lw         (Tensor): Best ground Reaction Forces         of shape(1, num_leg, 3)  
         """
 
         # Saturate the cost in case of NaN or inf
@@ -941,11 +943,11 @@ class SamplingOptimizer():
         print('Best cost :', best_cost, ', best index :', best_index)
 
         # Retrieve best sample, given the best index
-        f_star = f_samples[best_index].unsqueeze(0)           # shape(1, num_leg)
-        d_star = d_samples[best_index].unsqueeze(0)           # shape(1, num_leg)
-        c_star = c_samples[best_index].unsqueeze(0)           # shape(1, num_leg, sampling_horizon)
-        p_star_lw = p_lw_samples[best_index].unsqueeze(0)     # shape(1, num_leg, 3, p_param)
-        F_star_lw = F_lw_samples[best_index].unsqueeze(0)     # shape(1, num_leg, 3, F_param)
+        f_star          = f_samples[best_index].unsqueeze(0)           # shape(1, num_leg)
+        d_star          = d_samples[best_index].unsqueeze(0)           # shape(1, num_leg)
+        c_star          = c_samples[best_index].unsqueeze(0)           # shape(1, num_leg, sampling_horizon)
+        p_star_lw       = p_lw_samples[best_index].unsqueeze(0)        # shape(1, num_leg, 3, p_param)
+        delta_F_star_lw = delta_F_lw_samples[best_index].unsqueeze(0)  # shape(1, num_leg, 3, F_param)
 
         # Save live variable to enable live plotting
         if self.live_plot:
@@ -955,36 +957,35 @@ class SamplingOptimizer():
             np.savetxt('live_variable/cost.csv', [self.cost_list], delimiter=',', fmt='%.3f')
             
             # Save best GRF
-            np.savetxt("live_variable/F_best_FL.csv", F_star_lw[0,0,:,:].cpu().numpy(), delimiter=",")
-            np.savetxt("live_variable/F_best_FR.csv", F_star_lw[0,1,:,:].cpu().numpy(), delimiter=",")
-            np.savetxt("live_variable/F_best_RL.csv", F_star_lw[0,2,:,:].cpu().numpy(), delimiter=",")
-            np.savetxt("live_variable/F_best_RR.csv", F_star_lw[0,3,:,:].cpu().numpy(), delimiter=",")
+            np.savetxt("live_variable/F_best_FL.csv", delta_F_star_lw[0,0,:,:].cpu().numpy(), delimiter=",")
+            np.savetxt("live_variable/F_best_FR.csv", delta_F_star_lw[0,1,:,:].cpu().numpy(), delimiter=",")
+            np.savetxt("live_variable/F_best_RL.csv", delta_F_star_lw[0,2,:,:].cpu().numpy(), delimiter=",")
+            np.savetxt("live_variable/F_best_RR.csv", delta_F_star_lw[0,3,:,:].cpu().numpy(), delimiter=",")
 
         # Update previous best solution
-        self.f_best, self.d_best, self.p_best, self.F_best = f_star, d_star, p_star_lw, F_star_lw
+        self.f_best, self.d_best, self.p_best, self.F_best = f_star, d_star, p_star_lw, delta_F_star_lw
         # self.f_best, self.d_best, self.p_best, self.F_best = self.shift_actions(f=self.f_best, d=self.d_best, p=self.p_best, F=self.F_best)
 
         # reset the delta of the actions if contact ended (ie. started swing phase)
         lift_off_mask = ((c_prev[:,:] == 1) * (c_star[:,:,0] == 0)) # shape (1,num_legs) # /!\ c_prev is incremented with sim_dt, while c_star with mpc_dt : Thus, 
         self.F_best[lift_off_mask] = 0.0
-        # self.F_best[lift_off_mask,:,2] = (self.robot_mass*9.81)/2 #(torch.sum(c_star[:,:,0]+1).clamp(min=1))
-        # print('lift off mask', lift_off_mask)
+ 
 
         # Retrive action to be applied at next time step
-        p0_star_lw = self.interpolation_p(parameters=p_star_lw, step=0, horizon=self.sampling_horizon) # shape(1, num_legs, 3)
-        F0_star_lw = self.interpolation_F(parameters=F_star_lw, step=0, horizon=self.sampling_horizon) # shape(1, num_legs, 3)
+        p0_star_lw = self.interpolation_p(parameters=p_star_lw,       step=0, horizon=self.sampling_horizon) # shape(1, num_legs, 3)
+        F0_star_lw = self.interpolation_F(parameters=delta_F_star_lw, step=0, horizon=self.sampling_horizon) # shape(1, num_legs, 3)
 
         # Print difference with RL warm start
         if self.optimize_f : print('f - cum. diff. : %3.2f' % torch.sum(torch.abs(f_star - f_samples[0,...])))
         if self.optimize_d : print('d - cum. diff. : %3.2f' % torch.sum(torch.abs(d_star - d_samples[0,...])))
         if self.optimize_p : print('p - cum. diff. : %3.2f' % torch.sum(torch.abs(p_star_lw - p_lw_samples[0,...])))
-        if self.optimize_F : print('F - cum. diff. : %5.1f' % torch.sum(torch.abs(F_star_lw - F_lw_samples[0,...])))
+        if self.optimize_F : print('F - cum. diff. : %5.1f' % torch.sum(torch.abs(delta_F_star_lw - delta_F_lw_samples[0,...])))
 
         # Add gravity compensation
-        # F0_star_lw -= c_star[:,:,0].unsqueeze(-1) * self.gravity_lw.unsqueeze(0).unsqueeze(0) * self.robot_mass / torch.sum(c_star[:,:,0].unsqueeze(0).unsqueeze(-1)) # shape(1, num_legs, 3)
+        F0_star_lw -= c_star[:,:,0].unsqueeze(-1) * self.gravity_lw.unsqueeze(0).unsqueeze(0) * self.robot_mass / torch.sum(c_star[:,:,0].unsqueeze(0).unsqueeze(-1)) # shape(1, num_legs, 3)
 
         # Enforce force constraints (Friction cone constraints)
-        # F0_star_lw = self.enforce_friction_cone_constraints_torch(F=F0_star_lw, mu=self.mu)                           # shape(num_samples, num_legs, 3)
+        F0_star_lw = self.enforce_friction_cone_constraints_torch(F=F0_star_lw, mu=self.mu)                           # shape(num_samples, num_legs, 3)
 
         return f_star, d_star, p0_star_lw, F0_star_lw
 
@@ -1001,16 +1002,16 @@ class SamplingOptimizer():
         return f, d, p, F
 
 
-    def generate_samples(self, iter:int, f:torch.Tensor, d:torch.Tensor, p_lw:torch.Tensor, F_lw:torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    def generate_samples(self, iter:int, f:torch.Tensor, d:torch.Tensor, p_lw:torch.Tensor, delta_F_lw:torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """ Given action (f,d,p,F), generate action sequence samples (f_samples, d_samples, p_samples, F_samples)
         If multiple action sequence are provided (because several policies are blended together), generate samples
         from these polices with equal proportions. TODO
         
         Args :
-            f    (Tensor): Leg frequency                                of shape(batch_size, num_leg)
-            d    (Tensor): Leg duty cycle                               of shape(batch_size, num_leg)
-            p_lw (Tensor): Foot touch down position                     of shape(batch_size, num_leg, 3, p_param)
-            F_lw (Tensor): ground Reaction Forces                       of shape(batch_size, num_leg, 3, F_param)
+            f             (Tensor): Leg frequency                                of shape(batch_size, num_leg)
+            d             (Tensor): Leg duty cycle                               of shape(batch_size, num_leg)
+            p_lw          (Tensor): Foot touch down position                     of shape(batch_size, num_leg, 3, p_param)
+            delta_F_lw    (Tensor): ground Reaction Forces                       of shape(batch_size, num_leg, 3, F_param)
             
         Returns :
             f_samples    (Tensor) : Leg frequency samples               of shape(num_samples, num_leg)
@@ -1027,48 +1028,48 @@ class SamplingOptimizer():
             num_samples_RL = 0
 
         # Samples from the previous best solution
-        f_samples_best    = self.sampling_law(num_samples=num_samples_previous_best, mean=self.f_best[0], std=self.std_f, clip=self.clip_sample)
-        d_samples_best    = self.sampling_law(num_samples=num_samples_previous_best, mean=self.d_best[0], std=self.std_d, clip=self.clip_sample)
-        p_lw_samples_best = self.sampling_law(num_samples=num_samples_previous_best, mean=self.p_best[0], std=self.std_p, clip=self.clip_sample)
-        F_lw_samples_best = self.sampling_law(num_samples=num_samples_previous_best, mean=self.F_best[0], std=self.std_F, clip=self.clip_sample)
+        f_samples_best          = self.sampling_law(num_samples=num_samples_previous_best, mean=self.f_best[0], std=self.std_f, clip=self.clip_sample)
+        d_samples_best          = self.sampling_law(num_samples=num_samples_previous_best, mean=self.d_best[0], std=self.std_d, clip=self.clip_sample)
+        p_lw_samples_best       = self.sampling_law(num_samples=num_samples_previous_best, mean=self.p_best[0], std=self.std_p, clip=self.clip_sample)
+        delta_F_lw_samples_best = self.sampling_law(num_samples=num_samples_previous_best, mean=self.F_best[0], std=self.std_F, clip=self.clip_sample)
 
         # Samples from the provided guess
-        f_samples_rl    = self.sampling_law(num_samples=num_samples_RL, mean=f[0],    std=self.std_f, clip=self.clip_sample)
-        d_samples_rl    = self.sampling_law(num_samples=num_samples_RL, mean=d[0],    std=self.std_d, clip=self.clip_sample)
-        p_lw_samples_rl = self.sampling_law(num_samples=num_samples_RL, mean=p_lw[0], std=self.std_p, clip=self.clip_sample)
-        F_lw_samples_rl = self.sampling_law(num_samples=num_samples_RL, mean=F_lw[0], std=self.std_F, clip=self.clip_sample)
+        f_samples_rl          = self.sampling_law(num_samples=num_samples_RL, mean=f[0],    std=self.std_f, clip=self.clip_sample)
+        d_samples_rl          = self.sampling_law(num_samples=num_samples_RL, mean=d[0],    std=self.std_d, clip=self.clip_sample)
+        p_lw_samples_rl       = self.sampling_law(num_samples=num_samples_RL, mean=p_lw[0], std=self.std_p, clip=self.clip_sample)
+        delta_F_lw_samples_rl = self.sampling_law(num_samples=num_samples_RL, mean=delta_F_lw[0], std=self.std_F, clip=self.clip_sample)
 
         # Concatenate the samples
-        f_samples    = torch.cat((f_samples_rl,    f_samples_best),    dim=0)
-        d_samples    = torch.cat((d_samples_rl,    d_samples_best),    dim=0)
-        p_lw_samples = torch.cat((p_lw_samples_rl, p_lw_samples_best), dim=0)
-        F_lw_samples = torch.cat((F_lw_samples_rl, F_lw_samples_best), dim=0)
+        f_samples          = torch.cat((f_samples_rl,          f_samples_best),          dim=0)
+        d_samples          = torch.cat((d_samples_rl,          d_samples_best),          dim=0)
+        p_lw_samples       = torch.cat((p_lw_samples_rl,       p_lw_samples_best),       dim=0)
+        delta_F_lw_samples = torch.cat((delta_F_lw_samples_rl, delta_F_lw_samples_best), dim=0)
 
         # Clamp the input to valid range
-        f_samples, d_samples, p_lw_samples, F_lw_samples = self.enforce_valid_input(f_samples=f_samples, d_samples=d_samples, p_lw_samples=p_lw_samples, F_lw_samples=F_lw_samples)
+        f_samples, d_samples, p_lw_samples, delta_F_lw_samples = self.enforce_valid_input(f_samples=f_samples, d_samples=d_samples, p_lw_samples=p_lw_samples, delta_F_lw_samples=delta_F_lw_samples)
 
         # Set the foot height to the nominal foot height # TODO change
         p_lw_samples[:,:,2,:] = p_lw[0,:,2,:]
 
         # Put the RL actions as the first samples
-        f_samples[0,:]        = f[0,:]
-        d_samples[0,:]        = d[0,:]
-        p_lw_samples[0,:,:,:] = p_lw[0,:,:,:]
-        F_lw_samples[0,:,:,:] = F_lw[0,:,:,:]
+        f_samples[0,:]              = f[0,:]
+        d_samples[0,:]              = d[0,:]
+        p_lw_samples[0,:,:,:]       = p_lw[0,:,:,:]
+        delta_F_lw_samples[0,:,:,:] = delta_F_lw[0,:,:,:]
 
         # Put the Previous best actions as the last samples
-        f_samples[-1,:]        = self.f_best[0,:]
-        d_samples[-1,:]        = self.d_best[0,:]
-        p_lw_samples[-1,:,:,:] = self.p_best[0,:,:,:]
-        F_lw_samples[-1,:,:,:] = self.F_best[0,:,:,:]
+        f_samples[-1,:]              = self.f_best[0,:]
+        d_samples[-1,:]              = self.d_best[0,:]
+        p_lw_samples[-1,:,:,:]       = self.p_best[0,:,:,:]
+        delta_F_lw_samples[-1,:,:,:] = self.F_best[0,:,:,:]
 
         # If optimization is set to false, samples are feed with initial guess
-        if not self.optimize_f : f_samples[:,:]        = f
-        if not self.optimize_d : d_samples[:,:]        = d
-        if not self.optimize_p : p_lw_samples[:,:,:,:] = p_lw
-        if not self.optimize_F : F_lw_samples[:,:,:,:] = F_lw
+        if not self.optimize_f : f_samples[:,:]              = f
+        if not self.optimize_d : d_samples[:,:]              = d
+        if not self.optimize_p : p_lw_samples[:,:,:,:]       = p_lw
+        if not self.optimize_F : delta_F_lw_samples[:,:,:,:] = delta_F_lw
 
-        return f_samples, d_samples, p_lw_samples, F_lw_samples
+        return f_samples, d_samples, p_lw_samples, delta_F_lw_samples
 
 
     def normal_sampling(self, num_samples:int, mean:torch.Tensor, std:torch.Tensor|None=None, seed:int|None=None, clip=False) -> torch.Tensor:
@@ -1150,7 +1151,7 @@ class SamplingOptimizer():
 
             action_param_samples  (dict): Dictionnary containing the robot's actions along the prediction horizon 
                 p_lw            (Tensor): Foot touch down position in local world frame                 of shape(num_samples, num_legs, 3, p_param)
-                F_lw            (Tensor): GRF parameters in local world frame                           of shape(num_samples, num_legs, 3, F_param)
+                delta_F_lw      (Tensor): Delta GRF parameters in local world frame                     of shape(num_samples, num_legs, 3, F_param)
 
             c_samples       (t.bool): Foot contact sequence sample                                                      of shape(num_samples, num_legs, sampling_horizon)
 
@@ -1169,8 +1170,8 @@ class SamplingOptimizer():
         for i in range(self.sampling_horizon):
             # --- Step 1 : prepare the inputs
             # Find the current action given the actions parameters
-            input['p_lw'] = self.interpolation_p(parameters=action_param_samples['p_lw'], step=i, horizon=self.sampling_horizon)# shape(num_samples, num_legs, 3)
-            input['F_lw'] = self.interpolation_F(parameters=action_param_samples['F_lw'], step=i, horizon=self.sampling_horizon)# shape(num_samples, num_legs, 3)
+            input['p_lw'] = self.interpolation_p(parameters=action_param_samples['p_lw'],       step=i, horizon=self.sampling_horizon)# shape(num_samples, num_legs, 3)
+            input['F_lw'] = self.interpolation_F(parameters=action_param_samples['delta_F_lw'], step=i, horizon=self.sampling_horizon)# shape(num_samples, num_legs, 3)
             contact = c_samples[:,:,i]                                                                                          # shape(num_samples, num_legs)
 
             # Add gravity compensation
@@ -1205,7 +1206,7 @@ class SamplingOptimizer():
         return cost_samples
      
 
-    def enforce_valid_input(self, f_samples: torch.Tensor, d_samples: torch.Tensor, p_lw_samples: torch.Tensor, F_lw_samples: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    def enforce_valid_input(self, f_samples: torch.Tensor, d_samples: torch.Tensor, p_lw_samples: torch.Tensor, delta_F_lw_samples: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """ Enforce the input f, d, p_lw, F_lw to valid ranges. Ie. clip
             - f to [0,3] [Hz]
             - d to [0,1]
@@ -1216,16 +1217,16 @@ class SamplingOptimizer():
             - F_lw : Friction cone constraints
 
         Args
-            f_samples    (torch.Tensor): Leg frequency samples               of shape(num_samples, num_leg)
-            d_samples    (torch.Tensor): Leg duty cycle samples              of shape(num_samples, num_leg)
-            p_lw_samples (torch.Tensor): Foot touch down position samples    of shape(num_samples, num_leg, 3, p_param)
-            F_lw_samples (torch.Tensor): Ground Reaction forces samples      of shape(num_samples, num_leg, 3, F_param)
+            f_samples          (torch.Tensor): Leg frequency samples               of shape(num_samples, num_leg)
+            d_samples          (torch.Tensor): Leg duty cycle samples              of shape(num_samples, num_leg)
+            p_lw_samples       (torch.Tensor): Foot touch down position samples    of shape(num_samples, num_leg, 3, p_param)
+            delta_F_lw_samples (torch.Tensor): Ground Reaction forces samples      of shape(num_samples, num_leg, 3, F_param)
 
         Return
-            f_samples    (torch.Tensor): Clipped Leg frequency samples               of shape(num_samples, num_leg)
-            d_samples    (torch.Tensor): Clipped Leg duty cycle samples              of shape(num_samples, num_leg)
-            p_lw_samples (torch.Tensor): Clipped Foot touch down position samples    of shape(num_samples, num_leg, 3, p_param)
-            F_lw_samples (torch.Tensor): Clipped Ground Reaction forces samples      of shape(num_samples, num_leg, 3, F_param)
+            f_samples          (torch.Tensor): Clipped Leg frequency samples               of shape(num_samples, num_leg)
+            d_samples          (torch.Tensor): Clipped Leg duty cycle samples              of shape(num_samples, num_leg)
+            p_lw_samples       (torch.Tensor): Clipped Foot touch down position samples    of shape(num_samples, num_leg, 3, p_param)
+            delta_F_lw_samples (torch.Tensor): Clipped Ground Reaction forces samples      of shape(num_samples, num_leg, 3, F_param)
         """
         # --- Step 1 : Clip Action to valid range
         # Clip f
@@ -1249,7 +1250,7 @@ class SamplingOptimizer():
         # F_lw_samples = self.enforce_friction_cone_constraints_torch(F=F_lw_samples, mu=self.mu)
 
 
-        return f_samples, d_samples, p_lw_samples, F_lw_samples
+        return f_samples, d_samples, p_lw_samples, delta_F_lw_samples
 
 
     def enforce_friction_cone_constraints_torch(self, F:torch.Tensor, mu:float) -> torch.Tensor:
