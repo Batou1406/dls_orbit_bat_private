@@ -553,7 +553,7 @@ class samplingController(modelBaseController):
         if not self.optimizer_active:
             num_legs_in_contact = torch.sum(c0_star, dim=1).clamp_min(1) #shape(batch_size)
             F0_star_lw = delta_F0_star_lw # shape(batch_size, num_legs, 3)
-            F0_star_lw[:,:,2] += (c0_star * (self._robot_mass * 9.81) / num_legs_in_contact.unsqueeze(-1)).unsqueeze(-1) # shape(batch_size, num_legs, F_param)
+            F0_star_lw[:,:,2] += (c0_star * (self._robot_mass * 9.81) / num_legs_in_contact.unsqueeze(-1)) # shape(batch_size, num_legs, F_param)
             F0_star_lw[:,:,2] = F0_star_lw[:,:,2].clamp(min=0)
 
         return f_star, d_star, c0_star, p0_star_lw, F0_star_lw, pt_star_lw, full_pt_lw 
