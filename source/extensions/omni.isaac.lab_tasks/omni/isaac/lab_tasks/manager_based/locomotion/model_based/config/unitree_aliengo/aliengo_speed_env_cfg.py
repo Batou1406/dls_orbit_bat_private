@@ -87,7 +87,7 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
             self.curriculum.terrain_levels = None                                                                       # By default activated
 
         if Speed_curriculum :
-            self.commands.base_velocity.initial_difficulty = 0.2
+            self.commands.base_velocity.initial_difficulty = 0.99
             self.commands.base_velocity.minmum_difficulty = 0.2
             self.commands.base_velocity.difficulty_scaling = 0.1
         else :

@@ -25,12 +25,12 @@ parser.add_argument("--num_envs",     type=int,   default=256,               hel
 parser.add_argument("--task",         type=str,   default=None,              help="Name of the task.")
 parser.add_argument("--seed",         type=int,   default=None,              help="Seed used for the environment")
 parser.add_argument("--buffer_size",  type=int,   default=5,                 help="Number of prediction steps")
-parser.add_argument('--epochs',       type=int,   default=20,  metavar='N',  help='number of epochs to train (default: 14)')
+parser.add_argument('--epochs',       type=int,   default=30,  metavar='N',  help='number of epochs to train (default: 14)')
 parser.add_argument('--batch-size',   type=int,   default=64,  metavar='N',  help='input batch size for training (default: 64)')
 parser.add_argument('--lr',           type=float, default=1.0, metavar='LR', help='learning rate (default: 1.0)')
 parser.add_argument('--gamma',        type=float, default=0.7, metavar='M',  help='Learning rate step gamma (default: 0.7)')
 parser.add_argument("--model-name",   type=str,   default='dagger50hzSpline',  help="Name of the model to be saved")
-parser.add_argument('--folder-name',  type=str,   default='goodPolicy',      help="Name of the folder to save the trained model in 'model/task/folder-name'")
+parser.add_argument('--folder-name',  type=str,   default='test',      help="Name of the folder to save the trained model in 'model/task/folder-name'")
 # parser.add_argument("--freq_reduction",type=int,default=2,    help="Factor of reduction of the recording frequency compare to playing frequency")
 
 # append RSL-RL cli arguments
@@ -66,8 +66,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.optim.lr_scheduler import StepLR
-import matplotlib.pyplot as plt
 
+import matplotlib
+matplotlib.use('GTK4Agg')
+import matplotlib.pyplot as plt
+import json
 
 """ --- Model Definition --- """    
 class Model(nn.Module):
@@ -87,7 +90,86 @@ class Model(nn.Module):
         x = F.elu(x)
         x = self.lin4(x)
         return x
+    
+class BigModel(nn.Module):
+    def __init__(self, input_size, output_size):
+        super(BigModel, self).__init__()
+        self.lin1 = nn.Linear(input_size, 512)
+        self.lin2 = nn.Linear(512, 512)
+        self.lin3 = nn.Linear(512, 256)
+        self.lin4 = nn.Linear(256, 128)
+        self.lin5 = nn.Linear(128, output_size)
 
+    def forward(self, x):
+        x = self.lin1(x)
+        x = F.elu(x)
+        x = self.lin2(x)
+        x = F.elu(x)
+        x = self.lin3(x)
+        x = F.elu(x)
+        x = self.lin4(x)
+        x = F.elu(x)
+        x = self.lin5(x)
+        return x
+    
+class AlternativeModel(nn.Module):
+    def __init__(self, input_size, output_size):
+        super(AlternativeModel, self).__init__()
+        self.lin1 = nn.Linear(input_size, 512)
+        self.lin2 = nn.Linear(512, 512)
+        # self.norm1= nn.LayerNorm(512,512)
+        self.lin3 = nn.Linear(512, 256)
+        self.lin4 = nn.Linear(256, 128)
+        self.lin5 = nn.Linear(128, output_size)
+
+    def forward(self, x):
+        x = self.lin1(x)
+        x = F.elu(x)
+        x = self.lin2(x)
+        # x = self.norm1(x)
+        x = F.elu(x)
+        x = self.lin3(x)
+        x = F.elu(x)
+        x = self.lin4(x)
+        x = F.elu(x)
+        x = self.lin5(x)
+        return x
+    
+class TransformerModel(nn.Module):
+    def __init__(self, input_size, output_size, nhead=8, num_encoder_layers=3, dim_feedforward=512):
+        super(TransformerModel, self).__init__()
+        self.embedding = nn.Linear(input_size, dim_feedforward)
+        self.transformer = nn.Transformer(dim_feedforward, nhead, num_encoder_layers)
+        self.fc = nn.Linear(dim_feedforward, output_size)
+
+    def forward(self, x):
+        x = self.embedding(x)
+        x = x.permute(1, 0, 2)  # Transformer expects input shape [seq_len, batch_size, embedding_dim]
+        x = self.transformer(x)
+        x = x.permute(1, 0, 2)
+        x = self.fc(x[:, -1, :])
+        return x
+
+
+def model_to_dict(model):
+    model_dict = {
+        "model_name": model.__class__.__name__,
+        "layers": []
+    }
+
+    for name, module in model.named_modules():
+        if name == '':
+            continue
+        layer_info = {
+            "name": name,
+            "type": module.__class__.__name__,
+            "parameters": {}
+        }
+        for param_name, param in module.named_parameters(recurse=False):
+            layer_info["parameters"][param_name] = param.size()
+        model_dict["layers"].append(layer_info)
+
+    return model_dict
 
 """ --- Training and Testing Function --- """
 def train(model, device, train_loader, optimizer, epoch, criterion):
@@ -242,9 +324,13 @@ def fit_cubic(y: torch.tensor, x: torch.tensor | None = None) -> torch.tensor:
         x = torch.linspace(0, 1, steps=horizon, device=y.device)  # shape (horizon)
 
     # Construct the design matrix X for the remaining points
-    X = torch.stack([x**3, x**2, x, torch.ones_like(x)], dim=-1)  # shape: (horizon, num_param)
-    num_param = X.shape[-1] # = 3 ie. a,b,c
-    
+
+    # This formulation gives a,b,c,d
+    # X = torch.stack([x**3, x**2, x, torch.ones_like(x)], dim=-1)  # shape: (horizon, num_param)
+
+    # This formulation directly gives theta, not a,b,c,d
+    X = 0.5*torch.stack([-(x**3) + 2*(x**2) - x, 3*(x**3) - 5*(x**2) + 2, -3*(x**3) + 4*(x**2) + x, (x**3) - (x**2)], dim=-1)  # shape: (horizon, num_param
+    num_param = X.shape[-1] # = 4 ie. a,b,c, d
     
     # Construct the target matrix Y 
     Y = y  # shape: (batch_size, num_legs, dim_3D, horizon)
@@ -267,15 +353,62 @@ def fit_cubic(y: torch.tensor, x: torch.tensor | None = None) -> torch.tensor:
     d = beta[..., 3]    # shape (batch_size, num_legs, dim_3D)
 
     # Find the missing theta parameters
-    theta_n1 =   a +   b -   c + d  # shape (batch_size, num_legs, dim_3D)
-    theta_0  =                   d  # shape (batch_size, num_legs, dim_3D)
-    theta_1  =   a +   b +   c + d  # shape (batch_size, num_legs, dim_3D)
-    theta_2  = 6*a + 4*b + 2*c + d  # shape (batch_size, num_legs, dim_3D)
+    # theta_n1 =   a +   b -   c + d  # shape (batch_size, num_legs, dim_3D)
+    # theta_0  =                   d  # shape (batch_size, num_legs, dim_3D)
+    # theta_1  =   a +   b +   c + d  # shape (batch_size, num_legs, dim_3D)
+    # theta_2  = 6*a + 4*b + 2*c + d  # shape (batch_size, num_legs, dim_3D)
+
+    # t = torch.arange(0, 101, device=y.device)
+    # F = torch.empty((y.shape[0], y.shape[1], y.shape[2], 101), device=y.device)
+    # for i in range(101):
+    #     F[:,:,:,i] = compute_cubic_spline(parameters=torch.cat((a.unsqueeze(-1), b.unsqueeze(-1),c.unsqueeze(-1), d.unsqueeze(-1)), dim=-1), step=int(t[i]), horizon=100)
+
+    # plt.plot(t.cpu().numpy()/100,F[102,1,-1,:].cpu().numpy())
+    # plt.scatter(x=x.cpu().numpy(), y=y[102,1,-1,:].cpu().numpy(), c='red')
+    # plt.scatter(x=torch.tensor([[-1, 0, 1, 2]]), y=torch.cat((a.unsqueeze(-1), b.unsqueeze(-1),c.unsqueeze(-1), d.unsqueeze(-1)), dim=-1)[102,1,-1,:].cpu().numpy())
+
+    # param = fit_cubic_with_constraint(y=y)
+    # plt.scatter(x=torch.tensor([[-1, 0, 1, 2]]), y=param[102,1,-1,:].cpu().numpy(), c='green')
+
+    # plt.show()
 
     # Concatenate the coefficient
-    theta = torch.cat((theta_n1.unsqueeze(-1), theta_0.unsqueeze(-1),theta_1.unsqueeze(-1), theta_2.unsqueeze(-1)), dim=-1) # shape (batch_size, num_legs, dim_3D, 4)
-    
+    # theta = torch.cat((theta_n1.unsqueeze(-1), theta_0.unsqueeze(-1),theta_1.unsqueeze(-1), theta_2.unsqueeze(-1)), dim=-1) # shape (batch_size, num_legs, dim_3D, 4)
+    theta = torch.cat((a.unsqueeze(-1), b.unsqueeze(-1),c.unsqueeze(-1), d.unsqueeze(-1)), dim=-1) # shape (batch_size, num_legs, dim_3D, 4)
+
     return theta  # Coefficients a, b, c, d for each batch, legs, dim_3D
+
+
+@torch.jit.script
+def compute_cubic_spline(parameters: torch.Tensor, step: int, horizon: int):
+    """ Given a set of spline parameters, and the point in the trajectory return the function value 
+    
+    Args :
+        parameters (Tensor): Spline action parameter      of shape(batch, num_legs, 3, spline_param)              
+        step          (int): The point in the curve in [0, horizon]
+        horizon       (int): The length of the curve
+        
+    Returns : 
+        actions    (Tensor): Discrete action              of shape(batch, num_legs, 3)
+    """
+    # Find the point in the curve q in [0,1]
+    tau = step/(horizon)        
+    q = (tau - 0.0)/(1.0-0.0)
+    
+    # Compute the spline interpolation parameters
+    a =  2*q*q*q - 3*q*q     + 1
+    b =    q*q*q - 2*q*q + q
+    c = -2*q*q*q + 3*q*q
+    d =    q*q*q -   q*q
+
+    # Compute intermediary parameters 
+    phi_1 = 0.5*(parameters[...,2]  - parameters[...,0]) # shape (batch, num_legs, 3)
+    phi_2 = 0.5*(parameters[...,3]  - parameters[...,1]) # shape (batch, num_legs, 3)
+
+    # Compute the spline
+    actions = a*parameters[...,1] + b*phi_1 + c*parameters[...,2]  + d*phi_2 # shape (batch, num_legs, 3)
+
+    return actions
 
 
 """ --- Main --- """
@@ -308,11 +441,10 @@ def main():
 
 
     # --- Step 2 : Define usefull variables
+    json_data = {}
+
     #  Set the data to be testing or training data
     file_prefix = 'training_data'
-
-    # Type of action recorded
-    typeAction = 'spline' # 'discrete', 'spline' # TODO implement spline
 
     # Temporary variable to create the rolling buffer
     buffer_obs = []
@@ -336,11 +468,22 @@ def main():
     last_time = time.time()
     # frequency_reduction = args_cli.freq_reduction
     f_len, d_len, p_len, F_len = 4, 4, 8, 12
-    pF_param = buffer_size
-    if typeAction == 'spline':
-        pF_param = 4
-    p_shape = (env.num_envs, 4, 2, pF_param)
-    F_shape = (env.num_envs, 4, 3, pF_param)
+
+    # Type of action recorded
+    p_typeAction = 'spline' # 'spline', 'discrete'
+    F_typeAction = 'spline' # 'spline', 'discrete'
+
+    if F_typeAction == 'spline':
+        F_param = 4
+    if F_typeAction == 'discrete':
+        F_param = buffer_size
+    if p_typeAction == 'spline':
+        p_param = 4
+    if p_typeAction == 'discrete':
+        p_param = buffer_size
+
+    p_shape = (env.num_envs, 4, 2, p_param)
+    F_shape = (env.num_envs, 4, 3, F_param)
 
 
     # Create logging directory if necessary
@@ -378,11 +521,20 @@ def main():
 
     #  Define Model criteria : model, optimizer and loss criterion and scheduler
     input_size = obs.shape[-1]
-    output_size = 8 + pF_param*(p_len+F_len)
-    student_policy  = Model(input_size, output_size).to(device)
+    output_size = 8 + (p_param*p_len) + (F_param*F_len)
+
+    # student_policy  = Model(input_size, output_size).to(device) #Model(input_size, output_size).to(device)
+    # student_policy  = BigModel(input_size, output_size).to(device) #Model(input_size, output_size).to(device)
+    student_policy  = AlternativeModel(input_size, output_size).to(device) #Model(input_size, output_size).to(device)
+    # student_policy  = TransformerModel(input_size, output_size).to(device) #Model(input_size, output_size).to(device)
+
+    modelDict = model_to_dict(student_policy)
+
+    # optimizer       = optim.Adam(student_policy.parameters())
     optimizer       = optim.Adadelta(student_policy.parameters(), lr=args_cli.lr)
     train_criterion = nn.MSELoss() 
-    scheduler       = StepLR(optimizer, step_size=1, gamma=args_cli.gamma)
+    scheduler       = StepLR(optimizer, step_size=1, gamma=args_cli.gamma) # for adadelta
+    # scheduler       = StepLR(optimizer, step_size=1, gamma=0.95) # for adam
     epoch_avg_train_loss_list = []
     avg_epoch_reward_list = []
 
@@ -409,11 +561,12 @@ def main():
         # print(f"Dataset will be recorded with time step {env.unwrapped.step_dt*frequency_reduction} [s], at frequency {1/(frequency_reduction*env.unwrapped.step_dt)} [Hz]")
         # print(f"Which will correspond in a prediction horizon of {buffer_size*env.unwrapped.step_dt*frequency_reduction} [s]")
 
-        print(f"\nType of action recorded: {typeAction}")
+        print(f"\nType of p action recorded: {p_typeAction}")
+        print(f"Type of F action recorded: {F_typeAction}")
         print(f"with N = {buffer_size} prediction horizon")
 
         print('\nDataset Input  size :', obs.shape[-1])
-        print('Dataset Output size :', 8 + buffer_size*(12+8),'\n')
+        print('Dataset Output size :', output_size,'\n')
 
         # Check if configuration is correct    
         while True:
@@ -458,13 +611,22 @@ def main():
                     # extract first action from student policy
                     f = student_actions[:, 0                             : f_len                           ]                  # shape (num_envs, f_len)
                     d = student_actions[:, f_len                         :(f_len+d_len)                    ]                  # shape (num_envs, d_len)
-                    p = student_actions[:,(f_len+d_len)                  :(f_len+d_len+pF_param*p_len)     ].reshape(p_shape) # shape (num_envs, 4, 2, buffer_size)
-                    F = student_actions[:,(f_len+d_len+pF_param*p_len):(f_len+d_len+pF_param*(p_len+F_len))].reshape(F_shape) # shape (num_envs, 4, 3, buffer_size)
-                    student_first_action  = torch.cat((f,d,p[:,:,:,0].flatten(1,-1),F[:,:,:,0].flatten(1,-1)),dim=1) 
+                    p = student_actions[:,(f_len+d_len)                  :(f_len+d_len+(p_param*p_len))     ].reshape(p_shape) # shape (num_envs, 4, 2, buffer_size)
+                    F = student_actions[:,(f_len+d_len+(p_param*p_len)):(f_len+d_len+(p_param*p_len)+(F_param*F_len))].reshape(F_shape) # shape (num_envs, 4, 3, buffer_size)
+                    
+                    if p_typeAction == 'discrete':
+                        p = p[:,:,:,0].flatten(1,-1)
+                    if p_typeAction == 'spline':
+                        # p = p[:,:,:,1].flatten(1,-1)
+                        p = compute_cubic_spline(parameters=p, step=0, horizon=1).flatten(1,-1)
 
-                    # if spline parametrisation : first action (ie. theta_0 is at index 1)
-                    if typeAction == 'spline':
-                        student_first_action  = torch.cat((f,d,p[:,:,:,1].flatten(1,-1),F[:,:,:,1].flatten(1,-1)),dim=1) 
+                    if F_typeAction == 'discrete':
+                        F = F[:,:,:,0].flatten(1,-1)
+                    if F_typeAction == 'spline':
+                        # F = F[:,:,:,1].flatten(1,-1) 
+                        F = compute_cubic_spline(parameters=F, step=0, horizon=1).flatten(1,-1)
+
+                    student_first_action  = torch.cat((f,d,p,F),dim=1) 
 
                     aggregate_actions = student_first_action #.clone().detach()
                     aggregate_actions[expert_idx] = expert_actions[expert_idx]
@@ -483,8 +645,35 @@ def main():
                     buffer_act.append(expert_actions) 
 
 
+                # # --- Step 4 : Aggreagate the new expert demonstration to the dataset
+                # raw_actions = torch.stack(buffer_act).permute(1,2,0)                            # shape (num_envs, act_dim, buffer_size)
+                # f = raw_actions[:, 0                 : f_len                   , 0]             # shape (num_envs, f_len)
+                # d = raw_actions[:, f_len             :(f_len+d_len)            , 0]             # shape (num_envs, d_len)
+                # p = raw_actions[:,(f_len+d_len)      :(f_len+d_len+p_len)      , :].flatten(1,2)# shape (num_envs, buffer_size*p_len) /!\ Transpose to store the data with the right format
+                # F = raw_actions[:,(f_len+d_len+p_len):(f_len+d_len+p_len+F_len), :].flatten(1,2)# shape (num_envs, buffer_size*F_len)
+                
+                
+                # # --- Step 4.5 : If type of action is 'spline' find the spline parameters that correspond to the action
+                # if p_typeAction == 'spline':
+                #     # extract the p and F action with the right parameters
+                #     p = raw_actions[:,(f_len+d_len)      :(f_len+d_len+p_len)      , :].unsqueeze(2).reshape(args_cli.num_envs, 4, 2, buffer_size) # shape (num_envs, num_legs, 2, buffer_size)
+
+                #     # Fit a cubic spline interpolation these data and retrieve the interpolation parameters
+                #     # print('p spline')
+                #     p = fit_cubic(y=p).flatten(1,3) # shape (num_envs, num_legs, 2, pF_param) -> ()
+
+                # if F_typeAction == 'spline':
+                #     # extract the p and F action with the right parameters
+                #     F = raw_actions[:,(f_len+d_len+p_len):(f_len+d_len+p_len+F_len), :].unsqueeze(2).reshape(args_cli.num_envs, 4, 3, buffer_size) # shape (num_envs, num_legs, 3, buffer_size)
+                #     F_expert_raw = F.clone().detach()
+
+                #     # Fit a cubic spline interpolation these data and retrieve the interpolation parameters
+                #     # print('F spline')
+                #     F = fit_cubic(y=F).flatten(1,3) # shape (num_envs, num_legs, 3, pF_param) -> ()
+
+
                 # --- Step 4 : Aggreagate the new expert demonstration to the dataset
-                raw_actions = torch.stack(buffer_act).permute(1,2,0)                            # shape (num_envs, act_dim, buffer_size)
+                raw_actions = torch.stack(buffer_act,dim=2)                            # shape (num_envs, act_dim, buffer_size)
                 f = raw_actions[:, 0                 : f_len                   , 0]             # shape (num_envs, f_len)
                 d = raw_actions[:, f_len             :(f_len+d_len)            , 0]             # shape (num_envs, d_len)
                 p = raw_actions[:,(f_len+d_len)      :(f_len+d_len+p_len)      , :].flatten(1,2)# shape (num_envs, buffer_size*p_len) /!\ Transpose to store the data with the right format
@@ -492,14 +681,22 @@ def main():
                 
                 
                 # --- Step 4.5 : If type of action is 'spline' find the spline parameters that correspond to the action
-                if typeAction == 'spline':
+                if p_typeAction == 'spline':
                     # extract the p and F action with the right parameters
                     p = raw_actions[:,(f_len+d_len)      :(f_len+d_len+p_len)      , :].unsqueeze(2).reshape(args_cli.num_envs, 4, 2, buffer_size) # shape (num_envs, num_legs, 2, buffer_size)
-                    F = raw_actions[:,(f_len+d_len+p_len):(f_len+d_len+p_len+F_len), :].unsqueeze(2).reshape(args_cli.num_envs, 4, 3, buffer_size) # shape (num_envs, num_legs, 3, buffer_size)
 
                     # Fit a cubic spline interpolation these data and retrieve the interpolation parameters
-                    p = fit_cubic_with_constraint(y=p).flatten(1,3) # shape (num_envs, num_legs, 2, pF_param) -> ()
-                    F = fit_cubic_with_constraint(y=F).flatten(1,3) # shape (num_envs, num_legs, 3, pF_param) -> ()
+                    # print('p spline')
+                    p = fit_cubic(y=p).flatten(1,3) # shape (num_envs, num_legs, 2, p_param) -> ()
+
+                if F_typeAction == 'spline':
+                    # extract the p and F action with the right parameters
+                    F = raw_actions[:,(f_len+d_len+p_len):(f_len+d_len+p_len+F_len), :].unsqueeze(2).reshape(args_cli.num_envs, 4, 3, buffer_size) # shape (num_envs, num_legs, 3, buffer_size)
+                    F_expert_raw = F.clone().detach()
+
+                    # Fit a cubic spline interpolation these data and retrieve the interpolation parameters
+                    # print('F spline')
+                    F = fit_cubic(y=F).flatten(1,3) # shape (num_envs, num_legs, 3, F_param) -> ()
 
 
                 process_actions = torch.cat((f,d,p,F),dim=1)                                    # shape (num_envs, f_len+d_len+buffer_size*(p_len+F_len))
@@ -507,6 +704,42 @@ def main():
                 # Concatenate all observations and actions
                 observations_data = torch.cat((observations_data, buffer_obs[0]), dim=0)    # shape(num_data, obs_dim)
                 actions_data      = torch.cat((actions_data, process_actions), dim=0)       # shape(num_data, f_len+d_len+buffer_size*(p_len+F_len))
+
+
+                # if epoch == 20 :
+
+                #     env_idx = 102
+                #     leg_idx = 1
+                #     x_discrete = torch.linspace(0, 1, steps=buffer_size, device=F.device) # Discrete x = [0, 0.25, 0.5, 0.75, 1.0]
+                #     x_param = torch.tensor([[-1, 0, 1, 2]])
+                #     t = torch.arange(0, 101, device=F.device)
+                    
+                #     # plot expert action
+                #     plt.scatter(x=x_discrete.cpu().numpy(), y=F_expert_raw[env_idx,leg_idx,-1,:].cpu().numpy(), c='red')
+
+                #     # plot expert param
+                #     F_expert_param = fit_cubic_with_constraint(y=F_expert_raw)
+                #     plt.scatter(x=x_param.cpu().numpy(), y=F_expert_param[env_idx,leg_idx,-1,:].cpu().numpy(), c='red')
+
+                #     # plot expert trajectory
+                #     F_expert_traj = torch.empty((F_expert_param.shape[0], F_expert_param.shape[1], F_expert_param.shape[2], 101), device=F_expert_param.device)
+                #     for i in range(101):
+                #         F_expert_traj[:,:,:,i] = compute_cubic_spline(parameters=F_expert_param, step=int(t[i]), horizon=100)
+                #     plt.plot(t.cpu().numpy()/100,F_expert_traj[env_idx,leg_idx,-1,:].cpu().numpy(), c='red')
+
+                #     # plot student param
+                #     student_actions = student_policy(buffer_obs[0]) # shape (num_envs, 4 + 4 + buffer_size*(8 + 12))
+                #     F_student_param = student_actions[:,(f_len+d_len+(p_param*p_len)):(f_len+d_len+(p_param*p_len)+(F_param*F_len))].reshape(F_shape) # shape (num_envs, 4, 3, buffer_size)
+                #     plt.scatter(x=x_param.cpu().numpy(), y=F_student_param[env_idx,leg_idx,-1,:].cpu().numpy(), c='blue')
+
+                #     # plot student trajectory
+                #     F_student_traj = torch.empty((F_student_param.shape[0], F_student_param.shape[1], F_student_param.shape[2], 101), device=F_student_param.device)
+                #     for i in range(101):
+                #         F_student_traj[:,:,:,i] = compute_cubic_spline(parameters=F_student_param, step=int(t[i]), horizon=100)
+                #     plt.plot(t.cpu().numpy()/100,F_student_traj[env_idx,leg_idx,-1,:].cpu().numpy(), c='blue')
+
+                #     plt.show()
+
 
                 # If the Dataset becomes too large : downsample randomly.
                 if observations_data.size(0) > dataset_max_size:
@@ -551,6 +784,27 @@ def main():
     print('\nDataset of ',observations_data.shape[0],'datapoints')
     print('Input  size :', observations_data.shape[-1])
     print('Output size :', actions_data.shape[-1],'\n')
+
+    json_data['file_prefix'] = file_prefix
+    json_data['Saved_at'] = f'{logging_directory}/{file_prefix}.pt'
+    json_data['num_datapoints'] = observations_data.shape[0]
+    json_data['Input_size'] = observations_data.shape[-1]
+    json_data['Output_size'] = actions_data.shape[-1]
+    json_data['buffer_size'] = buffer_size
+    json_data['num_snvs'] = env.num_envs
+    json_data['trajectory_length_s'] = trajectory_length_s
+    json_data['tot_epoch'] = tot_epoch
+    json_data['dataset_max_size'] = dataset_max_size
+    json_data['p_typeAction'] = p_typeAction
+    json_data['p_param'] = p_param
+    json_data['F_typeAction'] = F_typeAction
+    json_data['F_param'] = F_param
+    json_data['model'] = modelDict
+
+    with open(f'{logging_directory}/info.json', 'w') as file:
+        json.dump(json_data, file, indent=4)
+
+
 
     # close the simulator
     env.close()

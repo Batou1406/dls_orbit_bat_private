@@ -166,7 +166,7 @@ class ModelBaseAction(ActionTerm):
             if self.cfg.optimizerCfg.parametrization_F == 'cubic_spline':
                 self._F_param = 4 
             # Discrete Action : Multiple actions - Multiple time step (one action per time step)
-            elif self.cfg.optimizerCfg.parametrization_F == 'discrete':
+            elif self.cfg.optimizerCfg.parametrization_F == 'discrete' or self.cfg.optimizerCfg.parametrization_F == 'from_discrete_fit_spline':
                 self._F_param = self.cfg.optimizerCfg.prevision_horizon
             else : raise NotImplementedError('Provided F parametrisation not implemented')
 
@@ -174,7 +174,7 @@ class ModelBaseAction(ActionTerm):
             if self.cfg.optimizerCfg.parametrization_p == 'cubic_spline':
                 self._p_param = 4
             # Discrete Action : Multiple actions - Multiple time step (one action per time step)
-            elif self.cfg.optimizerCfg.parametrization_p == 'discrete':
+            elif self.cfg.optimizerCfg.parametrization_p == 'discrete'  or self.cfg.optimizerCfg.parametrization_p == 'from_discrete_fit_spline':
                 self._p_param = self.cfg.optimizerCfg.prevision_horizon
             else : raise NotImplementedError('Provided P parametrisation not implemented')
         else :

@@ -180,6 +180,59 @@ def compute_cubic_spline(parameters: torch.Tensor, step: int, horizon: int):
 
     return actions
 
+@torch.jit.script
+def fit_cubic(y: torch.Tensor) -> torch.Tensor:
+    """ Minimize the sum of squared error between datapoints y_i and a cubic function parametrized with a,b,c,d 
+    ie. -> Fit parameters a,b,c,d  that minimize : min(a,b,c,d) : sum( (y_i - (ax_i^3 + bx_i^2 + cx_i + d) )^2 )
+    This problem is solved in closed form with exact solution
+    
+    Moreover, there is a constraint that d=y_0 -> which correspond to theta_0 = y_0 ie. the spline is exact for the first datapoint
+
+    Then compute theta_-1, theta_0, theta_1, theta_2 parameters that are the cubic Hermite spline parameters 
+    (Predictive Sampling : Real-time Behaviour Synthesis with MuJoCo - https://arxiv.org/pdf/2212.00541)
+
+    Time has been imposed to be between [0, 1], with first x_0 = 0
+
+    Args :
+        x     (torch.tensor): time of the datapoints (if None linear in [0 1])           of shape (horizon)
+        y     (torch.tensor): value of the datapoints           of shape (batch, num_legs, dim_3D, horizon)
+
+    Returns :
+        theta (torch.tensor): cubic Hermite spline parameters   of shape (batch, num_legs, 3, 4)
+    """
+    batch_size, num_legs, dim_3D, horizon = y.shape
+
+    x = torch.linspace(0, 1, steps=horizon, device=y.device)  # shape (horizon)
+
+    # Construct the design matrix X for the remaining points
+    # This formulation directly gives theta, not a,b,c,d
+    X = 0.5*torch.stack([-(x**3) + 2*(x**2) - x, 3*(x**3) - 5*(x**2) + 2, -3*(x**3) + 4*(x**2) + x, (x**3) - (x**2)], dim=-1)  # shape: (horizon, num_param
+    num_param = X.shape[-1] # = 4 ie. a,b,c, d
+    
+    # Construct the target matrix Y 
+    Y = y  # shape: (batch_size, num_legs, dim_3D, horizon)
+
+    # Compute the normal equations components for the remaining points
+    XtX = torch.einsum('nk,nm->km', X, X)      # (horizon-1, num_param) x (horizon, num_param) -> shape: (num_param, num_param)
+    XtY = torch.einsum('nk,bijn->bijk', X, Y)  # (horizon-1, num_param) x (batch_size, num_legs, dim_3D, horizon) -> shape: (batch_size, num_legs, dim_3D, num_param)
+
+    # Expand XtX to match the dimension of XtY for the solver
+    XtX.unsqueeze(0).unsqueeze(0).unsqueeze(0).expand(batch_size, num_legs, dim_3D, num_param, num_param) # shape (batch_size, num_legs, dim_3D, num_param, num_param)
+
+    # Solve for the remaining coefficients a, b, c
+    beta = torch.linalg.solve(XtX, XtY.transpose(-1,-2)).transpose(-1,-2) # shape: (batch_size, num_legs, dim_3D, num_param)
+
+    # Retrieve coefficients a, b, c, d for each batch, legs, dim_3D
+    theta_n1 = beta[..., 0]    # shape (batch_size, num_legs, dim_3D)
+    theta_0 = beta[..., 1]    # shape (batch_size, num_legs, dim_3D)
+    theta_1 = beta[..., 2]    # shape (batch_size, num_legs, dim_3D)
+    theta_2 = beta[..., 3]    # shape (batch_size, num_legs, dim_3D)
+
+    # Concatenate the coefficient
+    theta = torch.cat((theta_n1.unsqueeze(-1), theta_0.unsqueeze(-1),theta_1.unsqueeze(-1), theta_2.unsqueeze(-1)), dim=-1) # shape (batch_size, num_legs, dim_3D, 4)
+
+    return theta  # Coefficients a, b, c, d for each batch, legs, dim_3D
+
 
 @torch.jit.script
 def compute_discrete(parameters: torch.Tensor, step: int, horizon: int):
