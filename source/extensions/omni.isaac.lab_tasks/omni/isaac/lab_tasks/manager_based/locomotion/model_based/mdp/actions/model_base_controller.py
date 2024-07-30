@@ -14,7 +14,7 @@ import omni.isaac.lab.utils.math as math_utils
 from omni.isaac.lab.assets.articulation import Articulation
 from omni.isaac.lab.envs import ManagerBasedRLEnv
 
-from .helper import inverse_conjugate_euler_xyz_rate_matrix, rotation_matrix_from_w_to_b, gait_generator, compute_cubic_spline, compute_discrete, normal_sampling, uniform_sampling
+from .helper import inverse_conjugate_euler_xyz_rate_matrix, rotation_matrix_from_w_to_b, gait_generator, compute_cubic_spline, compute_discrete, normal_sampling, uniform_sampling, fit_cubic
 
 
 class baseController(ABC):
@@ -604,6 +604,9 @@ class SamplingOptimizer():
         elif optimizerCfg.parametrization_F == 'discrete'     :
             self.interpolation_F=compute_discrete
             self.F_param = self.sampling_horizon
+        elif optimizerCfg.parametrization_F == 'from_discrete_fit_spline'     :
+            self.interpolation_F=compute_cubic_spline
+            self.F_param = 4
         else : raise NotImplementedError('Request interpolation method is not implemented yet')
 
         # Define Interpolation method for foot touch down position and interfer foot touch down position input size 
@@ -613,6 +616,9 @@ class SamplingOptimizer():
         elif optimizerCfg.parametrization_p == 'discrete'     : 
             self.interpolation_p=compute_discrete
             self.p_param = self.sampling_horizon
+        elif optimizerCfg.parametrization_p == 'from_discrete_fit_spline' : 
+            self.interpolation_p=compute_cubic_spline
+            self.p_param = 4
         else : raise NotImplementedError('Request interpolation method is not implemented yet')
 
         # Input and State dimension for centroidal model : hardcoded because the centroidal model is hardcoded # TODO get rid of these
@@ -1027,6 +1033,14 @@ class SamplingOptimizer():
             p_lw_samples (Tensor) : Foot touch down position samples    of shape(num_samples, num_leg, 3, p_param)
             F_lw_samples (Tensor) : Ground Reaction forces samples      of shape(num_samples, num_leg, 3, F_param)
         """
+        # Prepare RL input if needed
+        if self.cfg.parametrization_F == 'from_discrete_fit_spline' :
+            delta_F_lw = fit_cubic(delta_F_lw)
+        
+        if self.cfg.parametrization_p == 'from_discrete_fit_spline' :
+            p_lw = fit_cubic(p_lw)
+
+
         # Define how much samples from the RL or from the previous solution we're going to sample
         if iter == 0:
             num_samples_previous_best = int(self.num_samples * self.propotion_previous_solution)

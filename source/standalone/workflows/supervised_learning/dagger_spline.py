@@ -29,8 +29,8 @@ parser.add_argument('--epochs',       type=int,   default=30,  metavar='N',  hel
 parser.add_argument('--batch-size',   type=int,   default=64,  metavar='N',  help='input batch size for training (default: 64)')
 parser.add_argument('--lr',           type=float, default=1.0, metavar='LR', help='learning rate (default: 1.0)')
 parser.add_argument('--gamma',        type=float, default=0.7, metavar='M',  help='Learning rate step gamma (default: 0.7)')
-parser.add_argument("--model-name",   type=str,   default='dagger50hzSpline',  help="Name of the model to be saved")
-parser.add_argument('--folder-name',  type=str,   default='test',      help="Name of the folder to save the trained model in 'model/task/folder-name'")
+parser.add_argument("--model-name",   type=str,   default='dagger50hz5Act',  help="Name of the model to be saved")
+parser.add_argument('--folder-name',  type=str,   default='dagger50hz5Act',  help="Name of the folder to save the trained model in 'model/task/folder-name'")
 # parser.add_argument("--freq_reduction",type=int,default=2,    help="Factor of reduction of the recording frequency compare to playing frequency")
 
 # append RSL-RL cli arguments
@@ -115,12 +115,13 @@ class BigModel(nn.Module):
 class AlternativeModel(nn.Module):
     def __init__(self, input_size, output_size):
         super(AlternativeModel, self).__init__()
-        self.lin1 = nn.Linear(input_size, 512)
-        self.lin2 = nn.Linear(512, 512)
+        self.lin1 = nn.Linear(input_size, 1024)
+        self.lin2 = nn.Linear(1024, 512)
+        self.lin3 = nn.Linear(512, 512)
         # self.norm1= nn.LayerNorm(512,512)
-        self.lin3 = nn.Linear(512, 256)
-        self.lin4 = nn.Linear(256, 128)
-        self.lin5 = nn.Linear(128, output_size)
+        self.lin4 = nn.Linear(512, 256)
+        self.lin5 = nn.Linear(256, 256)
+        self.lin6 = nn.Linear(256, output_size)
 
     def forward(self, x):
         x = self.lin1(x)
@@ -133,6 +134,8 @@ class AlternativeModel(nn.Module):
         x = self.lin4(x)
         x = F.elu(x)
         x = self.lin5(x)
+        x = F.elu(x)
+        x = self.lin6(x)
         return x
     
 class TransformerModel(nn.Module):
@@ -470,8 +473,8 @@ def main():
     f_len, d_len, p_len, F_len = 4, 4, 8, 12
 
     # Type of action recorded
-    p_typeAction = 'spline' # 'spline', 'discrete'
-    F_typeAction = 'spline' # 'spline', 'discrete'
+    p_typeAction = 'discrete' # 'spline', 'discrete'
+    F_typeAction = 'discrete' # 'spline', 'discrete'
 
     if F_typeAction == 'spline':
         F_param = 4
@@ -523,9 +526,9 @@ def main():
     input_size = obs.shape[-1]
     output_size = 8 + (p_param*p_len) + (F_param*F_len)
 
-    # student_policy  = Model(input_size, output_size).to(device) #Model(input_size, output_size).to(device)
+    student_policy  = Model(input_size, output_size).to(device) #Model(input_size, output_size).to(device)
     # student_policy  = BigModel(input_size, output_size).to(device) #Model(input_size, output_size).to(device)
-    student_policy  = AlternativeModel(input_size, output_size).to(device) #Model(input_size, output_size).to(device)
+    # student_policy  = AlternativeModel(input_size, output_size).to(device) #Model(input_size, output_size).to(device)
     # student_policy  = TransformerModel(input_size, output_size).to(device) #Model(input_size, output_size).to(device)
 
     modelDict = model_to_dict(student_policy)

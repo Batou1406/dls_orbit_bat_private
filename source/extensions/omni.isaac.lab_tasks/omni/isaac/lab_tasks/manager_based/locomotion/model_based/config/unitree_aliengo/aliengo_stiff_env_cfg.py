@@ -18,7 +18,7 @@ from omni.isaac.lab_assets.anymal import ANYMAL_C_CFG  # isort: skip
 from omni.isaac.lab.terrains.config.niceFlat import COBBLESTONE_ROAD_CFG
 
 @configclass
-class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
+class UnitreeAliengoStiffEnvCfg(LocomotionModelBasedEnvCfg):
     def __post_init__(self):
 
         self.scene.terrain.terrain_generator = COBBLESTONE_ROAD_CFG
@@ -39,14 +39,14 @@ class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
 
 
         """ ----- Commands ----- """
-        # self.commands.base_velocity.ranges.for_vel_b = (-1.0, 1.0)
-        # self.commands.base_velocity.ranges.lat_vel_b = (-1.0, 1.0)
-        # self.commands.base_velocity.ranges.ang_vel_b = (-1.0, 1.0)
-        # self.commands.base_velocity.ranges.initial_heading_err = (-math.pi, math.pi)
-        self.commands.base_velocity.ranges.for_vel_b = (-0.0, 0.0)
-        self.commands.base_velocity.ranges.lat_vel_b = (-0.0, 0.0)
-        self.commands.base_velocity.ranges.ang_vel_b = (-0.0, 0.0)
-        self.commands.base_velocity.ranges.initial_heading_err = (-0.0, 0.0)
+        self.commands.base_velocity.ranges.for_vel_b = (-1.0, 1.0)
+        self.commands.base_velocity.ranges.lat_vel_b = (-1.0, 1.0)
+        self.commands.base_velocity.ranges.ang_vel_b = (-1.0, 1.0)
+        self.commands.base_velocity.ranges.initial_heading_err = (-math.pi, math.pi)
+        # self.commands.base_velocity.ranges.for_vel_b = (-0.0, 0.0)
+        # self.commands.base_velocity.ranges.lat_vel_b = (-0.0, 0.0)
+        # self.commands.base_velocity.ranges.ang_vel_b = (-0.0, 0.0)
+        # self.commands.base_velocity.ranges.initial_heading_err = (-0.0, 0.0)
 
 
         """ ----- Observation ----- """
@@ -119,6 +119,7 @@ class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
         self.rewards.track_soft_vel_xy_exp               = None
         self.rewards.track_ang_vel_z_exp.weight          = 0.75
         self.rewards.track_robot_height_exp.weight       = 0.2
+        self.rewards.track_robot_height_exp.params       = {"target_height": 0.35, "std": 0.06} #0.38 #0.1
 
         # -- Additionnal penalties : Need a negative weight
         self.rewards.penalty_lin_vel_z_l2.weight         = -2.0
@@ -136,14 +137,16 @@ class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
         self.rewards.penalize_foot_trac_err              = None
 
         # -- Model based penalty : Positive weight -> penalty is already negative
-        self.rewards.penalty_leg_frequency               = None
-        self.rewards.penalty_leg_duty_cycle              = None
+        self.rewards.penalty_leg_frequency               = 2.0
+        self.rewards.penalty_leg_duty_cycle              = 1.0
         self.rewards.penalty_large_force.weight          = 0.1
-        self.rewards.penalty_large_step                  = None
+        self.rewards.penalty_large_step.weight           = 1.0
         self.rewards.penalty_frequency_variation.weight  = 0.5 #1.0
         self.rewards.penatly_duty_cycle_variation.weight = 1.0 #2.5
         self.rewards.penalty_step_variation.weight       = 1.0 #2.5
         self.rewards.penatly_force_variation.weight      = 2.5e-5 #1e-4
+
+        self.rewards.penalty_large_step.params           = {"action_name": "model_base_variable", "bound_x": (0.05,-0.05), "bound_y": (0.05,-0.05)}
 
         # -- Additionnal Reward : Need a positive weight
         self.rewards.reward_is_alive                     = None #0.25

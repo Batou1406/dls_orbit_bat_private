@@ -1,6 +1,6 @@
 import gymnasium as gym
 
-from . import agents, aliengo_base_env_cfg, aliengo_rough_env_cfg, aliengo_speed_env_cfg, aliengo_climb_env_cfg 
+from . import agents, aliengo_base_env_cfg, aliengo_rough_env_cfg, aliengo_speed_env_cfg, aliengo_climb_env_cfg, aliengo_stiff_env_cfg 
 
 
 ##
@@ -43,5 +43,15 @@ gym.register(
     kwargs={
         "env_cfg_entry_point": aliengo_climb_env_cfg.UnitreeAliengoClimbEnvCfg,
         "rsl_rl_cfg_entry_point": agents.rsl_rl_cfg.UnitreeAliengoClimbPPORunnerCfg,
+    },
+)
+
+gym.register(
+    id="Isaac-Model-Based-Stiff-Aliengo-v0",
+    entry_point="omni.isaac.lab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True, #True
+    kwargs={
+        "env_cfg_entry_point": aliengo_stiff_env_cfg.UnitreeAliengoStiffEnvCfg,
+        "rsl_rl_cfg_entry_point": agents.rsl_rl_cfg.UnitreeAliengoStiffPPORunnerCfg,
     },
 )

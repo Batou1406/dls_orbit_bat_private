@@ -27,7 +27,9 @@ parser.add_argument("--controller_name", type=str,  default='Isaac-Model-Based-B
 # parser.add_argument("--model_name", type=str,       default='baseTaskNoise5ActGood1/model1',   help="Name of the model to load (in /model/controller/)")
 # parser.add_argument("--model_name", type=str,       default='baseGiulio2/model1',   help="Name of the model to load (in /model/controller/)")
 # parser.add_argument("--model_name", type=str,       default='test1/modelDagger1',   help="Name of the model to load (in /model/controller/)")
-parser.add_argument("--model_name", type=str,       default='goodPolicy1/dagger50hz4Act',   help="Name of the model to load (in /model/controller/)")
+# parser.add_argument("--model_name", type=str,       default='goodPolicy1/dagger50hz4Act',   help="Name of the model to load (in /model/controller/)")
+parser.add_argument("--model_name", type=str,       default='dagger50hz5Act/dagger50hz5Act',   help="Name of the model to load (in /model/controller/)")
+
 
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
