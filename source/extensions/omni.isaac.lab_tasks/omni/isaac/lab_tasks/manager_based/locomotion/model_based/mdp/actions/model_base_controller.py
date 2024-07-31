@@ -1617,6 +1617,9 @@ class SamplingBatchedTrainer():
         # Enforce force constraints (Friction cone constraints)
         F0_star_lw = enforce_friction_cone_constraints_torch(F=F0_star_lw, mu=self.mu, F_z_min=self.F_z_min, F_z_max=self.F_z_max) # shape(batch, num_legs, 3)
 
+        if F0_star_lw.isnan().any():
+            print('oh noooo')
+
         return bacthed_cost, p0_star_lw, F0_star_lw
     
 
