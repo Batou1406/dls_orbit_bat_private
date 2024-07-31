@@ -498,8 +498,24 @@ def penalize_constraint_violation(env: ManagerBasedRLEnv, actionName: str="model
     return torch.sum(torch.square(raw_action - applied_action), dim=-1)
 
 
+def penalize_sampling_controller_cost(env: ManagerBasedRLEnv, actionName: str="model_base_variable"):
+    """
+    Penalize for the cost of the rollout computed by the sampling controller
 
+    Return 
+        penalty (torch.Tensor): Penalty in [0, +1e10]
+    """
+    action: ModelBaseAction = env.action_manager.get_term(actionName)
 
+    rollout_cost = action.controller.batched_cost # shape(num_envs)
+
+    # Diminish the influence of execcesivly high rollout cost
+    rollout_cost[rollout_cost > 1e5] = 1e5 + torch.sqrt(rollout_cost[rollout_cost > 1e5])
+
+    # Scale down to avoid overflow when summed along the episode
+    rollout_cost = rollout_cost*(1e-3)
+
+    return rollout_cost
 
 
 

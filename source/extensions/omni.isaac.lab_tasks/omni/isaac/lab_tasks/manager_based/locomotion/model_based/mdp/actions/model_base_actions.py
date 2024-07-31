@@ -296,7 +296,7 @@ class ModelBaseAction(ActionTerm):
                 foot_offset=cfg.footTrajectoryCfg.foot_offset, swing_ctrl_pos_gain_fb=self.cfg.swingControllerCfg.swing_ctrl_pos_gain_fb , 
                 swing_ctrl_vel_gain_fb=self.cfg.swingControllerCfg.swing_ctrl_vel_gain_fb
             )
-        elif cfg.controller == model_base_controller.samplingController:
+        elif cfg.controller == model_base_controller.samplingController or cfg.controller == model_base_controller.samplingTrainer:
             self.controller = cfg.controller(
                 verbose_md=verbose_mb, device=self.device, num_envs=self.num_envs, num_legs=self._num_legs, robot_mass=self.robot_mass, mu=self.mu,
                 dt_out=self._decimation*self._env.physics_dt, decimation=self._decimation, dt_in=self._env.physics_dt,

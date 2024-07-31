@@ -506,7 +506,7 @@ class samplingController(modelBaseController):
         # Initialise the Model Base Controller
         super().__init__(verbose_md, device, num_envs, num_legs, robot_mass, mu, dt_out, decimation, dt_in, p_default_lw, step_height, foot_offset, swing_ctrl_pos_gain_fb, swing_ctrl_vel_gain_fb)
 
-        self.samplingOptimizer = SamplingOptimizer(device=device,num_legs=num_legs,env=env, optimizerCfg=optimizerCfg)  
+        self.samplingOptimizer = SamplingOptimizer(device=device,num_legs=num_legs, robot_mass=robot_mass, mu=mu,env=env, optimizerCfg=optimizerCfg)  
 
         # To enable or not the optimizer at run time
         self.optimizer_active = True
@@ -551,27 +551,30 @@ class samplingController(modelBaseController):
         # Generate the swing trajectory
         pt_star_lw, full_pt_lw = self.full_swing_trajectory_generator(p_lw=p0_star_lw, c0=c0_star, d=d_star, f=f_star)
 
-        # If no optimizer -> Add the gravity compensation
+        # If no optimizer -> Add the gravity compensation + friction cone constraint
         if not self.optimizer_active:
             num_legs_in_contact = torch.sum(c0_star, dim=1).clamp_min(1) #shape(batch_size)
             F0_star_lw = delta_F0_star_lw # shape(batch_size, num_legs, 3)
             F0_star_lw[:,:,2] += (c0_star * (self._robot_mass * 9.81) / num_legs_in_contact.unsqueeze(-1)) # shape(batch_size, num_legs, F_param)
             F0_star_lw[:,:,2] = F0_star_lw[:,:,2].clamp(min=0)
 
+            # Enforce the friction cone constraints
+            F0_star_lw = enforce_friction_cone_constraints_torch(F=F0_star_lw, mu=self._mu, F_z_min=0.0, F_z_max=9.81*self._robot_mass) # shape(num_samples, num_legs, 3)
+
         return f_star, d_star, c0_star, p0_star_lw, F0_star_lw, pt_star_lw, full_pt_lw 
 
 class samplingTrainer(modelBaseController):
     """
     """
-    def __init__(self, verbose_md, device, num_envs, num_legs, robot_mass, dt_out, decimation, dt_in, p_default_lw: torch.Tensor, step_height, foot_offset, swing_ctrl_pos_gain_fb, swing_ctrl_vel_gain_fb, env: ManagerBasedRLEnv, optimizerCfg):
+    def __init__(self, verbose_md, device, num_envs, num_legs, robot_mass, mu, dt_out, decimation, dt_in, p_default_lw: torch.Tensor, step_height, foot_offset, swing_ctrl_pos_gain_fb, swing_ctrl_vel_gain_fb, env: ManagerBasedRLEnv, optimizerCfg):
         """ Initial the Model Base Controller and define an optimizer """
 
         # Initialise the Model Base Controller
-        super().__init__(verbose_md, device, num_envs, num_legs, robot_mass, dt_out, decimation, dt_in, p_default_lw, step_height, foot_offset, swing_ctrl_pos_gain_fb, swing_ctrl_vel_gain_fb)
+        super().__init__(verbose_md, device, num_envs, num_legs, robot_mass, mu, dt_out, decimation, dt_in, p_default_lw, step_height, foot_offset, swing_ctrl_pos_gain_fb, swing_ctrl_vel_gain_fb)
 
-        self.samplingOptimizer = SamplingBatchedTrainer(device=device,num_legs=num_legs,env=env, optimizerCfg=optimizerCfg)  
+        self.samplingOptimizer = SamplingBatchedTrainer(device=device,num_legs=num_legs, robot_mass=robot_mass, mu=mu, env=env, optimizerCfg=optimizerCfg)  
 
-        self.bacthed_cost = torch.zeros((env.num_envs), device=device)
+        self.batched_cost = torch.zeros((env.num_envs), device=device)
 
     def process_latent_variable(self, f: torch.Tensor, d: torch.Tensor, p_lw: torch.Tensor, delta_F_lw: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """ Given the latent variable z=[f,d,p,F], return the optimize latent variable f*, d*, c*, p*, F*, pt* full_pt
@@ -595,11 +598,11 @@ class samplingTrainer(modelBaseController):
         """
 
         # Call the optimizer
-        bacthed_cost, p0_star_lw, F0_star_lw = self.samplingOptimizer.compute_batched_rollout_cost(f=f, d=d, p_lw=p_lw, delta_F_lw=delta_F_lw, phase=self.phase)
+        batched_cost, p0_star_lw, F0_star_lw = self.samplingOptimizer.compute_batched_rollout_cost(f=f, d=d, p_lw=p_lw, delta_F_lw=delta_F_lw, phase=self.phase)
 
         f_star = f
         d_star = d
-        self.bacthed_cost = bacthed_cost
+        self.batched_cost = batched_cost
 
         # Compute the contact sequence and update the phase
         c_star, self.phase = gait_generator(f=f, d=d, phase=self.phase, horizon=1, dt=self._dt_out)
@@ -620,7 +623,7 @@ class SamplingOptimizer():
         
     """
 
-    def __init__(self, device, num_legs, env:ManagerBasedRLEnv, optimizerCfg):
+    def __init__(self, device, num_legs, robot_mass, mu, env:ManagerBasedRLEnv, optimizerCfg):
         """ 
         Args :
             device                 : 'cuda' or 'cpu' 
@@ -649,7 +652,7 @@ class SamplingOptimizer():
         self.sampling_horizon = optimizerCfg.prevision_horizon
         self.mpc_dt = optimizerCfg.discretization_time 
         self.num_optimizer_iterations = optimizerCfg.num_optimizer_iterations
-        self.mu = optimizerCfg.mu
+        self.mu = mu #optimizerCfg.mu
 
         # Define Interpolation method for GRF and interfer GRF input size 
         if   optimizerCfg.parametrization_F == 'cubic_spline': 
@@ -690,7 +693,8 @@ class SamplingOptimizer():
         # TODO Get these value properly
         self.gravity_lw = torch.tensor((0.0, 0.0, -9.81), device=self.device) # shape(3) #self._env.sim.cfg.gravity
         # self.robot_mass = 24.64
-        self.robot_mass = 20.6380
+        # self.robot_mass = 20.6380
+        self.robot_mass = robot_mass
         self.robot_inertia = torch.tensor([[ 0.2310941359705289,   -0.0014987128245817424, -0.021400468992761768 ], # shape (3,3)
                                            [-0.0014987128245817424, 1.4485084687476608,     0.0004641447134275615],
                                            [-0.021400468992761768,  0.0004641447134275615,  1.503217877350808    ]],device=self.device)
@@ -1470,7 +1474,7 @@ class SamplingBatchedTrainer():
     """
     """
 
-    def __init__(self, device, num_legs, env:ManagerBasedRLEnv, optimizerCfg):
+    def __init__(self, device, num_legs, robot_mass, mu, env:ManagerBasedRLEnv, optimizerCfg):
         """ 
         Args :
             device                 : 'cuda' or 'cpu' 
@@ -1498,7 +1502,7 @@ class SamplingBatchedTrainer():
         self.num_samples = optimizerCfg.num_samples
         self.sampling_horizon = optimizerCfg.prevision_horizon
         self.mpc_dt = optimizerCfg.discretization_time 
-        self.mu = optimizerCfg.mu
+        self.mu = mu #optimizerCfg.mu
 
         # Define Interpolation method for GRF and interfer GRF input size 
         if   optimizerCfg.parametrization_F == 'cubic_spline' : 
@@ -1532,7 +1536,8 @@ class SamplingBatchedTrainer():
         # TODO Get these value properly
         self.gravity_lw = torch.tensor((0.0, 0.0, -9.81), device=self.device) # shape(3) #self._env.sim.cfg.gravity
         # self.robot_mass = 24.64
-        self.robot_mass = 20.6380
+        # self.robot_mass = 20.6380
+        self.robot_mass = robot_mass
         self.robot_inertia = torch.tensor([[ 0.2310941359705289,   -0.0014987128245817424, -0.021400468992761768 ], # shape (3,3)
                                            [-0.0014987128245817424, 1.4485084687476608,     0.0004641447134275615],
                                            [-0.021400468992761768,  0.0004641447134275615,  1.503217877350808    ]],device=self.device)
@@ -1601,6 +1606,7 @@ class SamplingBatchedTrainer():
 
         # --- Step 3 : Compute the rollouts to find the rollout cost : can't used named argument with VMAP...
         bacthed_cost = self.batched_compute_rollout(batched_initial_state, batched_reference_seq_state, batched_reference_seq_input, batched_action_param, batched_c)
+        bacthed_cost[torch.isnan(bacthed_cost) | torch.isinf(bacthed_cost)] = 1e10
 
         p0_star_lw = self.interpolation_p(parameters=p_lw,       step=0, horizon=1) # shape(batch, num_legs, 3)
         F0_star_lw = self.interpolation_F(parameters=delta_F_lw, step=0, horizon=1) # shape(batch, num_legs, 3)
@@ -1677,7 +1683,7 @@ class SamplingBatchedTrainer():
         roll, pitch, yaw = math_utils.euler_xyz_from_quat(robot.data.root_quat_w) 
         roll, pitch, yaw = from_zero_twopi_to_minuspi_pluspi(roll, pitch, yaw) 
         # euler_xyz_angle = torch.tensor((roll, pitch, yaw), device=self.device)
-        euler_xyz_angle = torch.cat((roll, pitch, yaw), dim=1) # shape (batch, 3)
+        euler_xyz_angle = torch.stack((roll, pitch, yaw), dim=1) # shape (batch, 3)
 
         # Retrieve the robot linear and angular velocity in base frame of shape(3)
         com_lin_vel_lw = (robot.data.root_lin_vel_w) # shape(batch, 3) 
@@ -1731,7 +1737,7 @@ class SamplingBatchedTrainer():
         com_ang_vel_ref_seq_b = torch.zeros_like(com_pos_ref_seq_lw) # shape(batch, 3, sampling_horizon)
 
         # Angular velocity reference is base frame (roll_rate=0, pitch_rate=0, yaw_rate=yaw_rate_ref)
-        com_ang_vel_ref_seq_b[:,2,:] = speed_command_b[:,2]  # shape(batch, sampling_horizon)
+        com_ang_vel_ref_seq_b[:,2,:] = speed_command_b[:,2].unsqueeze(-1)  # shape(batch, sampling_horizon)
 
         # Defining the foot position sequence is tricky.. Since we only have number of predicted step < sampling_horizon
         p_ref_seq_lw = torch.zeros((self._env.num_envs, self.num_legs, 3, self.sampling_horizon), device=self.device) # shape(batch, num_legs, 3, sampling_horizon) TODO Define this !
@@ -1821,7 +1827,7 @@ class SamplingBatchedTrainer():
 
             # --- Step 3 : compute the step cost
             state_vector     = torch.cat([vector.view(self._env.num_envs, -1) for vector in state.values()], dim=1)             # Shape: (batch, state_dim)
-            ref_state_vector = torch.cat([vector[...,-1] for vector in batched_reference_seq_state.values()], dim=0)            # Shape: (batch, state_dim)
+            ref_state_vector = torch.cat([vector[...,i].view(self._env.num_envs, -1) for vector in batched_reference_seq_state.values()], dim=1)            # Shape: (batch, state_dim)
             
             # Compute the state cost
             state_error = state_vector - ref_state_vector                                                                       # shape (num_samples, state_dim)
