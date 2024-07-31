@@ -25,13 +25,13 @@ parser.add_argument("--num_envs",     type=int,   default=256,               hel
 parser.add_argument("--task",         type=str,   default=None,              help="Name of the task.")
 parser.add_argument("--seed",         type=int,   default=None,              help="Seed used for the environment")
 parser.add_argument("--buffer_size",  type=int,   default=5,                 help="Number of prediction steps")
-parser.add_argument('--epochs',       type=int,   default=30,  metavar='N',  help='number of epochs to train (default: 14)')
+parser.add_argument('--epochs',       type=int,   default=60,  metavar='N',  help='number of epochs to train (default: 14)')
 parser.add_argument('--batch-size',   type=int,   default=64,  metavar='N',  help='input batch size for training (default: 64)')
 parser.add_argument('--lr',           type=float, default=1.0, metavar='LR', help='learning rate (default: 1.0)')
 parser.add_argument('--gamma',        type=float, default=0.7, metavar='M',  help='Learning rate step gamma (default: 0.7)')
-parser.add_argument("--model-name",   type=str,   default='dagger25Hz10Act',  help="Name of the model to be saved")
+parser.add_argument("--model-name",   type=str,   default='dagger50Hz10Act',  help="Name of the model to be saved")
 parser.add_argument('--folder-name',  type=str,   default='SpeedGoodPolicy',  help="Name of the folder to save the trained model in 'model/task/folder-name'")
-parser.add_argument("--freq_reduction",type=int,default=2,    help="Factor of reduction of the recording frequency compare to playing frequency")
+parser.add_argument("--freq_reduction",type=int,default=1,    help="Factor of reduction of the recording frequency compare to playing frequency")
 
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)

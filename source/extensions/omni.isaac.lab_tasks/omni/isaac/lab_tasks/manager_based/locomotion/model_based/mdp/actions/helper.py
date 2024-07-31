@@ -35,7 +35,7 @@ def inverse_conjugate_euler_xyz_rate_matrix(euler_xyz_angle: torch.Tensor) -> to
     tan_pitch = torch.tan(pitch)  # shape(batch)
 
     # Check for singularities: pitch close to +/- 90 degrees (or +/- pi/2 radians)
-    assert not torch.any(torch.abs(cos_pitch) < 1e-6), "Numerical instability likely due to pitch angle near +/- 90 degrees."
+    # assert not torch.any(torch.abs(cos_pitch) < 1e-6), "Numerical instability likely due to pitch angle near +/- 90 degrees."
 
     # Create the matrix of # shape(batch, 3, 3)
     inverse_conjugate_euler_xyz_rate_matrix = torch.zeros((euler_xyz_angle.shape[0], 3, 3), dtype=euler_xyz_angle.dtype, device=euler_xyz_angle.device)

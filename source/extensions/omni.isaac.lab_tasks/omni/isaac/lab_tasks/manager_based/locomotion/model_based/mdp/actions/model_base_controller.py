@@ -37,7 +37,7 @@ class baseController(ABC):
         - compute_control_output(F0*, c0*, pt01*) -> T
     """
 
-    def __init__(self, verbose_md, device, num_envs, num_legs, robot_mass, dt_out, decimation, dt_in):
+    def __init__(self, verbose_md, device, num_envs, num_legs, robot_mass, mu, dt_out, decimation, dt_in):
         """ Initialise Model Base variable after the model base action class has been initialised
 
         Args : 
@@ -55,6 +55,7 @@ class baseController(ABC):
         self._device = device
         self._num_legs = num_legs
         self._robot_mass = robot_mass
+        self._mu = mu
         self._dt_out = dt_out
         self._decimation = decimation
         self._dt_in = dt_in
@@ -145,7 +146,7 @@ class modelBaseController(baseController):
     swing_time : torch.Tensor
     p_lw_sim_prev : torch.Tensor
 
-    def __init__(self, verbose_md, device, num_envs, num_legs, robot_mass, dt_out, decimation, dt_in, p_default_lw: torch.Tensor, step_height, foot_offset, swing_ctrl_pos_gain_fb, swing_ctrl_vel_gain_fb):
+    def __init__(self, verbose_md, device, num_envs, num_legs, robot_mass, mu, dt_out, decimation, dt_in, p_default_lw: torch.Tensor, step_height, foot_offset, swing_ctrl_pos_gain_fb, swing_ctrl_vel_gain_fb):
         """ Initialise Model Base variable after the model base action class has been initialised
         Note :
             The variable are in the 'local' world frame _wl. This notation is introduced to avoid confusion with the 'global' world frame, where all the batches coexists.
@@ -160,7 +161,7 @@ class modelBaseController(baseController):
             - dt_in        (int): Inner loop delta t
             - p_default (Tensor): Default feet pos of robot when reset  of Shape (batch_size, num_legs, 3)
         """
-        super().__init__(verbose_md, device, num_envs, num_legs, robot_mass, dt_out, decimation, dt_in)
+        super().__init__(verbose_md, device, num_envs, num_legs, robot_mass, mu, dt_out, decimation, dt_in)
         self.phase = torch.zeros(num_envs, num_legs, device=device)
         self.phase[:,(0,3)] = 0.5 # Init phase [0.5, 0, 0, 0.5]
         self.p0_lw = p_default_lw.clone().detach()
@@ -233,6 +234,9 @@ class modelBaseController(baseController):
         F0_star_lw = delta_F0_star_lw # shape(batch_size, num_legs, 3)
         F0_star_lw[:,:,2] += (c0_star * (self._robot_mass * 9.81) / num_legs_in_contact.unsqueeze(-1)) # shape(batch_size, num_legs)
         F0_star_lw[:,:,2] = F0_star_lw[:,:,2].clamp(min=0)
+
+        # Enforce the friction cone constraints
+        F0_star_lw = enforce_friction_cone_constraints_torch(F=F0_star_lw, mu=self._mu, F_z_min=0.0, F_z_max=9.81*self._robot_mass) # shape(num_samples, num_legs, 3)
 
         return f_star, d_star, c0_star, p0_star_lw, F0_star_lw, pt_star_lw, full_pt_lw
     
@@ -496,11 +500,11 @@ class samplingController(modelBaseController):
         samplingOptimizer
     """
 
-    def __init__(self, verbose_md, device, num_envs, num_legs, robot_mass, dt_out, decimation, dt_in, p_default_lw: torch.Tensor, step_height, foot_offset, swing_ctrl_pos_gain_fb, swing_ctrl_vel_gain_fb, env: ManagerBasedRLEnv, optimizerCfg):
+    def __init__(self, verbose_md, device, num_envs, num_legs, robot_mass, mu, dt_out, decimation, dt_in, p_default_lw: torch.Tensor, step_height, foot_offset, swing_ctrl_pos_gain_fb, swing_ctrl_vel_gain_fb, env: ManagerBasedRLEnv, optimizerCfg):
         """ Initial the Model Base Controller and define an optimizer """
 
         # Initialise the Model Base Controller
-        super().__init__(verbose_md, device, num_envs, num_legs, robot_mass, dt_out, decimation, dt_in, p_default_lw, step_height, foot_offset, swing_ctrl_pos_gain_fb, swing_ctrl_vel_gain_fb)
+        super().__init__(verbose_md, device, num_envs, num_legs, robot_mass, mu, dt_out, decimation, dt_in, p_default_lw, step_height, foot_offset, swing_ctrl_pos_gain_fb, swing_ctrl_vel_gain_fb)
 
         self.samplingOptimizer = SamplingOptimizer(device=device,num_legs=num_legs,env=env, optimizerCfg=optimizerCfg)  
 
@@ -745,7 +749,7 @@ class SamplingOptimizer():
         self.d_best = 0.6*torch.ones( (1,self.num_legs),                 device=device)
         self.p_best =     torch.zeros((1,self.num_legs,3,self.p_param ), device=device)
         self.F_best =     torch.zeros((1,self.num_legs,3,self.F_param ), device=device)
-        self.F_best[:,:,2,:] = 50.0
+        # self.F_best[:,:,2,:] = 50.0
 
         # For plotting
         self.live_plot = True
@@ -764,7 +768,7 @@ class SamplingOptimizer():
         self.d_best = 0.6*torch.ones( (1,self.num_legs),                 device=self.device)
         self.p_best =     torch.zeros((1,self.num_legs,3,self.p_param ), device=self.device)
         self.F_best =     torch.zeros((1,self.num_legs,3,self.F_param ), device=self.device) 
-        self.F_best[:,:,2,:] = 50.0
+        # self.F_best[:,:,2,:] = 50.0
 
 
     def optimize_latent_variable(self, f:torch.Tensor, d:torch.Tensor, p_lw:torch.Tensor, delta_F_lw:torch.Tensor, phase:torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:

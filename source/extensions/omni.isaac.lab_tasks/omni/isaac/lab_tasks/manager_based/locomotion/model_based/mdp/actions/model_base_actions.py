@@ -43,7 +43,7 @@ import weakref
 
 verbose_mb = False
 verbose_loop = 40
-vizualise_debug = {'foot': False, 'jacobian': False, 'foot_traj': False, 'lift-off': False, 'touch-down': False, 'GRF': False, 'touch-down polygon': False}
+vizualise_debug = {'foot': False, 'jacobian': False, 'foot_traj': False, 'lift-off': False, 'touch-down': False, 'GRF': False, 'touch-down polygon': True}
 torch.set_printoptions(precision=4, linewidth=200, sci_mode=False)
 if verbose_mb: import omni.isaac.debug_draw._debug_draw as omni_debug_draw
 # import omni.isaac.debug_draw._debug_draw as omni_debug_draw
@@ -208,6 +208,9 @@ class ModelBaseAction(ActionTerm):
         # Retrieve the robot mass
         self.robot_mass = float(torch.mean(torch.sum(self._asset.data.default_mass, dim=1)))
 
+        # Retrieve the coefficient of friction
+        self.mu = cfg.mu
+
         # variable to count the number of inner loop with respect to outer loop
         self.inner_loop = 0
 
@@ -287,7 +290,7 @@ class ModelBaseAction(ActionTerm):
         # Instance of control class. Gets Z and output u
         if cfg.controller == model_base_controller.modelBaseController:
             self.controller = cfg.controller(
-                verbose_md=verbose_mb, device=self.device, num_envs=self.num_envs, num_legs=self._num_legs, robot_mass=self.robot_mass,
+                verbose_md=verbose_mb, device=self.device, num_envs=self.num_envs, num_legs=self._num_legs, robot_mass=self.robot_mass, mu=self.mu,
                 dt_out=self._decimation*self._env.physics_dt, decimation=self._decimation, dt_in=self._env.physics_dt,
                 p_default_lw=self.get_reset_foot_position(), step_height=cfg.footTrajectoryCfg.step_height,
                 foot_offset=cfg.footTrajectoryCfg.foot_offset, swing_ctrl_pos_gain_fb=self.cfg.swingControllerCfg.swing_ctrl_pos_gain_fb , 
@@ -295,7 +298,7 @@ class ModelBaseAction(ActionTerm):
             )
         elif cfg.controller == model_base_controller.samplingController:
             self.controller = cfg.controller(
-                verbose_md=verbose_mb, device=self.device, num_envs=self.num_envs, num_legs=self._num_legs, robot_mass=self.robot_mass,
+                verbose_md=verbose_mb, device=self.device, num_envs=self.num_envs, num_legs=self._num_legs, robot_mass=self.robot_mass, mu=self.mu,
                 dt_out=self._decimation*self._env.physics_dt, decimation=self._decimation, dt_in=self._env.physics_dt,
                 p_default_lw=self.get_reset_foot_position(), step_height=cfg.footTrajectoryCfg.step_height,
                 foot_offset=cfg.footTrajectoryCfg.foot_offset, swing_ctrl_pos_gain_fb=self.cfg.swingControllerCfg.swing_ctrl_pos_gain_fb , 
@@ -836,7 +839,8 @@ class ModelBaseAction(ActionTerm):
 
         # Update hip position and orientation while leg in contact (so it's saved for the entire swing trajectory with lift-off position)
         in_contact = (self.c0_star==1).unsqueeze(-1)  # True if foot in contact, False in in swing, shape(batch, legs, 1)
-        self.hip0_pos_lw = (p_hip_lw * in_contact) + (self.hip0_pos_lw * (~in_contact))                 # shape(batch, legs, 3)
+        # self.hip0_pos_lw = (p_hip_lw * in_contact) + (self.hip0_pos_lw * (~in_contact))                 # shape(batch, legs, 3)
+        self.hip0_pos_lw = p_hip_lw                                                                     # shape(batch, legs, 3)
         self.hip0_yaw_quat_lw = (robot_yaw_in_w * in_contact) + (self.hip0_yaw_quat_lw * (~in_contact)) # shape(batch, 1, 4)*(batch, legs, 1) -> (batch, legs, 4)
 
         # p_h is two dimensionnal, need to happend a dimension to use 'transform_points'
@@ -1217,50 +1221,46 @@ class ModelBaseAction(ActionTerm):
         if vizualise_debug['touch-down polygon']:
             """self.my_visualizer['touch-down polygon'] = omni_debug_draw.acquire_debug_draw_interface()"""
 
-            pass # Need to redo transform_p_from_rl_frame_to_lw for it to work
-            # FOOT_OFFSET = self.cfg.footTrajectoryCfg.foot_offset
-            # # Find the corner points of the polygon - provide big values that will be clipped to corresponding bound
-            # # p shape(num_corners, 3)
-            # p_corner = torch.tensor([[10,10,FOOT_OFFSET],[10,-10,FOOT_OFFSET],[-10,-10,FOOT_OFFSET],[-10,10,FOOT_OFFSET]], device=self.device)
+            param: actions_cfg.ModelBaseActionCfg.ActionNormalizationCfg = self.cfg.actionNormalizationCfg
 
-            # # Reshape p to be passed to transform_p_from_rl_to_lw -> (num_corner, num_legs, 3, 1)
-            # p_corner = p_corner.unsqueeze(1).expand(4,4,3).unsqueeze(-1)
+            FOOT_OFFSET = self.cfg.footTrajectoryCfg.foot_offset
+            # Find the corner points of the polygon - provide big values that will be clipped to corresponding bound
+            # p shape(num_corners, 2)
+            p_corner = torch.tensor([[param.max_x_p, param.max_y_p],[param.max_x_p,param.min_y_p],[param.min_x_p,param.min_y_p],[param.min_x_p,param.max_y_p]], device=self.device)
+            # Reshape p to be passed to transform_p_from_rl_to_lw -> (num_envs, num_legs, num_corner, 2, 1)
+            p_corner_batched = p_corner.unsqueeze(0).unsqueeze(1).expand(self.num_envs,4,4,2).unsqueeze(-1)
 
-            # # Normalize to find the correct bound
-            # _, _, _, p_corner_rl = self.normalize_actions(f=None, d=None, F=None, p=p_corner)
-            # p_corner_rl[:,:,2,:] = FOOT_OFFSET # This is overwritten by the normalization
+            fake_f = torch.empty_like(self.f)
+            fake_d = torch.empty_like(self.d)
+            fake_F = torch.empty_like(self.delta_F_h)
 
-            # # shape (batch, num_corner, num_leg, 3, 1)
-            # p_corner_batched_rl = p_corner_rl.unsqueeze(0).expand(self.num_envs,4,4,3,1)
-            
-            # # Needs p shape(batch, num_corner, num_legs, 3, 1) -> (batch, num_legs, 3, 1)
-            # p_corner_1_lw = self.transform_p_from_rl_frame_to_lw(p_corner_batched_rl[:,0,:,:,:])
-            # p_corner_2_lw = self.transform_p_from_rl_frame_to_lw(p_corner_batched_rl[:,1,:,:,:])
-            # p_corner_3_lw = self.transform_p_from_rl_frame_to_lw(p_corner_batched_rl[:,2,:,:,:])
-            # p_corner_4_lw = self.transform_p_from_rl_frame_to_lw(p_corner_batched_rl[:,3,:,:,:])
-            # # p_lw = self.transform_p_from_rl_frame_to_lw(p_corner_rl)
+            # Needs p shape(batch, num_corner, num_legs, 2, 1) -> (batch, num_legs, 2, 1)
+            _, _, p_corner_1_lw, _ = self.transformation(f=fake_f, d=fake_d, delta_p_h=p_corner_batched[:,:,0,:,:], delta_F_h=fake_F) # shape (batch, num_legs, 3, 1)
+            _, _, p_corner_2_lw, _ = self.transformation(f=fake_f, d=fake_d, delta_p_h=p_corner_batched[:,:,1,:,:], delta_F_h=fake_F) # shape (batch, num_legs, 3, 1)
+            _, _, p_corner_3_lw, _ = self.transformation(f=fake_f, d=fake_d, delta_p_h=p_corner_batched[:,:,2,:,:], delta_F_h=fake_F) # shape (batch, num_legs, 3, 1)
+            _, _, p_corner_4_lw, _ = self.transformation(f=fake_f, d=fake_d, delta_p_h=p_corner_batched[:,:,3,:,:], delta_F_h=fake_F) # shape (batch, num_legs, 3, 1)
 
-            # # shape (batch_size, num_corner, num_legs, 3, 1)
-            # p_lw = torch.cat((p_corner_1_lw.unsqueeze(1), p_corner_2_lw.unsqueeze(1), p_corner_3_lw.unsqueeze(1), p_corner_4_lw.unsqueeze(1)), dim=1)
+            # shape (batch_size, num_legs, 3, num_corner)
+            p_lw = torch.cat((p_corner_1_lw, p_corner_2_lw, p_corner_3_lw, p_corner_4_lw), dim=-1)
 
-            # # Reshape according to our needs -> shape(batch, num_legs, num_corner,3)
-            # p_lw = p_lw.squeeze(-1).permute(0,2,1,3)
+            # Reshape according to our needs -> shape(batch, num_legs, num_corner,3)
+            p_lw = p_lw.permute(0,1,3,2)
 
-            # # Transform to world frame
-            # p_w = p_lw + (self._env.scene.env_origins).unsqueeze(1).unsqueeze(2) #
+            # Transform to world frame
+            p_w = p_lw + (self._env.scene.env_origins).unsqueeze(1).unsqueeze(2) # shape(num_envs, num_legs, num_corner, 3) + (num_envs, 1, 1, 3)
 
-            # # Create the list to display the line
-            # source_pos = p_w.flatten(0,2)
-            # target_pos = p_w.roll(-1,dims=2).flatten(0,2)
+            # Create the list to display the line
+            source_pos = p_w.flatten(0,2)
+            target_pos = p_w.roll(-1,dims=2).flatten(0,2)
 
-            # # Start by clearing the eventual previous line
-            # self.my_visualizer['touch-down polygon'].clear_lines()
+            # Start by clearing the eventual previous line
+            self.my_visualizer['touch-down polygon'].clear_lines()
 
-            # # plain color for lines
-            # lines_colors = [[1.0, 1.0, 0.0, 1.0]] * source_pos.shape[0]
-            # line_thicknesses = [2.0] * source_pos.shape[0]
+            # plain color for lines
+            lines_colors = [[1.0, 1.0, 0.0, 1.0]] * source_pos.shape[0]
+            line_thicknesses = [2.0] * source_pos.shape[0]
 
-            # self.my_visualizer['touch-down polygon'].draw_lines(source_pos.tolist(), target_pos.tolist(), lines_colors, line_thicknesses)
+            self.my_visualizer['touch-down polygon'].draw_lines(source_pos.tolist(), target_pos.tolist(), lines_colors, line_thicknesses)
 
 
     def set_debug_vis(self, debug_vis: bool) -> bool:

@@ -43,6 +43,9 @@ class ModelBaseActionCfg(ActionTermCfg):
     """Model base controller that compute u: output torques from z: latent variable
     can be of type 'modelBaseController' or 'samplingController' """ 
 
+    mu : float = 0.5
+    """ Coefficient of friction imposed for the friction cone constraints """
+
     @configclass
     class OptimizerCfg:
         """ Config class for the optimizer """
@@ -50,26 +53,26 @@ class ModelBaseActionCfg(ActionTermCfg):
         optimizerType:str = 'sampling'
         """ Different type of optimizer. For now, only 'sampling' is implemented """
 
-        prevision_horizon: int = 5#15 # 15
+        prevision_horizon: int = 10 #5 #15 # 15
         """ Prevision horizon for predictive optimization (in number of time steps) """
 
-        discretization_time: float = 0.02 # 0.04
+        discretization_time: float = 0.04 #0.02 # 0.04
         """ Duration of a time step in seconds for the predicitve optimization """
 
         num_samples: int = 5000
         """ Number of samples used if the optimizerType is 'sampling' """
 
-        parametrization_F: Literal['discrete', 'cubic_spline', 'from_discrete_fit_spline', 'from_single_expand_discrete'] = 'from_single_expand_discrete'
+        parametrization_F: Literal['discrete', 'cubic_spline', 'from_discrete_fit_spline', 'from_single_expand_discrete'] = 'from_discrete_fit_spline'
         """ Define how F, Ground Reaction Forces, are encoded : can be 'discrete', 'cubic_spline' or 'from_discrete_fit_spline', this modify F_param """
 
-        parametrization_p: Literal['discrete', 'cubic_spline', 'from_discrete_fit_spline', 'from_single_expand_discrete'] = 'from_single_expand_discrete'
+        parametrization_p: Literal['discrete', 'cubic_spline', 'from_discrete_fit_spline', 'from_single_expand_discrete'] = 'from_discrete_fit_spline'
         """ Define how p, foot touch down position, are encoded : can be 'discrete', 'cubic_spline' or from_discrete_fit_spline, this modify p_param  """
 
         height_ref: float = 0.35 #0.35 #0.38
         """ Height reference for the optimization, defined as mean distance between legs in contact and base """
 
-        mu : float = 0.5
-        """ Coefficient of friction imposed for the friction cone constraints """
+        # mu : float = 0.5
+        # """ Coefficient of friction imposed for the friction cone constraints """
 
         optimize_f: bool = False
         """ If enabled, leg frequency will be optimized"""
@@ -174,10 +177,10 @@ class ModelBaseActionCfg(ActionTermCfg):
         std_n_x_p = -0.01    # [m] 
         std_p_y_p = +0.01    # [m]
         std_n_y_p = -0.01    # [m]
-        max_x_p = +0.36      # [m]
-        min_x_p = -0.24      # [m]
-        max_y_p = +0.20      # [m]
-        min_y_p = -0.20      # [m]
+        max_x_p = +0.15 #+0.36      # [m]
+        min_x_p = -0.10 #-0.24      # [m]
+        max_y_p = +0.10 #+0.20      # [m]
+        min_y_p = -0.10 #-0.20      # [m]
 
         # Ground Reaction Forces : clipped to (min, max), not clipped if set to None
         # mean and std are scale by mass*gravity
