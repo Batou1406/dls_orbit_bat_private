@@ -413,7 +413,8 @@ class ModelBaseAction(ActionTerm):
 
         # --- Step 4 : Latter Processing
         # Enforce friction cone constraints for GRF : enforce only with sampling controller, because training should learn not to slip
-        # if type(self.controller) == model_base_controller.samplingController: self.F0_star_lw = self.enforce_friction_cone_constraints(F=self.F0_star_lw.unsqueeze(-1), mu=self.cfg.optimizerCfg.mu).squeeze(-1)
+        # if type(self.controller) == model_base_controller.samplingController: 
+        # self.F0_star_lw = self.enforce_friction_cone_constraints(F=self.F0_star_lw.unsqueeze(-1), mu=self.cfg.optimizerCfg.mu).squeeze(-1)
 
         # Reset the inner loop counter
         self.inner_loop = 0      

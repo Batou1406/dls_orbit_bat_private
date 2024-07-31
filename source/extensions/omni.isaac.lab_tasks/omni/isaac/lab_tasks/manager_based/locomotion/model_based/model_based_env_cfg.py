@@ -487,8 +487,8 @@ class LocomotionModelBasedEnvCfg(ManagerBasedRLEnvCfg):
         # self.viewer.resolution      = (1920, 1080)    # 1080p
         # self.viewer.resolution      = (2560, 1440)      # 2k
         # self.viewer.resolution      = (3840, 2160)      # 4k
-        # self.viewer.resolution      = (1024, 1024)      # Square
-        self.viewer.resolution      = (2048, 2048)      # 2K Square
+        self.viewer.resolution      = (1024, 1024)      # Square
+        # self.viewer.resolution      = (2048, 2048)      # 2K Square
         self.viewer.origin_type     = "asset_root"
         self.viewer.env_index       = 0
         self.viewer.asset_name      = "robot"

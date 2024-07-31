@@ -185,7 +185,7 @@ def compute_cubic_spline(parameters: torch.Tensor, step: int, horizon: int):
     return actions
 
 
-# @torch.jit.script
+@torch.jit.script
 def fit_cubic(y: torch.Tensor) -> torch.Tensor:
     """ Minimize the sum of squared error between datapoints y_i and a cubic function parametrized with a,b,c,d 
     ie. -> Fit parameters a,b,c,d  that minimize : min(a,b,c,d) : sum( (y_i - (ax_i^3 + bx_i^2 + cx_i + d) )^2 )

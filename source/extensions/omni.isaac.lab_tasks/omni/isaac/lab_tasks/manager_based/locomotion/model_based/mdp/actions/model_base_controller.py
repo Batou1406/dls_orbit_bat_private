@@ -948,8 +948,8 @@ class SamplingOptimizer():
 
 
         # ----- Step 3 : Retrieve the actions and prepare them with the correct method
-        action_param_samples['p_lw']       = p_lw_samples       # Foot touch down position samples          # shape(num_samples, num_legs, 3 p_param)
-        action_param_samples['delta_F_lw'] = delta_F_lw_samples # Delta Ground Reaction Forces samples      # shape(num_samples, num_legs, 3 F_param)
+        action_param_samples['p_lw']       = p_lw_samples.clone().detach()       # Foot touch down position samples          # shape(num_samples, num_legs, 3 p_param)
+        action_param_samples['delta_F_lw'] = delta_F_lw_samples.clone().detach() # Delta Ground Reaction Forces samples      # shape(num_samples, num_legs, 3 F_param)
 
 
         # ----- Step 4 : Save variable for live plotting
@@ -1093,16 +1093,16 @@ class SamplingOptimizer():
         """
         # Prepare RL input if needed
         if self.cfg.parametrization_F == 'from_discrete_fit_spline' :
-            delta_F_lw = fit_cubic(delta_F_lw)
+            delta_F_lw = fit_cubic(delta_F_lw)  # shape(batch, leg , 3, sampling_horizon) -> shape(batch, leg , 3, F_param)
         
         if self.cfg.parametrization_p == 'from_discrete_fit_spline' :
-            p_lw = fit_cubic(p_lw)
+            p_lw = fit_cubic(p_lw)  # shape(batch, leg , 3, sampling_horizon) -> shape(batch, leg , 3, p_param)
 
         if self.cfg.parametrization_F == 'from_single_expand_discrete' :
-            delta_F_lw = delta_F_lw.expand_as(self.F_best)
+            delta_F_lw = delta_F_lw.expand_as(self.F_best) # shape(batch, leg , 3, 1) -> shape(batch, leg , 3, F_param)
         
         if self.cfg.parametrization_p == 'from_single_expand_discrete' :
-            p_lw = p_lw.expand_as(self.p_best)
+            p_lw = p_lw.expand_as(self.p_best) # shape(batch, leg , 3, 1) -> shape(batch, leg , 3, p_param)
 
 
         # Define how much samples from the RL or from the previous solution we're going to sample
@@ -1137,23 +1137,23 @@ class SamplingOptimizer():
         # Set the foot height to the nominal foot height # TODO change
         p_lw_samples[:,:,2,:] = p_lw[0,:,2,:]
 
-        # Put the RL actions as the first samples
-        f_samples[0,:]              = f[0,:]
-        d_samples[0,:]              = d[0,:]
-        p_lw_samples[0,:,:,:]       = p_lw[0,:,:,:]
-        delta_F_lw_samples[0,:,:,:] = delta_F_lw[0,:,:,:]
-
         # Put the Previous best actions as the last samples
         f_samples[-1,:]              = self.f_best[0,:]
         d_samples[-1,:]              = self.d_best[0,:]
         p_lw_samples[-1,:,:,:]       = self.p_best[0,:,:,:]
         delta_F_lw_samples[-1,:,:,:] = self.F_best[0,:,:,:]
 
+        # Put the RL actions as the first samples
+        f_samples[0,:]              = f[0,:]
+        d_samples[0,:]              = d[0,:]
+        p_lw_samples[0,:,:,:]       = p_lw[0,:,:,:]
+        delta_F_lw_samples[0,:,:,:] = delta_F_lw[0,:,:,:]
+
         # If optimization is set to false, samples are feed with initial guess
-        if not self.optimize_f : f_samples[:,:]              = f
-        if not self.optimize_d : d_samples[:,:]              = d
-        if not self.optimize_p : p_lw_samples[:,:,:,:]       = p_lw
-        if not self.optimize_F : delta_F_lw_samples[:,:,:,:] = delta_F_lw
+        if not self.optimize_f : f_samples[:,:]              = f.clone().detach()
+        if not self.optimize_d : d_samples[:,:]              = d.clone().detach()
+        if not self.optimize_p : p_lw_samples[:,:,:,:]       = p_lw.clone().detach()
+        if not self.optimize_F : delta_F_lw_samples[:,:,:,:] = delta_F_lw.clone().detach()
 
         return f_samples, d_samples, p_lw_samples, delta_F_lw_samples
 

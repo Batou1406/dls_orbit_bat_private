@@ -29,9 +29,9 @@ parser.add_argument('--epochs',       type=int,   default=30,  metavar='N',  hel
 parser.add_argument('--batch-size',   type=int,   default=64,  metavar='N',  help='input batch size for training (default: 64)')
 parser.add_argument('--lr',           type=float, default=1.0, metavar='LR', help='learning rate (default: 1.0)')
 parser.add_argument('--gamma',        type=float, default=0.7, metavar='M',  help='Learning rate step gamma (default: 0.7)')
-parser.add_argument("--model-name",   type=str,   default='dagger50hz5Act',  help="Name of the model to be saved")
-parser.add_argument('--folder-name',  type=str,   default='dagger50hz5Act',  help="Name of the folder to save the trained model in 'model/task/folder-name'")
-# parser.add_argument("--freq_reduction",type=int,default=2,    help="Factor of reduction of the recording frequency compare to playing frequency")
+parser.add_argument("--model-name",   type=str,   default='dagger25Hz10Act',  help="Name of the model to be saved")
+parser.add_argument('--folder-name',  type=str,   default='SpeedGoodPolicy',  help="Name of the folder to save the trained model in 'model/task/folder-name'")
+parser.add_argument("--freq_reduction",type=int,default=2,    help="Factor of reduction of the recording frequency compare to playing frequency")
 
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
@@ -456,6 +456,9 @@ def main():
     # Buffer size : number of prediction horizon for the student policy
     buffer_size =  args_cli.buffer_size
 
+    # Factor of the simulation frequency at which the dataset will be recorded
+    frequency_reduction = args_cli.freq_reduction
+    
     # Trajectory length that are recorded between epoch
     trajectory_length_s = 3 # [s]
 
@@ -469,7 +472,6 @@ def main():
     trajectory_length_iter = int(trajectory_length_s / (buffer_size*env.unwrapped.step_dt))
     last_time_outloop = time.time()
     last_time = time.time()
-    # frequency_reduction = args_cli.freq_reduction
     f_len, d_len, p_len, F_len = 4, 4, 8, 12
 
     # Type of action recorded
@@ -561,8 +563,8 @@ def main():
 
         print(f"\nSimulation runs with time step {env.unwrapped.physics_dt} [s], at frequency {1/env.unwrapped.physics_dt} [Hz]")
         print(f"Policy runs with time step {env.unwrapped.step_dt} [s], at frequency {1/env.unwrapped.step_dt} [Hz]")
-        # print(f"Dataset will be recorded with time step {env.unwrapped.step_dt*frequency_reduction} [s], at frequency {1/(frequency_reduction*env.unwrapped.step_dt)} [Hz]")
-        # print(f"Which will correspond in a prediction horizon of {buffer_size*env.unwrapped.step_dt*frequency_reduction} [s]")
+        print(f"Dataset will be recorded with time step {env.unwrapped.step_dt*frequency_reduction} [s], at frequency {1/(frequency_reduction*env.unwrapped.step_dt)} [Hz]")
+        print(f"Which will correspond in a prediction horizon of {buffer_size*env.unwrapped.step_dt*frequency_reduction} [s]")
 
         print(f"\nType of p action recorded: {p_typeAction}")
         print(f"Type of F action recorded: {F_typeAction}")
@@ -604,9 +606,10 @@ def main():
                 buffer_obs = []
 
                 # Roll the simulation for buffer_size time to generate a single datapoint
-                for i in range(buffer_size): 
-
-                    buffer_obs.append(obs)
+                for i in range(frequency_reduction*buffer_size): 
+                    
+                    if i%frequency_reduction == 0 : 
+                        buffer_obs.append(obs)
 
                     expert_actions  = expert_policy(obs)    # shape (num_envs, 4 + 4 + 8 + 12)
                     student_actions = student_policy(obs)   # shape (num_envs, 4 + 4 + buffer_size*(8 + 12))
@@ -695,7 +698,7 @@ def main():
                 if F_typeAction == 'spline':
                     # extract the p and F action with the right parameters
                     F = raw_actions[:,(f_len+d_len+p_len):(f_len+d_len+p_len+F_len), :].unsqueeze(2).reshape(args_cli.num_envs, 4, 3, buffer_size) # shape (num_envs, num_legs, 3, buffer_size)
-                    F_expert_raw = F.clone().detach()
+                    # F_expert_raw = F.clone().detach()
 
                     # Fit a cubic spline interpolation these data and retrieve the interpolation parameters
                     # print('F spline')
