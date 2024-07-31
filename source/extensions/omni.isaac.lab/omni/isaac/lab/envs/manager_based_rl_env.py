@@ -196,10 +196,10 @@ class ManagerBasedRLEnv(ManagerBasedEnv, gym.Env):
         # Reset env that have invalid observation
         if(self.obs_buf['policy'].isnan().any()):
             print('Nan in observation ! Reseting !')
+            breakpoint()
             nan_env_idx =  self.obs_buf['policy'].isnan().any(dim=1).nonzero(as_tuple=False).squeeze(-1)
             self._reset_idx(nan_env_idx)
             self.obs_buf = self.observation_manager.compute()
-            breakpoint()
 
         # return observations, rewards, resets and extras
         return self.obs_buf, self.reward_buf, self.reset_terminated, self.reset_time_outs, self.extras
