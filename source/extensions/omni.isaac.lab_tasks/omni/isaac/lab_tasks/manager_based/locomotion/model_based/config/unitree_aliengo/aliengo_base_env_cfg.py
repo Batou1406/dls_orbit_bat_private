@@ -139,8 +139,8 @@ class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
         self.rewards.penalize_foot_trac_err              = None
 
         # -- Model based penalty : Positive weight -> penalty is already negative
-        self.rewards.penalty_leg_frequency               = None
-        self.rewards.penalty_leg_duty_cycle              = None
+        # self.rewards.penalty_leg_frequency               = None
+        # self.rewards.penalty_leg_duty_cycle              = None
         self.rewards.penalty_large_force.weight          = 0.1
         # self.rewards.penalty_large_step                  = None
         self.rewards.penalty_frequency_variation.weight  = 0.5 #1.0
