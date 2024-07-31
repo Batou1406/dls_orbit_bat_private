@@ -144,8 +144,8 @@ class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
         self.rewards.penalty_leg_frequency.weight        = 0.0
         self.rewards.penalty_leg_duty_cycle.weight       = 0.0
         self.rewards.penalty_large_force.weight          = 0.1
-        # self.rewards.penalty_large_step                  = None
-        self.rewards.penalty_large_step.weight                  = 0.0
+        self.rewards.penalty_large_step                  = None
+        # self.rewards.penalty_large_step.weight                  = 0.0
         self.rewards.penalty_frequency_variation.weight  = 0.5 #1.0
         self.rewards.penatly_duty_cycle_variation.weight = 1.0 #2.5
         self.rewards.penalty_step_variation.weight       = 1.0 #2.5
@@ -157,8 +157,8 @@ class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
         self.rewards.penalty_leg_duty_cycle.params  = params={"action_name": "model_base_variable", "bound": (0.35,0.7)}
         self.curriculum.penalty_leg_duty_cycle_curr = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_leg_duty_cycle", "weight": 1.0, "num_steps": (400*24)})
 
-        self.rewards.penalty_large_step.params  = {"action_name": "model_base_variable", "bound_x": (0.08,-0.06), "bound_y": (0.06,-0.06)}
-        self.curriculum.penalty_large_step_curr = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_large_step", "weight": 1.0, "num_steps": (400*24)})
+        # self.rewards.penalty_large_step.params  = {"action_name": "model_base_variable", "bound_x": (0.08,-0.06), "bound_y": (0.06,-0.06)}
+        # self.curriculum.penalty_large_step_curr = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_large_step", "weight": 1.0, "num_steps": (400*24)})
 
         # -- Additionnal Reward : Need a positive weight
         self.rewards.reward_is_alive                     = None #0.25

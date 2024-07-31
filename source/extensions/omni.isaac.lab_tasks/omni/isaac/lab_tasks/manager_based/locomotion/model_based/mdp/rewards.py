@@ -486,6 +486,21 @@ def penalize_foot_trajectory_tracking_error(env: ManagerBasedRLEnv, assetName: s
     return penalty
 
 
+def penalize_constraint_violation(env: ManagerBasedRLEnv, actionName: str="model_base_variable"):
+    """
+    TODO
+    """
+    action: ModelBaseAction = env.action_manager.get_term(actionName)
+
+    raw_action = action.raw_actions             # shape(num_envs, 28)
+    applied_action = action.RL_applied_actions  # shape(num_envs, 28) (raw->normalized->transformed->constrained->inv_transform->inv_normalized)
+
+    return torch.sum(torch.square(raw_action - applied_action), dim=-1)
+
+
+
+
+
 
 
 
