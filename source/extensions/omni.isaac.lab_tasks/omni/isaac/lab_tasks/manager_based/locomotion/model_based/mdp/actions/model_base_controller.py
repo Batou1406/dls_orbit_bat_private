@@ -14,7 +14,7 @@ import omni.isaac.lab.utils.math as math_utils
 from omni.isaac.lab.assets.articulation import Articulation
 from omni.isaac.lab.envs import ManagerBasedRLEnv
 
-from .helper import inverse_conjugate_euler_xyz_rate_matrix, rotation_matrix_from_w_to_b, gait_generator, compute_cubic_spline, compute_discrete, normal_sampling, uniform_sampling, fit_cubic
+from .helper import inverse_conjugate_euler_xyz_rate_matrix, rotation_matrix_from_w_to_b, gait_generator, compute_cubic_spline, compute_discrete, normal_sampling, uniform_sampling, fit_cubic, enforce_friction_cone_constraints_torch, from_zero_twopi_to_minuspi_pluspi
 
 
 class baseController(ABC):
@@ -556,7 +556,57 @@ class samplingController(modelBaseController):
 
         return f_star, d_star, c0_star, p0_star_lw, F0_star_lw, pt_star_lw, full_pt_lw 
 
+class samplingTrainer(modelBaseController):
+    """
+    """
+    def __init__(self, verbose_md, device, num_envs, num_legs, robot_mass, dt_out, decimation, dt_in, p_default_lw: torch.Tensor, step_height, foot_offset, swing_ctrl_pos_gain_fb, swing_ctrl_vel_gain_fb, env: ManagerBasedRLEnv, optimizerCfg):
+        """ Initial the Model Base Controller and define an optimizer """
 
+        # Initialise the Model Base Controller
+        super().__init__(verbose_md, device, num_envs, num_legs, robot_mass, dt_out, decimation, dt_in, p_default_lw, step_height, foot_offset, swing_ctrl_pos_gain_fb, swing_ctrl_vel_gain_fb)
+
+        self.samplingOptimizer = SamplingBatchedTrainer(device=device,num_legs=num_legs,env=env, optimizerCfg=optimizerCfg)  
+
+        self.bacthed_cost = torch.zeros((env.num_envs), device=device)
+
+    def process_latent_variable(self, f: torch.Tensor, d: torch.Tensor, p_lw: torch.Tensor, delta_F_lw: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """ Given the latent variable z=[f,d,p,F], return the optimize latent variable f*, d*, c*, p*, F*, pt* full_pt
+        Note :
+            The variable are in the 'horizontal' frame _h : (x_b, y_b, z_w, 0, 0, yaw_b)
+
+        Args:
+            f            (Tensor): Prior leg frequency                             of shape (batch_size, num_legs)
+            d            (Tensor): Prior stepping duty cycle                       of shape (batch_size, num_legs)
+            p_lw         (Tensor): Prior foot touch down delta seq. in _h          of shape (batch_size, num_legs, 3, p_param)
+            delta_F_lw   (Tensor): Prior Ground Reac. Forces delta(GRF) seq.       of shape (batch_size, num_legs, 3, F_param)
+
+        Returns:
+            f*           (Tensor): Opt. leg frequency                              of shape (batch_size, num_legs)
+            d*           (Tensor): Opt. leg duty cycle                             of shape (batch_size, num_legs)
+            c0*          (Tensor): Optimized foot contact sequence                 of shape (batch_size, num_legs)
+            p0*_lw       (Tensor): Optimized foot touch down delta seq. in _h      of shape (batch_size, num_legs, 3)
+            F0*_lw       (Tensor): Opt. Gnd Reac. F. delta(GRF) seq.   in _h       of shape (batch_size, num_legs, 3)
+            pt*_lw (torch.Tensor): Optimized foot swing traj.     in _lw of shape (batch_size, num_legs, 9, decimation)  (9 = pos, vel, acc)
+            full_pt_lw (t.Tensor): Full swing traj for ploting           of shape (batch_size, num_legs, 9, 22)
+        """
+
+        # Call the optimizer
+        bacthed_cost, p0_star_lw, F0_star_lw = self.samplingOptimizer.compute_batched_rollout_cost(f=f, d=d, p_lw=p_lw, delta_F_lw=delta_F_lw, phase=self.phase)
+
+        f_star = f
+        d_star = d
+        self.bacthed_cost = bacthed_cost
+
+        # Compute the contact sequence and update the phase
+        c_star, self.phase = gait_generator(f=f, d=d, phase=self.phase, horizon=1, dt=self._dt_out)
+        c0_star = c_star[:,:,0] # shape (batch_size, num_legs)
+
+        # Generate the swing trajectory
+        pt_star_lw, full_pt_lw = self.full_swing_trajectory_generator(p_lw=p0_star_lw, c0=c0_star, d=d_star, f=f_star)
+
+        return f_star, d_star, c0_star, p0_star_lw, F0_star_lw, pt_star_lw, full_pt_lw 
+    
+    
 # ---------------------------------- Optimizer --------------------------------
 class SamplingOptimizer():
     """ Model Based optimizer based on the centroidal model 
@@ -598,27 +648,34 @@ class SamplingOptimizer():
         self.mu = optimizerCfg.mu
 
         # Define Interpolation method for GRF and interfer GRF input size 
-        if   optimizerCfg.parametrization_F == 'cubic_spline' : 
+        if   optimizerCfg.parametrization_F == 'cubic_spline': 
             self.interpolation_F=compute_cubic_spline
             self.F_param = 4
-        elif optimizerCfg.parametrization_F == 'discrete'     :
+        elif optimizerCfg.parametrization_F == 'discrete':
             self.interpolation_F=compute_discrete
             self.F_param = self.sampling_horizon
-        elif optimizerCfg.parametrization_F == 'from_discrete_fit_spline'     :
+        elif optimizerCfg.parametrization_F == 'from_discrete_fit_spline':
             self.interpolation_F=compute_cubic_spline
             self.F_param = 4
+        elif optimizerCfg.parametrization_F == 'from_single_expand_discrete':
+            self.interpolation_F=compute_discrete
+            self.F_param = self.sampling_horizon
+
         else : raise NotImplementedError('Request interpolation method is not implemented yet')
 
         # Define Interpolation method for foot touch down position and interfer foot touch down position input size 
-        if   optimizerCfg.parametrization_p == 'cubic_spline' : 
+        if   optimizerCfg.parametrization_p == 'cubic_spline': 
             self.interpolation_p=compute_cubic_spline
             self.p_param = 4
-        elif optimizerCfg.parametrization_p == 'discrete'     : 
+        elif optimizerCfg.parametrization_p == 'discrete': 
             self.interpolation_p=compute_discrete
             self.p_param = self.sampling_horizon
-        elif optimizerCfg.parametrization_p == 'from_discrete_fit_spline' : 
+        elif optimizerCfg.parametrization_p == 'from_discrete_fit_spline': 
             self.interpolation_p=compute_cubic_spline
             self.p_param = 4
+        elif optimizerCfg.parametrization_p == 'from_single_expand_discrete':
+            self.interpolation_p=compute_discrete
+            self.p_param = self.sampling_horizon
         else : raise NotImplementedError('Request interpolation method is not implemented yet')
 
         # Input and State dimension for centroidal model : hardcoded because the centroidal model is hardcoded # TODO get rid of these
@@ -815,7 +872,7 @@ class SamplingOptimizer():
 
         # Retrieve the robot orientation in lw as euler angle ZXY of shape(3)
         roll, pitch, yaw = math_utils.euler_xyz_from_quat(robot.data.root_quat_w) 
-        roll, pitch, yaw = self.from_zero_twopi_to_minuspi_pluspi(roll, pitch, yaw) 
+        roll, pitch, yaw = from_zero_twopi_to_minuspi_pluspi(roll, pitch, yaw) 
         euler_xyz_angle = torch.tensor((roll, pitch, yaw), device=self.device)
 
         # Retrieve the robot linear and angular velocity in base frame of shape(3)
@@ -999,7 +1056,8 @@ class SamplingOptimizer():
         F0_star_lw -= c_star[:,:,0].unsqueeze(-1) * self.gravity_lw.unsqueeze(0).unsqueeze(0) * self.robot_mass / torch.sum(c_star[:,:,0].unsqueeze(0).unsqueeze(-1)) # shape(1, num_legs, 3)
 
         # Enforce force constraints (Friction cone constraints)
-        F0_star_lw = self.enforce_friction_cone_constraints_torch(F=F0_star_lw, mu=self.mu)                           # shape(num_samples, num_legs, 3)
+        # F0_star_lw = self.enforce_friction_cone_constraints_torch(F=F0_star_lw, mu=self.mu)                           # shape(num_samples, num_legs, 3)
+        F0_star_lw = enforce_friction_cone_constraints_torch(F=F0_star_lw, mu=self.mu, F_z_min=self.F_z_min, F_z_max=self.F_z_max) # shape(num_samples, num_legs, 3)
 
         return f_star, d_star, p0_star_lw, F0_star_lw
 
@@ -1039,6 +1097,12 @@ class SamplingOptimizer():
         
         if self.cfg.parametrization_p == 'from_discrete_fit_spline' :
             p_lw = fit_cubic(p_lw)
+
+        if self.cfg.parametrization_F == 'from_single_expand_discrete' :
+            delta_F_lw = delta_F_lw.expand_as(self.F_best)
+        
+        if self.cfg.parametrization_p == 'from_single_expand_discrete' :
+            p_lw = p_lw.expand_as(self.p_best)
 
 
         # Define how much samples from the RL or from the previous solution we're going to sample
@@ -1200,7 +1264,8 @@ class SamplingOptimizer():
             input['F_lw'] -= contact.unsqueeze(-1) * (self.gravity_lw.unsqueeze(0).unsqueeze(0) * self.robot_mass) / torch.sum(contact, dim=1).unsqueeze(-1).unsqueeze(-1)      
 
             # Enforce force constraints (Friction cone constraints)
-            input['F_lw'] = self.enforce_friction_cone_constraints_torch(F=input['F_lw'], mu=self.mu)                           # shape(num_samples, num_legs, 3)
+            # input['F_lw'] = self.enforce_friction_cone_constraints_torch(F=input['F_lw'], mu=self.mu)                           # shape(num_samples, num_legs, 3)
+            input['F_lw'] = enforce_friction_cone_constraints_torch(F=input['F_lw'], mu=self.mu, F_z_min=self.F_z_min, F_z_max=self.F_z_max) # shape(num_samples, num_legs, 3)
 
 
             # --- Step 2 : Step the model
@@ -1275,7 +1340,7 @@ class SamplingOptimizer():
         return f_samples, d_samples, p_lw_samples, delta_F_lw_samples
 
 
-    def enforce_friction_cone_constraints_torch(self, F:torch.Tensor, mu:float) -> torch.Tensor:
+    # def enforce_friction_cone_constraints_torch(self, F:torch.Tensor, mu:float) -> torch.Tensor:
         """ Enforce the friction cone constraints
         ||F_xy|| < F_z*mu
         Args :
@@ -1305,7 +1370,7 @@ class SamplingOptimizer():
         return F
 
 
-    def from_zero_twopi_to_minuspi_pluspi(self, roll, pitch, yaw):
+    # def from_zero_twopi_to_minuspi_pluspi(self, roll, pitch, yaw):
         """ Change the function space from [0, 2pi[ to ]-pi, pi] 
         
         Args :
@@ -1396,3 +1461,445 @@ class SamplingOptimizer():
 
         return new_state
     
+
+class SamplingBatchedTrainer():
+    """
+    """
+
+    def __init__(self, device, num_legs, env:ManagerBasedRLEnv, optimizerCfg):
+        """ 
+        Args :
+            device                 : 'cuda' or 'cpu' 
+            num_legs               : Number of legs of the robot. Used for variable dimension definition
+            num_samples            : Number of samples used for the sampling optimizer
+            sampling_horizon       : Number of time steps the sampling optimizer is going to predict
+            discretization_time    : Duration of a time step
+            interpolation_F_method : Method to reconstruct GRF action from provided GRF warm start :
+                                    can be 'discrete' (one action per time step is provided) or 'cubic spine' (a set of parameters for every time step)
+            interpolation_p_method : Method to reconstruct foot touch down position action from provided warm start :
+                                    can be 'discrete' (one action per time step is provided) or 'cubic spine' (a set of parameters for every time step)
+        """
+
+        # Save the environment
+        self._env: ManagerBasedRLEnv = env
+
+        # General variables
+        self.device = device
+        self.num_legs = num_legs
+        
+        # Save Config
+        self.cfg = optimizerCfg
+
+        # Optimizer configuration
+        self.num_samples = optimizerCfg.num_samples
+        self.sampling_horizon = optimizerCfg.prevision_horizon
+        self.mpc_dt = optimizerCfg.discretization_time 
+        self.mu = optimizerCfg.mu
+
+        # Define Interpolation method for GRF and interfer GRF input size 
+        if   optimizerCfg.parametrization_F == 'cubic_spline' : 
+            self.interpolation_F=compute_cubic_spline
+            self.F_param = 4
+        elif optimizerCfg.parametrization_F == 'discrete'     :
+            self.interpolation_F=compute_discrete
+            self.F_param = self.sampling_horizon
+        elif optimizerCfg.parametrization_F == 'from_discrete_fit_spline'     :
+            self.interpolation_F=compute_cubic_spline
+            self.F_param = 4
+        else : raise NotImplementedError('Request interpolation method is not implemented yet')
+
+        # Define Interpolation method for foot touch down position and interfer foot touch down position input size 
+        if   optimizerCfg.parametrization_p == 'cubic_spline' : 
+            self.interpolation_p=compute_cubic_spline
+            self.p_param = 4
+        elif optimizerCfg.parametrization_p == 'discrete'     : 
+            self.interpolation_p=compute_discrete
+            self.p_param = self.sampling_horizon
+        elif optimizerCfg.parametrization_p == 'from_discrete_fit_spline' : 
+            self.interpolation_p=compute_cubic_spline
+            self.p_param = 4
+        else : raise NotImplementedError('Request interpolation method is not implemented yet')
+
+        # Input and State dimension for centroidal model : hardcoded because the centroidal model is hardcoded # TODO get rid of these
+        self.state_dim = 24 # CoM_pos(3) + lin_vel(3) + CoM_pose(3) + ang_vel(3) + foot_pos(12) 
+        self.input_dim = 12 # GRF(12) (foot touch down pos is state and an input)
+
+
+        # TODO Get these value properly
+        self.gravity_lw = torch.tensor((0.0, 0.0, -9.81), device=self.device) # shape(3) #self._env.sim.cfg.gravity
+        # self.robot_mass = 24.64
+        self.robot_mass = 20.6380
+        self.robot_inertia = torch.tensor([[ 0.2310941359705289,   -0.0014987128245817424, -0.021400468992761768 ], # shape (3,3)
+                                           [-0.0014987128245817424, 1.4485084687476608,     0.0004641447134275615],
+                                           [-0.021400468992761768,  0.0004641447134275615,  1.503217877350808    ]],device=self.device)
+        self.inv_robot_inertia = torch.linalg.inv(self.robot_inertia) # shape(3,3)
+        self.F_z_min = 0
+        self.F_z_max = self.robot_mass*9.81
+
+        # How much of the previous solution is used to generate samples compare to the provided guess (in [0,1])
+        self.propotion_previous_solution = optimizerCfg.propotion_previous_solution
+
+        # Define the height reference for the tracking
+        self.height_ref = optimizerCfg.height_ref
+
+        # Previous contact sequence : used to reset solution when switch to swing shape (batch_size, num_leg)
+        self.c_prev = torch.ones((self._env.num_envs, self.num_legs), device=device)
+
+        # State weight - shape(state_dim)
+        self.Q_vec = torch.zeros(self.state_dim, device=self.device)
+        self.Q_vec[0]  = 0.0        #com_x
+        self.Q_vec[1]  = 0.0        #com_y
+        self.Q_vec[2]  = 111500     #com_z
+        self.Q_vec[3]  = 5000       #com_vel_x
+        self.Q_vec[4]  = 5000       #com_vel_y
+        self.Q_vec[5]  = 200        #com_vel_z
+        self.Q_vec[6]  = 11200      #base_angle_roll
+        self.Q_vec[7]  = 11200      #base_angle_pitch
+        self.Q_vec[8]  = 0.0        #base_angle_yaw
+        self.Q_vec[9]  = 20         #base_angle_rates_x
+        self.Q_vec[10] = 20         #base_angle_rates_y
+        self.Q_vec[11] = 600        #base_angle_rates_z
+
+        # Input weight - shape(input_dim)
+        self.R_vec = torch.zeros(self.input_dim, device=self.device)
+
+        # Initialize the best solution
+        self.f_best = 1.5*torch.ones( (1,self.num_legs),                 device=device)
+        self.d_best = 0.6*torch.ones( (1,self.num_legs),                 device=device)
+        self.p_best =     torch.zeros((1,self.num_legs,3,self.p_param ), device=device)
+        self.F_best =     torch.zeros((1,self.num_legs,3,self.F_param ), device=device)
+        self.F_best[:,:,2,:] = 0.0
+
+
+    def compute_batched_rollout_cost(self, f:torch.Tensor, d:torch.Tensor, p_lw:torch.Tensor, delta_F_lw:torch.Tensor, phase:torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """ Given latent variable f,d,F,p, returns f*,d*,F*,p*, optimized with a sampling optimization 
+        
+        Args :
+            f      (Tensor): Leg frequency                of shape(batch_size, num_leg)
+            d      (Tensor): Leg duty cycle               of shape(batch_size, num_leg)
+            p_lw   (Tensor): Foot touch down position     of shape(batch_size, num_leg, 3, p_param)
+            F_lw   (Tensor): ground Reaction Forces       of shape(batch_size, num_leg, 3, F_param)
+            phase  (Tensor): Current feet phase           of shape(batch_size, num_leg)
+
+        Returns :
+            f_star    (Tensor): Leg frequency                of shape(batch_size, num_leg)
+            d_star    (Tensor): Leg duty cycle               of shape(batch_size, num_leg)
+            p_star_lw (Tensor): Foot touch down position     of shape(batch_size, num_leg, 3, p_param)
+            F_star_lw (Tensor): ground Reaction Forces       of shape(batch_size, num_leg, 3, F_param)
+        """
+
+        # --- Step 2 : Given f and d samples -> generate the contact sequence for the samples
+        batched_c, new_phase = gait_generator(f=f, d=d, phase=phase, horizon=self.sampling_horizon, dt=self.mpc_dt)
+
+        # --- Step 2 : prepare the variables 
+        batched_initial_state, batched_reference_seq_state, batched_reference_seq_input, batched_action_param = self.prepare_variable_for_compute_rollout(batched_c=batched_c, batched_p_lw=p_lw, batched_delta_F_lw=delta_F_lw, feet_in_contact=self.c_prev)
+        self.c_prev = batched_c[:,:,0]
+
+        # --- Step 3 : Compute the rollouts to find the rollout cost : can't used named argument with VMAP...
+        bacthed_cost = self.batched_compute_rollout(batched_initial_state, batched_reference_seq_state, batched_reference_seq_input, batched_action_param, batched_c)
+
+        p0_star_lw = self.interpolation_p(parameters=p_lw,       step=0, horizon=1) # shape(batch, num_legs, 3)
+        F0_star_lw = self.interpolation_F(parameters=delta_F_lw, step=0, horizon=1) # shape(batch, num_legs, 3)
+
+        # Add gravity compensation
+        F0_star_lw -= batched_c[...,0].unsqueeze(-1) * (self.gravity_lw.unsqueeze(0).unsqueeze(0) * self.robot_mass) / torch.sum(batched_c[...,0], dim=1).unsqueeze(-1).unsqueeze(-1)      
+
+        # Enforce force constraints (Friction cone constraints)
+        F0_star_lw = enforce_friction_cone_constraints_torch(F=F0_star_lw, mu=self.mu, F_z_min=self.F_z_min, F_z_max=self.F_z_max) # shape(batch, num_legs, 3)
+
+        return bacthed_cost, p0_star_lw, F0_star_lw
+    
+
+    def prepare_variable_for_compute_rollout(self, batched_c:torch.Tensor, batched_p_lw:torch.Tensor, batched_delta_F_lw:torch.Tensor, feet_in_contact:torch.Tensor) -> tuple[dict, dict, dict, dict]:
+        """ Helper function to modify the embedded state, reference and action to be used with the 'compute_rollout' function
+
+        Note :
+            Initial state and reference can be retrieved only with the environment
+            _w   : World frame (inertial frame)
+            _lw  : World frame centered at the environment center -> local world frame
+            _b   : Base frame (attached to robot's base)
+            _h   : Horizontal frame -> Base frame position for xy, world frame for z, roll, pitch, base frame for yaw
+            _bw  : Base/world frame -> Base frame position, world frame rotation
+
+        Args :
+            env  (ManagerBasedRLEnv): Environment manager to retrieve all necessary simulation variable
+            batched_c       (t.bool): Foot contact sequence sample                                                      of shape(batch, num_legs, sampling_horizon)
+            batched_p_lw    (Tensor): Foot touch down position                                                          of shape(batch, num_legs, 3, p_param)
+            batched_delta_F_lw (Tsr): ground Reaction Forces                                                            of shape(batch, num_legs, 3, F_param)
+            feet_in_contact (Tensor): Feet in contact, determined by prevous solution                                   of shape(batch, num_legs)
+
+        
+        Return :
+            initial_state         (dict): Dictionnary containing the current robot's state
+                pos_com_lw      (Tensor): CoM position in local world frame                             of shape(batch, 3)
+                lin_com_vel_lw  (Tensor): CoM linear velocity in local world frame                      of shape(batch, 3)
+                euler_xyz_angle (Tensor): CoM orientation (wrt. to l. world frame) as XYZ euler angle   of shape(batch, 3)
+                ang_vel_com_b   (Tensor): CoM angular velocity as roll pitch yaw                        of shape(batch, 3)
+                p_lw            (Tensor): Feet position in local world frame                            of shape(batch, num_legs, 3)
+
+            reference_seq_state   (dict): Dictionnary containing the robot's reference state along the prediction horizon
+                pos_com_lw      (Tensor): CoM position in local world frame                             of shape(3, sampling_horizon)
+                lin_com_vel_lw  (Tensor): CoM linear velocity in local world frame                      of shape(3, sampling_horizon)
+                euler_xyz_angle (Tensor): CoM orientation (wrt. to l. world frame) as XYZ euler angle   of shape(3, sampling_horizon)
+                ang_vel_com_b   (Tensor): CoM angular velocity as roll pitch yaw                        of shape(3, sampling_horizon)
+                p_lw            (Tensor): Feet position in local world frame                            of shape(num_legs, 3, sampling_horizon)                
+
+            reference_seq_input_samples (dict) 
+                F_lw            (Tensor): Reference GRF sequence samples along the prediction horizon   of shape(num_sample, num_legs, 3, sampling_horizon)  
+
+            action_param_samples  (dict): Dictionnary containing the robot's actions along the prediction horizon 
+                p_lw            (Tensor): Foot touch down position in local world frame                 of shape(num_samples, num_legs, 3, p_param)
+                delta_F_lw      (Tensor): delta GRF parameters in local world frame                     of shape(num_samples, num_legs, 3, F_param)
+        """
+        batched_initial_state = {}
+        batched_reference_seq_state = {}
+        bacthed_reference_seq_input = {}
+        batched_action_param = {}
+
+        # Retrieve robot from the scene : specify type to enable type hinting
+        robot: Articulation = self._env.scene["robot"]
+
+        # Retrieve indexes
+        foot_idx = robot.find_bodies(".*foot")[0]
+
+
+        # ----- Step 1 : Retrieve the initial state
+        # Retrieve the robot position in local world frame of shape(3)
+        com_pos_lw = (robot.data.root_pos_w - self._env.scene.env_origins) # shape(batch, 3)
+        # Compute proprioceptive height
+        com_pos_lw[:,2] = robot.data.root_pos_w[:,2] - (torch.sum((robot.data.body_pos_w[:, foot_idx,2]) * feet_in_contact, dim=1)) / (torch.sum(feet_in_contact, dim=1)) # height is proprioceptive shape(batch)
+
+        # Retrieve the robot orientation in lw as euler angle ZXY of shape(3)
+        roll, pitch, yaw = math_utils.euler_xyz_from_quat(robot.data.root_quat_w) 
+        roll, pitch, yaw = from_zero_twopi_to_minuspi_pluspi(roll, pitch, yaw) 
+        # euler_xyz_angle = torch.tensor((roll, pitch, yaw), device=self.device)
+        euler_xyz_angle = torch.cat((roll, pitch, yaw), dim=1) # shape (batch, 3)
+
+        # Retrieve the robot linear and angular velocity in base frame of shape(3)
+        com_lin_vel_lw = (robot.data.root_lin_vel_w) # shape(batch, 3) 
+        com_ang_vel_b  = (robot.data.root_ang_vel_b) # shape(batch, 3)
+
+        # Retrieve the feet position in local world frame of shape(num_legs*3)
+        p_w = (robot.data.body_pos_w[:, foot_idx,:])          # shape(batch, num_legs, 3) - foot position in w
+        p_lw = p_w - self._env.scene.env_origins.unsqueeze(1) # shape(batch, num_legs, 3) - foot position in lw
+
+        # Prepare the state (at time t)
+        batched_initial_state['pos_com_lw']      = com_pos_lw       # shape(batch, 3)              # CoM position in local world frame, height is propriocetive
+        batched_initial_state['lin_com_vel_lw']  = com_lin_vel_lw   # shape(batch, 3)              # Linear Velocity in local world frame
+        batched_initial_state['euler_xyz_angle'] = euler_xyz_angle  # shape(batch, 3)              # Euler angle in XYZ convention
+        batched_initial_state['ang_vel_com_b']   = com_ang_vel_b    # shape(batch, 3)              # Angular velocity in base frame
+        batched_initial_state['p_lw']            = p_lw             # shape(batch, num_legs, 3)    # Foot position in local world frame
+
+
+        # ----- Step 2 : Retrieve the robot's reference along the integration horizon
+        # Retrieve the speed command : (lin_vel_x_b, lin_vel_y_b, ang_vel_yaw_b)
+        speed_command_b = (self._env.command_manager.get_command("base_velocity")) # shape(batch, 3)
+
+        # CoM reference position : tracked only for the height -> xy can be anything eg 0
+        com_pos_ref_seq_lw = torch.tensor((0,0,self.height_ref), device=self.device).unsqueeze(-1).unsqueeze(0).expand(self._env.num_envs, 3, self.sampling_horizon) # shape(batch, 3, sampling_horizon)
+
+        # The pose reference is (0,0) for roll and pitch, but the yaw must be integrated along the horizon (in world frame)
+        euler_xyz_angle_ref_seq      = torch.zeros_like(com_pos_ref_seq_lw) # shape(batch, 3, sampling_horizon)
+        #                                 (batch, 1)                         + ( (batch, sampling_horizon)                                                                                               * (batch, 1) )
+        euler_xyz_angle_ref_seq[:, 2,:] = euler_xyz_angle[:,2].unsqueeze(-1) + ((torch.arange(self.sampling_horizon, device=self.device).unsqueeze(0).expand(self._env.num_envs, self.sampling_horizon)) * (self.mpc_dt * speed_command_b[:,2].unsqueeze(-1))) # shape(batch, sampling_horizon)
+
+        # The linear speed reference is (x_dot_ref_b, y_dot_ref_b, 0) in base frame and must be rotated in world frame
+        com_lin_vel_ref_seq_b = torch.zeros((self._env.num_envs, 3), device=self.device) # shape(batch, 3)
+        com_lin_vel_ref_seq_b[:, 0] = speed_command_b[:, 0] # foward  velocity reference # shape (batch)
+        com_lin_vel_ref_seq_b[:, 1] = speed_command_b[:, 1] # lateral velocity reference # shape (batch)
+
+        # Retrieve the robot base orientation in the world frame as quaternions : shape(batch_size, 4)
+        quat_robot_base_w = robot.data.root_quat_w # shape(batch_size, 4)
+
+        # From the quaternions compute the rotation matrix that rotates from base frame b to world frame w: shape(batch_size, 3,3)
+        R_b_to_w = math_utils.matrix_from_quat(quat_robot_base_w) # shape(batch_size, 3,3)
+
+        # Rotate the speed reference in world frame and expand to get the sampling horizon
+        com_lin_vel_ref_seq_w = torch.matmul(R_b_to_w, com_lin_vel_ref_seq_b.unsqueeze(-1)).expand(self._env.num_envs, 3, self.sampling_horizon).clone().detach() # shape (batch,3,3)@(batch,3,1) -> (batch,3,1) -> shape(batch, 3, sampling_horizon)
+
+        # Add the effect of the yaw rate in world frame
+        delta_yaw_seq = self.mpc_dt * speed_command_b[:,2].unsqueeze(-1) * torch.arange(0, self.sampling_horizon, device=self.device).unsqueeze(0) # (b,1)*(1,h)  -> shape(batch, sampling_horizon)
+
+        com_lin_vel_ref_seq_w[:,0,:] = ((com_lin_vel_ref_seq_w[:,0,:] * torch.cos(delta_yaw_seq)) - (com_lin_vel_ref_seq_w[:,1,:] * torch.sin(delta_yaw_seq))) # shape(batch, sampling_horizon)
+        com_lin_vel_ref_seq_w[:,1,:] = ((com_lin_vel_ref_seq_w[:,0,:] * torch.sin(delta_yaw_seq)) + (com_lin_vel_ref_seq_w[:,1,:] * torch.cos(delta_yaw_seq))) # shape(batch, sampling_horizon)
+
+        # Get the angular velocity reference in base frame as euler rates : (0, 0, yaw rate)
+        com_ang_vel_ref_seq_b = torch.zeros_like(com_pos_ref_seq_lw) # shape(batch, 3, sampling_horizon)
+
+        # Angular velocity reference is base frame (roll_rate=0, pitch_rate=0, yaw_rate=yaw_rate_ref)
+        com_ang_vel_ref_seq_b[:,2,:] = speed_command_b[:,2]  # shape(batch, sampling_horizon)
+
+        # Defining the foot position sequence is tricky.. Since we only have number of predicted step < sampling_horizon
+        p_ref_seq_lw = torch.zeros((self._env.num_envs, self.num_legs, 3, self.sampling_horizon), device=self.device) # shape(batch, num_legs, 3, sampling_horizon) TODO Define this !
+
+        # Compute the gravity compensation GRF along the horizon : of shape (batch, num_legs, 3, sampling_horizon)
+        num_leg_contact_seq_samples = (torch.sum(batched_c, dim=1)).clamp(min=1) # Compute the number of leg in contact, clamp by minimum 1 to avoid division by zero. shape(batch, sampling_horizon)
+        gravity_compensation_F_samples = torch.zeros((self._env.num_envs, self.num_legs, 3, self.sampling_horizon), device=self.device) # shape (batch, num_legs, 3, sampling_horizon)
+        gravity_compensation_F_samples[:,:,2,:] =  batched_c * ((self.robot_mass * 9.81)/num_leg_contact_seq_samples).unsqueeze(1)    # shape (batch, num_legs, sampling_horizon)
+        
+        # Prepare the reference sequence (at time t, t+dt, etc.)
+        batched_reference_seq_state['pos_com_lw']      = com_pos_ref_seq_lw      # shape(batch, 3, sampling_horizon)           # CoM position reference in local world frame
+        batched_reference_seq_state['lin_com_vel_lw']  = com_lin_vel_ref_seq_w   # shape(batch, 3, sampling_horizon)           # Linear Velocity reference in local world frame
+        batched_reference_seq_state['euler_xyz_angle'] = euler_xyz_angle_ref_seq # shape(batch, 3, sampling_horizon)           # Euler angle reference in XYZ convention
+        batched_reference_seq_state['ang_vel_com_b']   = com_ang_vel_ref_seq_b   # shape(batch, 3, sampling_horizon)           # Angular velocity reference in base frame
+        batched_reference_seq_state['p_lw']            = p_ref_seq_lw            # shape(batch, num_legs, 3, sampling_horizon) # Foot position in local world frame
+
+        # Prepare the input sequence reference for the samples
+        bacthed_reference_seq_input['F_lw'] = gravity_compensation_F_samples # shape(batch, num_legs, 3, sampling_horizon) # gravity compensation per samples along the horizon
+
+
+        # ----- Step 3 : Retrieve the actions and prepare them with the correct method
+        batched_action_param['p_lw']       = batched_p_lw       # Foot touch down position samples          # shape(batch, num_legs, 3 p_param)
+        batched_action_param['delta_F_lw'] = batched_delta_F_lw # Delta Ground Reaction Forces samples      # shape(batch, num_legs, 3 F_param)
+
+
+        return batched_initial_state, batched_reference_seq_state, bacthed_reference_seq_input, batched_action_param
+    
+    
+    def batched_compute_rollout(self, batched_initial_state: dict, batched_reference_seq_state: dict, batched_reference_seq_input: dict, batched_action_param: dict, batched_c: torch.Tensor) -> torch.Tensor:
+        """
+        Calculate cost of rollouts of given action sequence samples 
+
+        Args :
+            batched_initial_state       (dict): Dictionnary containing the current robot's state
+                pos_com_lw      (Tensor): CoM position in local world frame                             of shape(batch, 3)
+                lin_com_vel_lw  (Tensor): CoM linear velocity in local world frame                      of shape(batch, 3)
+                euler_xyz_angle (Tensor): CoM orientation (wrt. to l. world frame) as XYZ euler angle   of shape(batch, 3)
+                ang_vel_com_b   (Tensor): CoM angular velocity as roll pitch yaw                        of shape(batch, 3)
+                p_lw            (Tensor): Feet position in local world frame                            of shape(batch, num_legs, 3)
+
+            batched_reference_seq_state (dict): Dictionnary containing the robot's reference state along the prediction horizon
+                pos_com_lw      (Tensor): CoM position in local world frame                             of shape(batch, 3, sampling_horizon)
+                lin_com_vel_lw  (Tensor): CoM linear velocity in local world frame                      of shape(batch, 3, sampling_horizon)
+                euler_xyz_angle (Tensor): CoM orientation (wrt. to l. world frame) as XYZ euler angle   of shape(batch, 3, sampling_horizon)
+                ang_vel_com_b   (Tensor): CoM angular velocity as roll pitch yaw                        of shape(batch, 3, sampling_horizon)
+                p_lw            (Tensor): Feet position in local world frame                            of shape(batch, num_legs, 3, sampling_horizon)                
+
+            batched_reference_seq_input (dict): 
+                F_lw            (Tensor): Reference GRF sequence samples along the prediction horizon   of shape(batch, num_legs, 3, sampling_horizon)  
+
+            batched_action_param  (dict): Dictionnary containing the robot's actions along the prediction horizon 
+                p_lw            (Tensor): Foot touch down position in local world frame                 of shape(batch, num_legs, 3, p_param)
+                delta_F_lw      (Tensor): Delta GRF parameters in local world frame                     of shape(batch, num_legs, 3, F_param)
+
+            batched_c       (t.bool): Foot contact sequence sample                                      of shape(batch, num_legs, sampling_horizon)
+
+        Return 
+            bacthed_cost        (Tensor): Cost associated at each sample (along the prediction horizon) of shape(batch)
+        """
+        bacthed_cost = torch.zeros(self._env.num_envs, device=self.device)
+        state = {}
+        state['pos_com_lw']      = batched_initial_state['pos_com_lw']
+        state['lin_com_vel_lw']  = batched_initial_state['lin_com_vel_lw']
+        state['euler_xyz_angle'] = batched_initial_state['euler_xyz_angle']
+        state['ang_vel_com_b']   = batched_initial_state['ang_vel_com_b']
+        state['p_lw']            = batched_initial_state['p_lw']
+        input = {}
+
+        for i in range(self.sampling_horizon):
+            # --- Step 1 : prepare the inputs
+            # Find the current action given the actions parameters
+            input['p_lw'] = self.interpolation_p(parameters=batched_action_param['p_lw'],       step=i, horizon=self.sampling_horizon)# shape(batch, num_legs, 3)
+            input['F_lw'] = self.interpolation_F(parameters=batched_action_param['delta_F_lw'], step=i, horizon=self.sampling_horizon)# shape(batch, num_legs, 3)
+            contact = batched_c[:,:,i]                                                                                                # shape(batch, num_legs)
+
+            # Add gravity compensation
+            input['F_lw'] -= contact.unsqueeze(-1) * (self.gravity_lw.unsqueeze(0).unsqueeze(0) * self.robot_mass) / torch.sum(contact, dim=1).unsqueeze(-1).unsqueeze(-1)      
+
+            # Enforce force constraints (Friction cone constraints)
+            input['F_lw'] = enforce_friction_cone_constraints_torch(F=input['F_lw'], mu=self.mu, F_z_min=self.F_z_min, F_z_max=self.F_z_max) # shape(batch, num_legs, 3)
+
+
+            # --- Step 2 : Step the model
+            new_state = self.centroidal_model_step(state=state, input=input, contact=contact)
+            state = new_state
+
+
+            # --- Step 3 : compute the step cost
+            state_vector     = torch.cat([vector.view(self._env.num_envs, -1) for vector in state.values()], dim=1)             # Shape: (batch, state_dim)
+            ref_state_vector = torch.cat([vector[...,-1] for vector in batched_reference_seq_state.values()], dim=0)            # Shape: (batch, state_dim)
+            
+            # Compute the state cost
+            state_error = state_vector - ref_state_vector                                                                       # shape (num_samples, state_dim)
+            state_cost  = torch.sum(self.Q_vec.unsqueeze(0) * (state_error ** 2), dim=1)                                        # Shape (num_samples)
+
+            # Compute the input cost
+            input_error = (input['F_lw'] - batched_reference_seq_input['F_lw'][:,:,:,i]).flatten(1,2)                           # shape (num_samples, action_dim)
+            input_cost  = torch.sum(self.R_vec.unsqueeze(0) * (input_error ** 2), dim=1)                                        # Shape (num_samples)
+
+            step_cost = state_cost #+ input_cost                                                                                # shape(num_samples)
+
+            # Update the trajectory cost
+            bacthed_cost += step_cost                                                                                           # shape(num_samples)
+
+        return bacthed_cost
+    
+
+    def centroidal_model_step(self, state, input, contact):
+        """
+        Simulate one step of the forward dynamics, using the controidal model. 
+
+        Note 
+            Model used is described in 'Model Predictive Control With Environment Adaptation for Legged Locomotion'
+            ttps://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=9564053
+            
+        Args : 
+            state     (dict): Dictionnary containing the robot's state
+                pos_com_lw      (tensor): CoM position in local world frame                             of shape(num_samples, 3)
+                lin_com_vel_lw  (tensor): CoM linear velocity in local world frame                      of shape(num_samples, 3)
+                euler_xyz_angle (tensor): CoM orientation (wrt. to l. world frame) as XYZ euler angle   of shape(num_samples, 3)
+                ang_vel_com_b   (tensor): CoM angular velocity as roll pitch yaw                        of shape(num_samples, 3)
+                p_lw            (tensor): Feet position in local world frame                            of shape(num_samples, num_legs, 3)
+
+            input     (dict): Dictionnary containing the robot's input
+                p_lw            (tensor): Feet touch down position in local world frame                 of shape(num_samples, num_legs, 3)
+                F_lw            (tensor): Ground Reaction Forces in local world frame                   of shape(num_samples, num_legs, 3)
+
+            contact (tensor): Foot contact status (stance=1, swing=0)                                   of shape(num_samples, num_legs)
+
+        Return :
+            new_state (dict): Dictionnary containing the robot's updated state after one iteration
+                pos_com_lw      (tensor): CoM position in local world frame                             of shape(num_samples, 3)
+                lin_com_vel_lw  (tensor): CoM linear velocity in local world frame                      of shape(num_samples, 3)
+                euler_xyz_angle (tensor): CoM orientation (wrt. to l. world frame) as XYZ euler angle   of shape(num_samples, 3)
+                ang_vel_com_b   (tensor): CoM angular velocity as roll pitch yaw                        of shape(num_samples, 3)
+                p_lw            (tensor): Feet position in local world frame                            of shape(num_samples, num_legs, 3)
+        """
+        new_state = {}
+
+        # --- Step 1 : Compute linear velocity
+        lin_com_vel_lw = state['lin_com_vel_lw']     # shape (num_samples, 3)
+
+
+        # --- Step 2 : Compute linear acceleration  as sum of forces divide by mass
+        linear_com_acc_lw = (torch.sum(input['F_lw'] * contact.unsqueeze(-1), dim=1) / self.robot_mass) + self.gravity_lw.unsqueeze(0) # shape (num_samples, 3)
+
+
+        # --- Step 3 : Compute angular velocity (as euler rate to increment euler angles) : Given by eq. 27 in 'Note' paper
+        # euler_xyz_rate = inverse(conjugate(euler_xyz_rate_matrix) * omega_b
+        euler_xyz_rate = torch.bmm(inverse_conjugate_euler_xyz_rate_matrix(state['euler_xyz_angle']), state['ang_vel_com_b'].unsqueeze(-1)).squeeze(-1 ) # shape (s,3,3)*(s,3,1)->(s,3,1) -> (num_samples, 3)
+
+
+        # --- Step 4 : Compute angular acceleration : Given by eq. 4 in 'Note' paper
+        # Compute the sum of the moment induced by GRF (1. Moment=dist_from_F cross F, 2. Keep moment only for feet in contact, 3. sum over 4 legs)
+        sum_of_GRF_moment_lw = torch.sum(contact.unsqueeze(-1) * torch.cross((state['p_lw'] - state['pos_com_lw'].unsqueeze(1)), input['F_lw'], dim=-1), dim=1) # shape sum{(s,l,1)*[(s,l,3)^(s,l,3)], dim=l} -> (num_sample, 3)
+
+        # Transform the sum of moment from local world frame to base frame
+        sum_of_GRF_moment_b  = torch.bmm(rotation_matrix_from_w_to_b(state['euler_xyz_angle']), sum_of_GRF_moment_lw.unsqueeze(-1)).squeeze(-1) # shape(num_samples, 3)
+
+        # Compute intermediary variable : w_b^(I*w_b) : unsqueeze robot inertia for batched operation, squeeze and unsqueeze matmul to perform dot product (1,3,3)*(s,3,1)->(s,3,1)->(s,3)
+        omega_b_cross_inertia_dot_omega_b = torch.cross(state['ang_vel_com_b'], torch.matmul(self.robot_inertia.unsqueeze(0), state['ang_vel_com_b'].unsqueeze(-1)).squeeze(-1), dim=-1) # shape(num_samples, 3)
+
+        # Finally compute the angular acc : unsqueeze robot inertia for batched operation, squeeze and unsqueeze matmul to perform dot product (1,3,3)*(s,3,1)->(s,3,1)->(s,3)
+        ang_acc_com_b = torch.matmul(self.inv_robot_inertia.unsqueeze(0), (sum_of_GRF_moment_b - (omega_b_cross_inertia_dot_omega_b)).unsqueeze(-1)).squeeze(-1) # shape(num_samples, 3)
+
+
+        # --- Step 5 : Perform forward integration of the model (as simple forward euler)
+        new_state['pos_com_lw']      = state['pos_com_lw']      + self.mpc_dt*lin_com_vel_lw
+        new_state['lin_com_vel_lw']  = state['lin_com_vel_lw']  + self.mpc_dt*linear_com_acc_lw
+        new_state['euler_xyz_angle'] = state['euler_xyz_angle'] + self.mpc_dt*euler_xyz_rate
+        new_state['ang_vel_com_b']   = state['ang_vel_com_b']   + self.mpc_dt*ang_acc_com_b
+        # new_state['p_lw']            = state['p_lw']
+        new_state['p_lw']            = state['p_lw']*(contact.unsqueeze(-1)) + input['p_lw']*(~contact.unsqueeze(-1))
+
+        return new_state

@@ -1,6 +1,10 @@
 # Helper file witch mathematical functions
 import torch
 
+import matplotlib
+matplotlib.use('GTK4Agg')
+import matplotlib.pyplot as plt
+
 @torch.jit.script
 def inverse_conjugate_euler_xyz_rate_matrix(euler_xyz_angle: torch.Tensor) -> torch.Tensor:
     """
@@ -180,7 +184,8 @@ def compute_cubic_spline(parameters: torch.Tensor, step: int, horizon: int):
 
     return actions
 
-@torch.jit.script
+
+# @torch.jit.script
 def fit_cubic(y: torch.Tensor) -> torch.Tensor:
     """ Minimize the sum of squared error between datapoints y_i and a cubic function parametrized with a,b,c,d 
     ie. -> Fit parameters a,b,c,d  that minimize : min(a,b,c,d) : sum( (y_i - (ax_i^3 + bx_i^2 + cx_i + d) )^2 )
@@ -230,6 +235,18 @@ def fit_cubic(y: torch.Tensor) -> torch.Tensor:
 
     # Concatenate the coefficient
     theta = torch.cat((theta_n1.unsqueeze(-1), theta_0.unsqueeze(-1),theta_1.unsqueeze(-1), theta_2.unsqueeze(-1)), dim=-1) # shape (batch_size, num_legs, dim_3D, 4)
+
+
+    # env_idx = 0
+    # leg_idx = 0
+    # t = torch.arange(0, 101, device=y.device)
+    # F = torch.empty((y.shape[0], y.shape[1], y.shape[2], 101), device=y.device)
+    # for i in range(101):
+    #     F[:,:,:,i] = compute_cubic_spline(parameters=theta, step=int(t[i]), horizon=100)
+    # plt.plot(t.cpu().numpy()/100,F[env_idx,leg_idx,-1,:].cpu().numpy())
+    # plt.scatter(x=x.cpu().numpy(), y=y[env_idx,leg_idx,-1,:].cpu().numpy(), c='red')
+    # plt.scatter(x=torch.tensor([[-1, 0, 1, 2]]), y=theta[env_idx,leg_idx,-1,:].cpu().numpy())
+    # plt.show()
 
     return theta  # Coefficients a, b, c, d for each batch, legs, dim_3D
 
@@ -308,3 +325,66 @@ def uniform_sampling(num_samples:int, mean:torch.Tensor, std:torch.Tensor|None=N
     samples = mean + (std * torch.empty((num_samples,) + mean.shape, device=mean.device).uniform_(-1.0, 1.0))
 
     return samples
+
+
+@torch.jit.script
+def enforce_friction_cone_constraints_torch(F:torch.Tensor, mu:float, F_z_min:float, F_z_max:float) -> torch.Tensor:
+    """ Enforce the friction cone constraints
+    ||F_xy|| < F_z*mu
+    Args :
+        F (torch.Tensor): The GRF                                    of shape(num_samples, num_legs, 3,(optinally F_param))
+
+    Returns :
+        F (torch.Tensor): The GRF with enforced friction constraints of shape(num_samples, num_legs, 3,(optinally F_param))
+    """
+
+    F_x = F[:,:,0].unsqueeze(2)
+    F_y = F[:,:,1].unsqueeze(2)
+    F_z = F[:,:,2].unsqueeze(2).clamp(min=F_z_min, max=F_z_max)
+
+    # Angle between vec_x and vec_F_xy
+    alpha = torch.atan2(F[:,:,1], F[:,:,0]).unsqueeze(2) # atan2(y,x) = arctan(y/x)
+
+    # Compute the maximal Force in the xy plane
+    F_xy_max = mu*F_z
+
+    # Clipped the violation for the x and y component (unsqueeze to avoid to loose that dimension) : To use clamp_max -> need to remove the sign...
+    F_x_clipped =  F_x.sign()*(torch.abs(F_x).clamp_max(torch.abs(torch.cos(alpha)*F_xy_max)))
+    F_y_clipped =  F_y.sign()*(torch.abs(F_y).clamp_max(torch.abs(torch.sin(alpha)*F_xy_max)))
+
+    # Reconstruct the vector
+    F = torch.cat((F_x_clipped, F_y_clipped, F_z), dim=2)
+
+    return F
+
+
+@torch.jit.script
+def from_zero_twopi_to_minuspi_pluspi(roll:torch.Tensor, pitch:torch.Tensor, yaw:torch.Tensor):
+        """ Change the function space from [0, 2pi[ to ]-pi, pi] 
+        
+        Args :
+            roll  (Tensor): roll in [0, 2pi[    shape(x)
+            pitch (Tensor): roll in [0, 2pi[    shape(x)
+            yaw   (Tensor): roll in [0, 2pi[    shape(x)
+        
+        Returns :   
+            roll  (Tensor): roll in ]-pi, pi]   shape(x)
+            pitch (Tensor): roll in ]-pi, pi]   shape(x)
+            yaw   (Tensor): roll in ]-pi, pi]   shape(x)    
+        """
+
+        # Apply the transformation
+        roll  = ((roll  - torch.pi) % (2*torch.pi)) - torch.pi
+        pitch = ((pitch - torch.pi) % (2*torch.pi)) - torch.pi 
+        yaw   = ((yaw   - torch.pi) % (2*torch.pi)) - torch.pi
+
+        return roll, pitch, yaw
+
+
+
+
+
+
+
+
+

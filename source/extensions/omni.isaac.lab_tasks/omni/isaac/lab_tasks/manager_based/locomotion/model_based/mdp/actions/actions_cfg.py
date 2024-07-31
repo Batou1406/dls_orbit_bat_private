@@ -59,13 +59,13 @@ class ModelBaseActionCfg(ActionTermCfg):
         num_samples: int = 5000
         """ Number of samples used if the optimizerType is 'sampling' """
 
-        parametrization_F: Literal['discrete', 'cubic_spline', 'from_discrete_fit_spline'] = 'from_discrete_fit_spline'
+        parametrization_F: Literal['discrete', 'cubic_spline', 'from_discrete_fit_spline', 'from_single_expand_discrete'] = 'from_single_expand_discrete'
         """ Define how F, Ground Reaction Forces, are encoded : can be 'discrete', 'cubic_spline' or 'from_discrete_fit_spline', this modify F_param """
 
-        parametrization_p: Literal['discrete', 'cubic_spline', 'from_discrete_fit_spline'] = 'from_discrete_fit_spline'
+        parametrization_p: Literal['discrete', 'cubic_spline', 'from_discrete_fit_spline', 'from_single_expand_discrete'] = 'from_single_expand_discrete'
         """ Define how p, foot touch down position, are encoded : can be 'discrete', 'cubic_spline' or from_discrete_fit_spline, this modify p_param  """
 
-        height_ref: float = 0.38 #0.35 #0.38
+        height_ref: float = 0.35 #0.35 #0.38
         """ Height reference for the optimization, defined as mean distance between legs in contact and base """
 
         mu : float = 0.5
@@ -95,7 +95,7 @@ class ModelBaseActionCfg(ActionTermCfg):
         clip_sample: bool = False 
         """ Wether to clip or not the samples to a range of the standard deviation """
 
-        debug_apply_action: Literal[None, 'full_stance', 'trot'] = 'trot' #None
+        debug_apply_action: Literal[None, 'full_stance', 'trot'] = None #'trot' #None
         """ Wether to deactivate f,d,and p from RL and change that with another static gait"""
 
     optimizerCfg: OptimizerCfg | None = None

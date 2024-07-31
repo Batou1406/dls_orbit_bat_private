@@ -168,6 +168,8 @@ class ModelBaseAction(ActionTerm):
             # Discrete Action : Multiple actions - Multiple time step (one action per time step)
             elif self.cfg.optimizerCfg.parametrization_F == 'discrete' or self.cfg.optimizerCfg.parametrization_F == 'from_discrete_fit_spline':
                 self._F_param = self.cfg.optimizerCfg.prevision_horizon
+            elif self.cfg.optimizerCfg.parametrization_F == 'from_single_expand_discrete':
+                self._F_param = 1
             else : raise NotImplementedError('Provided F parametrisation not implemented')
 
             # Parametrized Action 
@@ -176,6 +178,8 @@ class ModelBaseAction(ActionTerm):
             # Discrete Action : Multiple actions - Multiple time step (one action per time step)
             elif self.cfg.optimizerCfg.parametrization_p == 'discrete'  or self.cfg.optimizerCfg.parametrization_p == 'from_discrete_fit_spline':
                 self._p_param = self.cfg.optimizerCfg.prevision_horizon
+            elif self.cfg.optimizerCfg.parametrization_p == 'from_single_expand_discrete':
+                self._p_param = 1
             else : raise NotImplementedError('Provided P parametrisation not implemented')
         else :
             # RL Actions applied 

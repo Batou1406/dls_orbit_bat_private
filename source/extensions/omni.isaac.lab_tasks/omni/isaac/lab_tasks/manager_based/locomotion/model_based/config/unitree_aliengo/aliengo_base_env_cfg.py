@@ -17,6 +17,9 @@ from omni.isaac.lab_assets.anymal import ANYMAL_C_CFG  # isort: skip
 
 from omni.isaac.lab.terrains.config.niceFlat import COBBLESTONE_ROAD_CFG
 
+from omni.isaac.lab_tasks.manager_based.locomotion.model_based.mdp import modify_reward_weight
+from omni.isaac.lab.managers import CurriculumTermCfg as CurrTerm
+
 @configclass
 class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
     def __post_init__(self):
@@ -39,14 +42,14 @@ class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
 
 
         """ ----- Commands ----- """
-        # self.commands.base_velocity.ranges.for_vel_b = (-1.0, 1.0)
-        # self.commands.base_velocity.ranges.lat_vel_b = (-1.0, 1.0)
-        # self.commands.base_velocity.ranges.ang_vel_b = (-1.0, 1.0)
-        # self.commands.base_velocity.ranges.initial_heading_err = (-math.pi, math.pi)
-        self.commands.base_velocity.ranges.for_vel_b = (-0.0, 0.0)
-        self.commands.base_velocity.ranges.lat_vel_b = (-0.0, 0.0)
-        self.commands.base_velocity.ranges.ang_vel_b = (-0.0, 0.0)
-        self.commands.base_velocity.ranges.initial_heading_err = (-0.0, 0.0)
+        self.commands.base_velocity.ranges.for_vel_b = (-1.0, 1.0)
+        self.commands.base_velocity.ranges.lat_vel_b = (-1.0, 1.0)
+        self.commands.base_velocity.ranges.ang_vel_b = (-1.0, 1.0)
+        self.commands.base_velocity.ranges.initial_heading_err = (-math.pi, math.pi)
+        # self.commands.base_velocity.ranges.for_vel_b = (-0.0, 0.0)
+        # self.commands.base_velocity.ranges.lat_vel_b = (-0.0, 0.0)
+        # self.commands.base_velocity.ranges.ang_vel_b = (-0.0, 0.0)
+        # self.commands.base_velocity.ranges.initial_heading_err = (-0.0, 0.0)
 
 
         """ ----- Observation ----- """
@@ -139,11 +142,20 @@ class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
         self.rewards.penalty_leg_frequency               = None
         self.rewards.penalty_leg_duty_cycle              = None
         self.rewards.penalty_large_force.weight          = 0.1
-        self.rewards.penalty_large_step                  = None
+        # self.rewards.penalty_large_step                  = None
         self.rewards.penalty_frequency_variation.weight  = 0.5 #1.0
         self.rewards.penatly_duty_cycle_variation.weight = 1.0 #2.5
         self.rewards.penalty_step_variation.weight       = 1.0 #2.5
         self.rewards.penatly_force_variation.weight      = 2.5e-5 #1e-4
+
+
+        self.rewards.penalty_leg_frequency.params  = {"action_name": "model_base_variable", "bound": (0.6,2.0)}
+        self.curriculum.penalty_leg_frequency_curr = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_leg_frequency", "weight": 1.0, "num_steps": (400*24)})
+        self.rewards.penalty_leg_duty_cycle.params  = params={"action_name": "model_base_variable", "bound": (0.35,0.7)}
+        self.curriculum.penalty_leg_duty_cycle_curr = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_leg_duty_cycle", "weight": 1.0, "num_steps": (400*24)})
+
+        self.rewards.penalty_large_step.params  = {"action_name": "model_base_variable", "bound_x": (0.08,-0.06), "bound_y": (0.06,-0.06)}
+        self.curriculum.penalty_large_step_curr = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_large_step", "weight": 1.0, "num_steps": (400*24)})
 
         # -- Additionnal Reward : Need a positive weight
         self.rewards.reward_is_alive                     = None #0.25
