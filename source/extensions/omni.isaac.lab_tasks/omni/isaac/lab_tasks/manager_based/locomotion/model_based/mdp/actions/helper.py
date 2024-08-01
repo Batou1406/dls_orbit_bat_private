@@ -176,8 +176,8 @@ def compute_cubic_spline(parameters: torch.Tensor, step: int, horizon: int):
     d =    q*q*q -   q*q
 
     # Compute intermediary parameters 
-    phi_1 = 0.5*(parameters[...,2]  - parameters[...,0]) # shape (batch, num_legs, 3)
-    phi_2 = 0.5*(parameters[...,3]  - parameters[...,1]) # shape (batch, num_legs, 3)
+    phi_1 = 0.5*(parameters[...,2]  - (10*parameters[...,0])) # shape (batch, num_legs, 3)
+    phi_2 = 0.5*((10*parameters[...,3])  - parameters[...,1]) # shape (batch, num_legs, 3)
 
     # Compute the spline
     actions = a*parameters[...,1] + b*phi_1 + c*parameters[...,2]  + d*phi_2 # shape (batch, num_legs, 3)

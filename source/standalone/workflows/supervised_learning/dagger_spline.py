@@ -297,7 +297,7 @@ def fit_cubic_with_constraint(y: torch.tensor, x: torch.tensor | None = None) ->
     theta_2  = 6*a + 4*b + 2*c + d  # shape (batch_size, num_legs, dim_3D)
 
     # Concatenate the coefficient
-    theta = torch.cat((theta_n1.unsqueeze(-1), theta_0.unsqueeze(-1),theta_1.unsqueeze(-1), theta_2.unsqueeze(-1)), dim=-1) # shape (batch_size, num_legs, dim_3D, 4)
+    theta = torch.cat((theta_n1.unsqueeze(-1)/10.0, theta_0.unsqueeze(-1),theta_1.unsqueeze(-1), theta_2.unsqueeze(-1)/10.0), dim=-1) # shape (batch_size, num_legs, dim_3D, 4)
     
     return theta  # Coefficients a, b, c, d for each batch, legs, dim_3D
 
@@ -350,10 +350,10 @@ def fit_cubic(y: torch.tensor, x: torch.tensor | None = None) -> torch.tensor:
     beta = torch.linalg.solve(XtX, XtY.transpose(-1,-2)).transpose(-1,-2) # shape: (batch_size, num_legs, dim_3D, num_param)
 
     # Retrieve coefficients a, b, c, d for each batch, legs, dim_3D
-    a = beta[..., 0]    # shape (batch_size, num_legs, dim_3D)
+    a = beta[..., 0]/10.0    # shape (batch_size, num_legs, dim_3D)
     b = beta[..., 1]    # shape (batch_size, num_legs, dim_3D)
     c = beta[..., 2]    # shape (batch_size, num_legs, dim_3D)
-    d = beta[..., 3]    # shape (batch_size, num_legs, dim_3D)
+    d = beta[..., 3]/10.0    # shape (batch_size, num_legs, dim_3D)
 
     # Find the missing theta parameters
     # theta_n1 =   a +   b -   c + d  # shape (batch_size, num_legs, dim_3D)
@@ -405,8 +405,8 @@ def compute_cubic_spline(parameters: torch.Tensor, step: int, horizon: int):
     d =    q*q*q -   q*q
 
     # Compute intermediary parameters 
-    phi_1 = 0.5*(parameters[...,2]  - parameters[...,0]) # shape (batch, num_legs, 3)
-    phi_2 = 0.5*(parameters[...,3]  - parameters[...,1]) # shape (batch, num_legs, 3)
+    phi_1 = 0.5*(parameters[...,2]  - (10*parameters[...,0])) # shape (batch, num_legs, 3)
+    phi_2 = 0.5*((10*parameters[...,3])  - parameters[...,1]) # shape (batch, num_legs, 3)
 
     # Compute the spline
     actions = a*parameters[...,1] + b*phi_1 + c*parameters[...,2]  + d*phi_2 # shape (batch, num_legs, 3)
@@ -476,7 +476,7 @@ def main():
 
     # Type of action recorded
     p_typeAction = 'discrete' # 'spline', 'discrete'
-    F_typeAction = 'discrete' # 'spline', 'discrete'
+    F_typeAction = 'spline' # 'spline', 'discrete'
 
     if F_typeAction == 'spline':
         F_param = 4
@@ -585,6 +585,8 @@ def main():
     observations_data = torch.empty(0,device=device)
     actions_data = torch.empty(0, device=device)
 
+    debug_counter=0
+
     for epoch in range(tot_epoch):
         print(f'\n----- Epoch {epoch+1} / {tot_epoch} ----- Total Remaining Time {(tot_epoch-epoch)*(time.time()-last_time_outloop):4.1f}[s]')
         last_time_outloop = time.time()
@@ -592,6 +594,9 @@ def main():
         # --- Step 1 : Get ID for student actions
         n = min(int(alpha(epoch)*args_cli.num_envs), args_cli.num_envs)
         expert_idx = torch.randperm(args_cli.num_envs)[:n]
+
+        if (epoch == 20) or (epoch == 10) or (epoch == 30) :
+            debug_counter=0
 
 
         with torch.inference_mode(): # step 2 and 3 (and 4 but not required) in inference mode to avoid gradient computations
@@ -698,7 +703,7 @@ def main():
                 if F_typeAction == 'spline':
                     # extract the p and F action with the right parameters
                     F = raw_actions[:,(f_len+d_len+p_len):(f_len+d_len+p_len+F_len), :].unsqueeze(2).reshape(args_cli.num_envs, 4, 3, buffer_size) # shape (num_envs, num_legs, 3, buffer_size)
-                    # F_expert_raw = F.clone().detach()
+                    F_expert_raw = F.clone().detach()
 
                     # Fit a cubic spline interpolation these data and retrieve the interpolation parameters
                     # print('F spline')
@@ -711,40 +716,41 @@ def main():
                 observations_data = torch.cat((observations_data, buffer_obs[0]), dim=0)    # shape(num_data, obs_dim)
                 actions_data      = torch.cat((actions_data, process_actions), dim=0)       # shape(num_data, f_len+d_len+buffer_size*(p_len+F_len))
 
+                
+                if debug_counter < 5:
+                    debug_counter+=1
 
-                # if epoch == 20 :
-
-                #     env_idx = 102
-                #     leg_idx = 1
-                #     x_discrete = torch.linspace(0, 1, steps=buffer_size, device=F.device) # Discrete x = [0, 0.25, 0.5, 0.75, 1.0]
-                #     x_param = torch.tensor([[-1, 0, 1, 2]])
-                #     t = torch.arange(0, 101, device=F.device)
+                    env_idx = 102
+                    leg_idx = 1
+                    x_discrete = torch.linspace(0, 1, steps=buffer_size, device=F.device) # Discrete x = [0, 0.25, 0.5, 0.75, 1.0]
+                    x_param = torch.tensor([[-1, 0, 1, 2]])
+                    t = torch.arange(0, 101, device=F.device)
                     
-                #     # plot expert action
-                #     plt.scatter(x=x_discrete.cpu().numpy(), y=F_expert_raw[env_idx,leg_idx,-1,:].cpu().numpy(), c='red')
+                    # plot expert action
+                    plt.scatter(x=x_discrete.cpu().numpy(), y=F_expert_raw[env_idx,leg_idx,-1,:].cpu().numpy(), c='red')
 
-                #     # plot expert param
-                #     F_expert_param = fit_cubic_with_constraint(y=F_expert_raw)
-                #     plt.scatter(x=x_param.cpu().numpy(), y=F_expert_param[env_idx,leg_idx,-1,:].cpu().numpy(), c='red')
+                    # plot expert param
+                    F_expert_param = fit_cubic_with_constraint(y=F_expert_raw)
+                    plt.scatter(x=x_param.cpu().numpy(), y=F_expert_param[env_idx,leg_idx,-1,:].cpu().numpy(), c='red')
 
-                #     # plot expert trajectory
-                #     F_expert_traj = torch.empty((F_expert_param.shape[0], F_expert_param.shape[1], F_expert_param.shape[2], 101), device=F_expert_param.device)
-                #     for i in range(101):
-                #         F_expert_traj[:,:,:,i] = compute_cubic_spline(parameters=F_expert_param, step=int(t[i]), horizon=100)
-                #     plt.plot(t.cpu().numpy()/100,F_expert_traj[env_idx,leg_idx,-1,:].cpu().numpy(), c='red')
+                    # plot expert trajectory
+                    F_expert_traj = torch.empty((F_expert_param.shape[0], F_expert_param.shape[1], F_expert_param.shape[2], 101), device=F_expert_param.device)
+                    for i in range(101):
+                        F_expert_traj[:,:,:,i] = compute_cubic_spline(parameters=F_expert_param, step=int(t[i]), horizon=100)
+                    plt.plot(t.cpu().numpy()/100,F_expert_traj[env_idx,leg_idx,-1,:].cpu().numpy(), c='red')
 
-                #     # plot student param
-                #     student_actions = student_policy(buffer_obs[0]) # shape (num_envs, 4 + 4 + buffer_size*(8 + 12))
-                #     F_student_param = student_actions[:,(f_len+d_len+(p_param*p_len)):(f_len+d_len+(p_param*p_len)+(F_param*F_len))].reshape(F_shape) # shape (num_envs, 4, 3, buffer_size)
-                #     plt.scatter(x=x_param.cpu().numpy(), y=F_student_param[env_idx,leg_idx,-1,:].cpu().numpy(), c='blue')
+                    # plot student param
+                    student_actions = student_policy(buffer_obs[0]) # shape (num_envs, 4 + 4 + buffer_size*(8 + 12))
+                    F_student_param = student_actions[:,(f_len+d_len+(p_param*p_len)):(f_len+d_len+(p_param*p_len)+(F_param*F_len))].reshape(F_shape) # shape (num_envs, 4, 3, buffer_size)
+                    plt.scatter(x=x_param.cpu().numpy(), y=F_student_param[env_idx,leg_idx,-1,:].cpu().numpy(), c='blue')
 
-                #     # plot student trajectory
-                #     F_student_traj = torch.empty((F_student_param.shape[0], F_student_param.shape[1], F_student_param.shape[2], 101), device=F_student_param.device)
-                #     for i in range(101):
-                #         F_student_traj[:,:,:,i] = compute_cubic_spline(parameters=F_student_param, step=int(t[i]), horizon=100)
-                #     plt.plot(t.cpu().numpy()/100,F_student_traj[env_idx,leg_idx,-1,:].cpu().numpy(), c='blue')
+                    # plot student trajectory
+                    F_student_traj = torch.empty((F_student_param.shape[0], F_student_param.shape[1], F_student_param.shape[2], 101), device=F_student_param.device)
+                    for i in range(101):
+                        F_student_traj[:,:,:,i] = compute_cubic_spline(parameters=F_student_param, step=int(t[i]), horizon=100)
+                    plt.plot(t.cpu().numpy()/100,F_student_traj[env_idx,leg_idx,-1,:].cpu().numpy(), c='blue')
 
-                #     plt.show()
+                    plt.show()
 
 
                 # If the Dataset becomes too large : downsample randomly.

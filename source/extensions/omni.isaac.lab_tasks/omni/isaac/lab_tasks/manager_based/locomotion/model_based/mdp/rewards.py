@@ -513,7 +513,7 @@ def penalize_sampling_controller_cost(env: ManagerBasedRLEnv, actionName: str="m
     rollout_cost[rollout_cost > 1e3] = 1e3 + torch.sqrt(rollout_cost[rollout_cost > 1e3] - 1e3) # This clamp the maximal value below 5*1e3
 
     # Scale down to avoid overflow when summed along the episode
-    rollout_cost = rollout_cost*(1e-3)
+    rollout_cost = (rollout_cost*(1e-3)).clamp(min=0,max=5)
 
     return rollout_cost
 
