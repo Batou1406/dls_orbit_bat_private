@@ -1019,11 +1019,11 @@ class SamplingOptimizer():
         print('Best cost :', best_cost, ', best index :', best_index)
 
         # Retrieve best sample, given the best index
-        f_star          = f_samples[best_index].unsqueeze(0)           # shape(1, num_leg)
-        d_star          = d_samples[best_index].unsqueeze(0)           # shape(1, num_leg)
-        c_star          = c_samples[best_index].unsqueeze(0)           # shape(1, num_leg, sampling_horizon)
-        p_star_lw       = p_lw_samples[best_index].unsqueeze(0)        # shape(1, num_leg, 3, p_param)
-        delta_F_star_lw = delta_F_lw_samples[best_index].unsqueeze(0)  # shape(1, num_leg, 3, F_param)
+        f_star          = f_samples[best_index].unsqueeze(0).clone().detach()           # shape(1, num_leg)
+        d_star          = d_samples[best_index].unsqueeze(0).clone().detach()           # shape(1, num_leg)
+        c_star          = c_samples[best_index].unsqueeze(0).clone().detach()           # shape(1, num_leg, sampling_horizon)
+        p_star_lw       = p_lw_samples[best_index].unsqueeze(0).clone().detach()        # shape(1, num_leg, 3, p_param)
+        delta_F_star_lw = delta_F_lw_samples[best_index].unsqueeze(0).clone().detach()  # shape(1, num_leg, 3, F_param)
 
         # Save live variable to enable live plotting
         if self.live_plot:
@@ -1617,8 +1617,7 @@ class SamplingBatchedTrainer():
         # Enforce force constraints (Friction cone constraints)
         F0_star_lw = enforce_friction_cone_constraints_torch(F=F0_star_lw, mu=self.mu, F_z_min=self.F_z_min, F_z_max=self.F_z_max) # shape(batch, num_legs, 3)
 
-        if F0_star_lw.isnan().any():
-            print('oh noooo')
+        # print('batched cost :', bacthed_cost)
 
         return bacthed_cost, p0_star_lw, F0_star_lw
     
