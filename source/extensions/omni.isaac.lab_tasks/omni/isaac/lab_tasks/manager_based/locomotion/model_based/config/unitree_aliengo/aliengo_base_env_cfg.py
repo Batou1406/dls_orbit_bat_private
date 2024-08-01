@@ -139,10 +139,10 @@ class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
         self.rewards.penalize_foot_trac_err              = None
 
         # -- Model based penalty : Positive weight -> penalty is already negative
-        # self.rewards.penalty_leg_frequency               = None
-        # self.rewards.penalty_leg_duty_cycle              = None
-        self.rewards.penalty_leg_frequency.weight        = 0.0
-        self.rewards.penalty_leg_duty_cycle.weight       = 0.0
+        self.rewards.penalty_leg_frequency               = None
+        self.rewards.penalty_leg_duty_cycle              = None
+        # self.rewards.penalty_leg_frequency.weight        = 0.0
+        # self.rewards.penalty_leg_duty_cycle.weight       = 0.0
         self.rewards.penalty_large_force.weight          = 0.1
         self.rewards.penalty_large_step                  = None
         # self.rewards.penalty_large_step.weight                  = 0.0
@@ -152,10 +152,10 @@ class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
         self.rewards.penatly_force_variation.weight      = 2.5e-5 #1e-4
 
 
-        self.rewards.penalty_leg_frequency.params  = {"action_name": "model_base_variable", "bound": (0.6,2.0)}
-        self.curriculum.penalty_leg_frequency_curr = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_leg_frequency", "weight": 1.0, "num_steps": (400*24)})
-        self.rewards.penalty_leg_duty_cycle.params  = params={"action_name": "model_base_variable", "bound": (0.35,0.7)}
-        self.curriculum.penalty_leg_duty_cycle_curr = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_leg_duty_cycle", "weight": 1.0, "num_steps": (400*24)})
+        # self.rewards.penalty_leg_frequency.params  = {"action_name": "model_base_variable", "bound": (0.6,2.0)}
+        # self.curriculum.penalty_leg_frequency_curr = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_leg_frequency", "weight": 1.0, "num_steps": (400*24)})
+        # self.rewards.penalty_leg_duty_cycle.params  = params={"action_name": "model_base_variable", "bound": (0.35,0.7)}
+        # self.curriculum.penalty_leg_duty_cycle_curr = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_leg_duty_cycle", "weight": 1.0, "num_steps": (400*24)})
 
 
         self.curriculum.penalty_sampling_rollout_curr = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_sampling_rollout", "weight": -1e-6, "num_steps": (600*24)})
