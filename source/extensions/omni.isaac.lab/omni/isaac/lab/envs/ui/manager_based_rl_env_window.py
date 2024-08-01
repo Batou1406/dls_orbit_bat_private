@@ -152,6 +152,18 @@ class BatManagerBasedRLEnvWindow(BaseEnvWindow):
                 self.ui_window_elements["num iter"] = omni.isaac.ui.ui_utils.int_builder(**num_iter_cfg)
                 self.ui_window_elements["num iter"].add_value_changed_fn(self._update_num_iter)
 
+                # Create a slider to change the robot mass
+                robot_mass_cfg = {
+                    "label": "Robot Mass",
+                    "type": "button",
+                    "default_val": self.modelBaseAction.robot_mass,
+                    "min": 10.0,
+                    "max": 30.0,
+                    "tooltip": "Proportion of the samples sampled from previous best sample",
+                }
+                self.ui_window_elements["robot mass"] = omni.isaac.ui.ui_utils.float_builder(**robot_mass_cfg)
+                self.ui_window_elements["robot mass"].add_value_changed_fn(self._update_probot_mass)
+
                 # Create a button to enable or not the optimizer
                 with omni.ui.HStack():
                     omni.ui.Label(
@@ -401,6 +413,9 @@ class BatManagerBasedRLEnvWindow(BaseEnvWindow):
 
     def _update_proportion_best(self, model: omni.ui.SimpleFloatModel):
         self.modelBaseAction.controller.samplingOptimizer.propotion_previous_solution = model.as_float
+
+    def _update_probot_mass(self, model: omni.ui.SimpleFloatModel):
+        self.modelBaseAction.controller.samplingOptimizer.robot_mass = model.as_float
 
     def _update_f_std(self, model: omni.ui.SimpleFloatModel):
         self.modelBaseAction.controller.samplingOptimizer.std_f = (model.as_float)*torch.ones_like(self.modelBaseAction.controller.samplingOptimizer.std_f)
