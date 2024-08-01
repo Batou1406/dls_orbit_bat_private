@@ -183,9 +183,9 @@ class ActionsCfg:
         asset_name="robot",
         joint_names=[".*"], 
         # controller=mdp.samplingController,
-        # optimizerCfg=mdp.ModelBaseActionCfg.OptimizerCfg(),
-        controller=mdp.modelBaseController,
-        # controller=mdp.samplingTrainer,
+        optimizerCfg=mdp.ModelBaseActionCfg.OptimizerCfg(),
+        # controller=mdp.modelBaseController,
+        controller=mdp.samplingTrainer,
         )
     
     # joint_pos = mdp.JointPositionActionCfg(asset_name="robot", joint_names=[".*"], scale=0.5, use_default_offset=True)
@@ -392,8 +392,8 @@ class RewardsCfg:
     reward_is_alive        = RewTerm(func=mdp.is_alive, weight=0.25)
     penalty_failed         = RewTerm(func=mdp.is_terminated, weight=1.0)
     
-    penalty_constraint_violation = RewTerm(func=mdp.penalize_constraint_violation,    weight=-0.01)
-    # penalty_sampling_rollout     = RewTerm(func=mdp.penalize_sampling_controller_cost,weight=-0.0) #-1e-7
+    # penalty_constraint_violation = RewTerm(func=mdp.penalize_constraint_violation,    weight=-0.01)
+    penalty_sampling_rollout     = RewTerm(func=mdp.penalize_sampling_controller_cost,weight=-0.0) #-1e-7
 
 
 @configclass

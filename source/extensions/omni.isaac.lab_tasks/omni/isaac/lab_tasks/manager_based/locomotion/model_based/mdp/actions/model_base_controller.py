@@ -1061,7 +1061,7 @@ class SamplingOptimizer():
         if self.optimize_F : print('F - cum. diff. : %5.1f' % torch.sum(torch.abs(delta_F_star_lw - delta_F_lw_samples[0,...])))
 
         # Add gravity compensation
-        F0_star_lw -= c_star[:,:,0].unsqueeze(-1) * self.gravity_lw.unsqueeze(0).unsqueeze(0) * self.robot_mass / torch.sum(c_star[:,:,0].unsqueeze(0).unsqueeze(-1)) # shape(1, num_legs, 3)
+        F0_star_lw -= c_star[:,:,0].unsqueeze(-1) * self.gravity_lw.unsqueeze(0).unsqueeze(0) * self.robot_mass / (torch.sum(c_star[:,:,0]).clamp_min(min=1)).unsqueeze(0).unsqueeze(-1) # shape(1, num_legs, 3)
 
         # Enforce force constraints (Friction cone constraints)
         # F0_star_lw = self.enforce_friction_cone_constraints_torch(F=F0_star_lw, mu=self.mu)                           # shape(num_samples, num_legs, 3)
@@ -1269,7 +1269,7 @@ class SamplingOptimizer():
             contact = c_samples[:,:,i]                                                                                          # shape(num_samples, num_legs)
 
             # Add gravity compensation
-            input['F_lw'] -= contact.unsqueeze(-1) * (self.gravity_lw.unsqueeze(0).unsqueeze(0) * self.robot_mass) / torch.sum(contact, dim=1).unsqueeze(-1).unsqueeze(-1)      
+            input['F_lw'] -= contact.unsqueeze(-1) * (self.gravity_lw.unsqueeze(0).unsqueeze(0) * self.robot_mass) / (torch.sum(contact, dim=1).clamp_min(min=1)).unsqueeze(-1).unsqueeze(-1)      
 
             # Enforce force constraints (Friction cone constraints)
             # input['F_lw'] = self.enforce_friction_cone_constraints_torch(F=input['F_lw'], mu=self.mu)                           # shape(num_samples, num_legs, 3)
@@ -1612,7 +1612,7 @@ class SamplingBatchedTrainer():
         F0_star_lw = self.interpolation_F(parameters=delta_F_lw, step=0, horizon=1) # shape(batch, num_legs, 3)
 
         # Add gravity compensation
-        F0_star_lw -= batched_c[...,0].unsqueeze(-1) * (self.gravity_lw.unsqueeze(0).unsqueeze(0) * self.robot_mass) / torch.sum(batched_c[...,0], dim=1).unsqueeze(-1).unsqueeze(-1)      
+        F0_star_lw -= batched_c[...,0].unsqueeze(-1) * (self.gravity_lw.unsqueeze(0).unsqueeze(0) * self.robot_mass) / (torch.sum(batched_c[...,0], dim=1).clamp_min(min=1)).unsqueeze(-1).unsqueeze(-1)      
 
         # Enforce force constraints (Friction cone constraints)
         F0_star_lw = enforce_friction_cone_constraints_torch(F=F0_star_lw, mu=self.mu, F_z_min=self.F_z_min, F_z_max=self.F_z_max) # shape(batch, num_legs, 3)
@@ -1817,7 +1817,7 @@ class SamplingBatchedTrainer():
             contact = batched_c[:,:,i]                                                                                                # shape(batch, num_legs)
 
             # Add gravity compensation
-            input['F_lw'] -= contact.unsqueeze(-1) * (self.gravity_lw.unsqueeze(0).unsqueeze(0) * self.robot_mass) / torch.sum(contact, dim=1).unsqueeze(-1).unsqueeze(-1)      
+            input['F_lw'] -= contact.unsqueeze(-1) * (self.gravity_lw.unsqueeze(0).unsqueeze(0) * self.robot_mass) / (torch.sum(contact, dim=1).clamp_min(min=1)).unsqueeze(-1).unsqueeze(-1)      
 
             # Enforce force constraints (Friction cone constraints)
             input['F_lw'] = enforce_friction_cone_constraints_torch(F=input['F_lw'], mu=self.mu, F_z_min=self.F_z_min, F_z_max=self.F_z_max) # shape(batch, num_legs, 3)
