@@ -1762,8 +1762,8 @@ class SamplingBatchedTrainer():
 
 
         # ----- Step 3 : Retrieve the actions and prepare them with the correct method
-        batched_action_param['p_lw']       = batched_p_lw       # Foot touch down position samples          # shape(batch, num_legs, 3 p_param)
-        batched_action_param['delta_F_lw'] = batched_delta_F_lw # Delta Ground Reaction Forces samples      # shape(batch, num_legs, 3 F_param)
+        batched_action_param['p_lw']       = batched_p_lw.clone().detach()       # Foot touch down position samples          # shape(batch, num_legs, 3 p_param)
+        batched_action_param['delta_F_lw'] = batched_delta_F_lw.clone().detach() # Delta Ground Reaction Forces samples      # shape(batch, num_legs, 3 F_param)
 
 
         return batched_initial_state, batched_reference_seq_state, bacthed_reference_seq_input, batched_action_param
