@@ -159,7 +159,7 @@ class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
         self.curriculum.penalty_leg_duty_cycle_curr = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_leg_duty_cycle", "weight": 1.0, "num_steps": (400*24)})
 
 
-        # self.curriculum.penalty_sampling_rollout_curr = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_sampling_rollout", "weight": -2.5e-2, "num_steps": (2000*24)})
+        self.curriculum.penalty_sampling_rollout_curr = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_sampling_rollout", "weight": -2.5e-2, "num_steps": (1000*24)})
 
         # self.rewards.penalty_large_step.params  = {"action_name": "model_base_variable", "bound_x": (0.08,-0.06), "bound_y": (0.06,-0.06)}
         # self.curriculum.penalty_large_step_curr = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_large_step", "weight": 1.0, "num_steps": (400*24)})
