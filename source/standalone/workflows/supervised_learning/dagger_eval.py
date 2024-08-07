@@ -3,18 +3,11 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-# ./lab.sh -p source/standalone/workflows/supervised_learning/datalogger_mult_actions.py --task Isaac-Model-Based-Base-Aliengo-v0  --num_envs 256 --load_run test --checkpoint model_14999.pt --dataset_name baseTask15Act25HzGood1 --buffer_size 15 --seed 456
-
-"""Script to generate a dataset for supervised learning with RL agent from RSL-RL. 
-The action space consists of multiple actions of the original environment"""
-
 from __future__ import annotations
 
 """Launch Isaac Sim Simulator first."""
 import argparse
 from omni.isaac.lab.app import AppLauncher
-
-# local imports
 import cli_args  # isort: skip
 
 # add argparse arguments
@@ -56,7 +49,6 @@ from omni.isaac.lab_tasks.utils import get_checkpoint_path, parse_env_cfg
 from omni.isaac.lab_tasks.utils.wrappers.rsl_rl import (
     RslRlOnPolicyRunnerCfg,
     RslRlVecEnvWrapper,
-    export_policy_as_onnx,
 )
 import time
 
@@ -91,68 +83,6 @@ class Model(nn.Module):
         x = self.lin4(x)
         return x
     
-class BigModel(nn.Module):
-    def __init__(self, input_size, output_size):
-        super(BigModel, self).__init__()
-        self.lin1 = nn.Linear(input_size, 512)
-        self.lin2 = nn.Linear(512, 512)
-        self.lin3 = nn.Linear(512, 256)
-        self.lin4 = nn.Linear(256, 128)
-        self.lin5 = nn.Linear(128, output_size)
-
-    def forward(self, x):
-        x = self.lin1(x)
-        x = F.elu(x)
-        x = self.lin2(x)
-        x = F.elu(x)
-        x = self.lin3(x)
-        x = F.elu(x)
-        x = self.lin4(x)
-        x = F.elu(x)
-        x = self.lin5(x)
-        return x
-    
-class AlternativeModel(nn.Module):
-    def __init__(self, input_size, output_size):
-        super(AlternativeModel, self).__init__()
-        self.lin1 = nn.Linear(input_size, 1024)
-        self.lin2 = nn.Linear(1024, 512)
-        self.lin3 = nn.Linear(512, 512)
-        # self.norm1= nn.LayerNorm(512,512)
-        self.lin4 = nn.Linear(512, 256)
-        self.lin5 = nn.Linear(256, 256)
-        self.lin6 = nn.Linear(256, output_size)
-
-    def forward(self, x):
-        x = self.lin1(x)
-        x = F.elu(x)
-        x = self.lin2(x)
-        # x = self.norm1(x)
-        x = F.elu(x)
-        x = self.lin3(x)
-        x = F.elu(x)
-        x = self.lin4(x)
-        x = F.elu(x)
-        x = self.lin5(x)
-        x = F.elu(x)
-        x = self.lin6(x)
-        return x
-    
-class TransformerModel(nn.Module):
-    def __init__(self, input_size, output_size, nhead=8, num_encoder_layers=3, dim_feedforward=512):
-        super(TransformerModel, self).__init__()
-        self.embedding = nn.Linear(input_size, dim_feedforward)
-        self.transformer = nn.Transformer(dim_feedforward, nhead, num_encoder_layers)
-        self.fc = nn.Linear(dim_feedforward, output_size)
-
-    def forward(self, x):
-        x = self.embedding(x)
-        x = x.permute(1, 0, 2)  # Transformer expects input shape [seq_len, batch_size, embedding_dim]
-        x = self.transformer(x)
-        x = x.permute(1, 0, 2)
-        x = self.fc(x[:, -1, :])
-        return x
-
 
 def model_to_dict(model):
     model_dict = {
@@ -435,196 +365,16 @@ def get_touchdowns(c, p):
     
     return p2
 
-def get_first_p_and_touchdowns(c, p):
-    n, h = c.shape
-    
-    # Initialize p2 with the first values of p as default
-    p2 = p[:, :0].repeat(1, 2)
-    
-    # Find transitions from 0 to 1 in c
-    transitions = (c[:, 1:] == 1) & (c[:, :-1] == 0)
-    
-    for i in range(n):
-        indices = torch.where(transitions[i])[0]
-        if len(indices) > 0:
-                p2[i, 1] = p[i, indices[0]]
-    
-    return p2
-
-""" --- Main --- """
-def main():
-    """Play with RSL-RL agent."""
-
-    # --- Step 1 : Load the expert Policy
-    # parse configuration
-    env_cfg = parse_env_cfg(args_cli.task, use_gpu=not args_cli.cpu, num_envs=args_cli.num_envs, use_fabric=not args_cli.disable_fabric)
-    agent_cfg: RslRlOnPolicyRunnerCfg = cli_args.parse_rsl_rl_cfg(args_cli.task, args_cli)
-
-    # create isaac environment
-    env = gym.make(args_cli.task, cfg=env_cfg)
-
-    # wrap around environment for rsl-rl
-    env = RslRlVecEnvWrapper(env)
-
-    # specify directory for loading experiments
-    log_root_path = os.path.abspath(os.path.join("logs", "rsl_rl", agent_cfg.experiment_name))
-    resume_path = get_checkpoint_path(log_root_path, agent_cfg.load_run, agent_cfg.load_checkpoint)
-    print(f"[INFO] Loading experiment from directory: {log_root_path}")
-    print(f"[INFO]: Loading model checkpoint from: {resume_path}")
-
-    # load previously trained model
-    ppo_runner = OnPolicyRunner(env, agent_cfg.to_dict(), log_dir=None, device=agent_cfg.device)
-    ppo_runner.load(resume_path)
-
-    # obtain the trained policy for inference
-    expert_policy = ppo_runner.get_inference_policy(device=env.unwrapped.device)
 
 
-    # --- Step 2 : Define usefull variables
-    json_data = {}
 
-    #  Set the data to be testing or training data
-    file_prefix = 'training_data'
-
-    # Temporary variable to create the rolling buffer
-    buffer_obs = []
-    buffer_act = []
-
-    # Buffer size : number of prediction horizon for the student policy
-    buffer_size =  args_cli.buffer_size
-
-    # Factor of the simulation frequency at which the dataset will be recorded
-    frequency_reduction = args_cli.freq_reduction
-    
-    # Trajectory length that are recorded between epoch
-    trajectory_length_s = 3 # [s]
-
-    # Number of epoch
-    tot_epoch = args_cli.epochs
-
-    # Dataset maximum size before clipping
-    dataset_max_size =  300000#1000000 # 300000 # [datapoints]
-
-    # oder helper variables
-    trajectory_length_iter = int(trajectory_length_s / (buffer_size*env.unwrapped.step_dt))
-    last_time_outloop = time.time()
-    last_time = time.time()
-    f_len, d_len, p_len, F_len = 4, 4, 8, 12
-
-    # Type of action recorded
-    p_typeAction = 'spline' # 'spline', 'discrete', 'double
-    F_typeAction = 'spline' # 'spline', 'discrete'
-
-    if F_typeAction == 'spline':
-        F_param = 4
-    if F_typeAction == 'discrete':
-        F_param = buffer_size
-    if p_typeAction == 'spline':
-        p_param = 4
-    if p_typeAction == 'discrete':
-        p_param = buffer_size
-    if p_typeAction == 'double':
-        p_param = 2
-
-    p_shape = (env.num_envs, 4, 2, p_param)
-    F_shape = (env.num_envs, 4, 3, F_param)
-
-
-    # Create logging directory if necessary
-    logging_directory = f'model/{args_cli.task}/{args_cli.folder_name}'
-    if not os.path.exists(logging_directory):
-        os.makedirs(logging_directory)
-    #increment logging dir number if already exists
-    else :
-        i = 1
-        new_logging_directory = f"{logging_directory}{i}"
-        while os.path.exists(new_logging_directory):
-            i += 1
-            new_logging_directory = f"{logging_directory}{i}"
-        os.makedirs(new_logging_directory)
-        logging_directory = new_logging_directory
-
-
-    # --- Step 3 : Reset environment
-    obs, _ = env.get_observations()
-    actions = expert_policy(obs) #just to get the shape for printing
-
-
-    # --- Step 4 : Define variable for model training
-    use_cuda = not args_cli.cpu and torch.cuda.is_available()
-
-    # Set seeds
-    # torch.manual_seed(args_cli.seed)
-
-    # Set device
-    if use_cuda:  device = torch.device("cuda")
-    else:         device = torch.device("cpu")
-
-    # Set training and testing arguments
-    train_kwargs = {'batch_size': args_cli.batch_size}
-
-    #  Define Model criteria : model, optimizer and loss criterion and scheduler
-    input_size = obs.shape[-1]
-    output_size = 8 + (p_param*p_len) + (F_param*F_len)
-
-    student_policy  = Model(input_size, output_size).to(device) #Model(input_size, output_size).to(device)
-    # student_policy  = BigModel(input_size, output_size).to(device) #Model(input_size, output_size).to(device)
-    # student_policy  = AlternativeModel(input_size, output_size).to(device) #Model(input_size, output_size).to(device)
-    # student_policy  = TransformerModel(input_size, output_size).to(device) #Model(input_size, output_size).to(device)
-
-    modelDict = model_to_dict(student_policy)
-
-    # optimizer       = optim.Adam(student_policy.parameters())
-    optimizer       = optim.Adadelta(student_policy.parameters(), lr=args_cli.lr)
-    train_criterion = nn.MSELoss() 
-    scheduler       = StepLR(optimizer, step_size=1, gamma=args_cli.gamma) # for adadelta
-    # scheduler       = StepLR(optimizer, step_size=1, gamma=0.95) # for adam
-    epoch_avg_train_loss_list = []
-    avg_epoch_reward_list = []
-
-    # Printing
-    if True : 
-        print('\n---------------------------------------------------------------------')
-        print('\n----- Datalogger Configuration -----\n')
-
-        print(f"\nLoading experiment from directory: {log_root_path}")
-        print(f"Loading model checkpoint from: {resume_path}")
-
-        print(f"\nNumber of envs: {args_cli.num_envs}")
-        # print(f"Number of samples:  {args_cli.num_step}")
-        # print(f"Recorded dataset will consists of {args_cli.num_envs*args_cli.num_step} datapoints")
-
-        print(f"\nDataset will be recorded as {file_prefix}")
-        print('and saved at :',f'{logging_directory}/{file_prefix}.pt')
-
-        print('\nInitial observation shape:', obs.shape[-1])
-        print('Initial   action    shape:', actions.shape[-1])
-
-        print(f"\nSimulation runs with time step {env.unwrapped.physics_dt} [s], at frequency {1/env.unwrapped.physics_dt} [Hz]")
-        print(f"Policy runs with time step {env.unwrapped.step_dt} [s], at frequency {1/env.unwrapped.step_dt} [Hz]")
-        print(f"Dataset will be recorded with time step {env.unwrapped.step_dt*frequency_reduction} [s], at frequency {1/(frequency_reduction*env.unwrapped.step_dt)} [Hz]")
-        print(f"Which will correspond in a prediction horizon of {buffer_size*env.unwrapped.step_dt*frequency_reduction} [s]")
-
-        print(f"\nType of p action recorded: {p_typeAction}")
-        print(f"Type of F action recorded: {F_typeAction}")
-        print(f"with N = {buffer_size} prediction horizon")
-
-        print('\nDataset Input  size :', obs.shape[-1])
-        print('Dataset Output size :', output_size,'\n')
-
-        # Check if configuration is correct    
-        while True:
-            is_input_valid = input("Proceed with these parameters [Yes/No] ?")
-            if is_input_valid == "No":
-                return
-            elif is_input_valid == "Yes":
-                break
-        print('\n----- Simulation -----')
+def DAgger_Train(env, expert_policy, student_policy, scheduler, optimizer, train_criterion, device, tot_epoch, logging_directory, trajectory_length_s, trajectory_length_iter, buffer_size, frequency_reduction,
+                 p_typeAction, F_typeAction, p_param, F_param, dataset_max_size, train_kwargs):
 
     observations_data = torch.empty(0,device=device)
     actions_data = torch.empty(0, device=device)
-
     debug_counter=10
+    f_len, d_len, p_len, F_len = 4, 4, 8, 12
 
     for epoch in range(tot_epoch):
         print(f'\n----- Epoch {epoch+1} / {tot_epoch} ----- Total Remaining Time {(tot_epoch-epoch)*(time.time()-last_time_outloop):4.1f}[s]')
@@ -634,7 +384,7 @@ def main():
         n = min(int(alpha(epoch)*args_cli.num_envs), args_cli.num_envs)
         expert_idx = torch.randperm(args_cli.num_envs)[:n]
 
-        # # If we want to plot splines
+        # If we want to plot splines
         # if (epoch == 0) or (epoch == 20) or (epoch == 10) or (epoch == 30) :
         #     debug_counter=0
 
@@ -683,17 +433,17 @@ def main():
                     aggregate_actions = student_first_action #.clone().detach()
                     aggregate_actions[expert_idx] = expert_actions[expert_idx]
 
-                    # # If necessary, retrieve the contact sequence
-                    # if (p_typeAction) == 'double' and (i%frequency_reduction == 0):
-                    #     buffer_c.append(env.unwrapped.action_manager.get_term('model_base_variable').c0_star.unsqueeze(-1).expand(args_cli.num_envs, 4, 2))    #(batch_size, num_legs, 1->2)
+                    # If necessary, retrieve the contact sequence
+                    if (p_typeAction) == 'double' and (i%frequency_reduction == 0):
+                        buffer_c.append(env.unwrapped.action_manager.get_term('model_base_variable').c0_star.unsqueeze(-1).expand(args_cli.num_envs, 4, 2))    #(batch_size, num_legs, 1->2)
 
                     obs, rew, dones, extras = env.step(aggregate_actions)
 
                     epoch_reward += float(torch.sum(rew) / env.num_envs)
 
-                    # If necessary, retrieve the contact sequence
-                    if (p_typeAction) == 'double' and (i%frequency_reduction == 0):
-                        buffer_c.append(env.unwrapped.action_manager.get_term('model_base_variable').c0_star.unsqueeze(-1).expand(args_cli.num_envs, 4, 2))    #(batch_size, num_legs, 1->2)
+                    # # If necessary, retrieve the contact sequence
+                    # if (p_typeAction) == 'double' and (i%frequency_reduction == 0):
+                    #     buffer_c.append(env.unwrapped.action_manager.get_term('model_base_variable').c0_star.unsqueeze(-1).expand(args_cli.num_envs, 4, 2))    #(batch_size, num_legs, 1->2)
 
 
                 # --- Step 3 : Re-roll these trajectory and query expert 'Action'
@@ -724,7 +474,6 @@ def main():
                     c = torch.stack(buffer_c, dim=3)                                                                                        # shape (num_envs, num_legs, 2, buffer_size)
                     p_raw = raw_actions[:,(f_len+d_len):(f_len+d_len+p_len), :].unsqueeze(2).reshape(args_cli.num_envs, 4, 2, buffer_size)  # shape (num_envs, num_legs, 2, buffer_size)
                     p = get_touchdowns(c=c.reshape(-1, buffer_size), p=p_raw.reshape(-1, buffer_size)).reshape(args_cli.num_envs, 4, 2, 2).flatten(1,3) # shape (num_envs*num_legs*2, buffer_size)
-                    # p = get_first_p_and_touchdowns(c=c.reshape(-1, buffer_size), p=p_raw.reshape(-1, buffer_size)).reshape(args_cli.num_envs, 4, 2, 2).flatten(1,3) # shape (num_envs*num_legs*2, buffer_size)
                     
 
                 if F_typeAction == 'spline':
@@ -808,21 +557,14 @@ def main():
     print('\nobservations_data shape ', observations_data.shape[-1])
     print('   actions_data   shape ', actions_data.shape[-1])
 
-    # Save the Generated dataset
-    data = {
-        'observations': observations_data,
-        'actions': actions_data
-    }
-    torch.save(data, f'{logging_directory}/{file_prefix}.pt') 
-    print('\nData succesfully saved as ', file_prefix)
-    print('Saved at :',f'{logging_directory}/{file_prefix}.pt')
     print('\nDataset of ',observations_data.shape[0],'datapoints')
     print('Input  size :', observations_data.shape[-1])
     print('Output size :', actions_data.shape[-1],'\n')
 
     # Save the model info as a JSON file
-    json_data['file_prefix'] = file_prefix
-    json_data['Saved_at'] = f'{logging_directory}/{file_prefix}.pt'
+    json_data = {}
+    json_data['p_typeAction'] = p_typeAction
+    json_data['F_typeAction'] = F_typeAction
     json_data['num_datapoints'] = observations_data.shape[0]
     json_data['Input_size'] = observations_data.shape[-1]
     json_data['Output_size'] = actions_data.shape[-1]
@@ -838,7 +580,7 @@ def main():
     json_data['model'] = modelDict
     with open(f'{logging_directory}/info.json', 'w') as file:
         json.dump(json_data, file, indent=4)
-
+    
 
     # Plot the training results
     plt.figure(1)
@@ -853,7 +595,168 @@ def main():
     plt.xlabel('iterations')
     plt.ylabel('Reward')
     plt.savefig(os.path.join(logging_directory, 'average_epoch_reward.png'))
-    plt.show()
+    # plt.show()
+    
+    return
+
+
+""" --- Main --- """
+def main():
+    """Play with RSL-RL agent."""
+
+    # --- Step 1 : Load the expert Policy
+    # parse configuration
+    env_cfg = parse_env_cfg(args_cli.task, use_gpu=not args_cli.cpu, num_envs=args_cli.num_envs, use_fabric=not args_cli.disable_fabric)
+    agent_cfg: RslRlOnPolicyRunnerCfg = cli_args.parse_rsl_rl_cfg(args_cli.task, args_cli)
+
+    # create isaac environment
+    env = gym.make(args_cli.task, cfg=env_cfg)
+
+    # wrap around environment for rsl-rl
+    env = RslRlVecEnvWrapper(env)
+
+    # specify directory for loading experiments
+    log_root_path = os.path.abspath(os.path.join("logs", "rsl_rl", agent_cfg.experiment_name))
+    resume_path = get_checkpoint_path(log_root_path, agent_cfg.load_run, agent_cfg.load_checkpoint)
+    print(f"[INFO] Loading experiment from directory: {log_root_path}")
+    print(f"[INFO]: Loading model checkpoint from: {resume_path}")
+
+    # load previously trained model
+    ppo_runner = OnPolicyRunner(env, agent_cfg.to_dict(), log_dir=None, device=agent_cfg.device)
+    ppo_runner.load(resume_path)
+
+    # obtain the trained policy for inference
+    expert_policy = ppo_runner.get_inference_policy(device=env.unwrapped.device)
+
+
+    # --- Step 2 : Define usefull variables
+
+    # Buffer size : number of prediction horizon for the student policy
+    buffer_size =  args_cli.buffer_size
+
+    # Factor of the simulation frequency at which the dataset will be recorded
+    frequency_reduction = args_cli.freq_reduction
+    
+    # Trajectory length that are recorded between epoch
+    trajectory_length_s = 3 # [s]
+
+    # Number of epoch
+    tot_epoch = args_cli.epochs
+
+    # Dataset maximum size before clipping
+    dataset_max_size =  1000000 # 300000 # [datapoints]
+
+    # oder helper variables
+    trajectory_length_iter = int(trajectory_length_s / (buffer_size*env.unwrapped.step_dt))
+    last_time_outloop = time.time()
+    last_time = time.time()
+    f_len, d_len, p_len, F_len = 4, 4, 8, 12
+
+    # Type of action recorded
+    p_typeAction = 'double' # 'spline', 'discrete', 'double
+    F_typeAction = 'spline' # 'spline', 'discrete'
+
+    if F_typeAction == 'spline':
+        F_param = 4
+    if F_typeAction == 'discrete':
+        F_param = buffer_size
+    if p_typeAction == 'spline':
+        p_param = 4
+    if p_typeAction == 'discrete':
+        p_param = buffer_size
+    if p_typeAction == 'double':
+        p_param = 2
+
+    p_shape = (env.num_envs, 4, 2, p_param)
+    F_shape = (env.num_envs, 4, 3, F_param)
+
+
+    # Create logging directory if necessary
+    logging_directory = f'model/{args_cli.task}/{args_cli.folder_name}'
+    if not os.path.exists(logging_directory):
+        os.makedirs(logging_directory)
+    #increment logging dir number if already exists
+    else :
+        i = 1
+        new_logging_directory = f"{logging_directory}{i}"
+        while os.path.exists(new_logging_directory):
+            i += 1
+            new_logging_directory = f"{logging_directory}{i}"
+        os.makedirs(new_logging_directory)
+        logging_directory = new_logging_directory
+
+
+    # --- Step 3 : Reset environment
+    obs, _ = env.get_observations()
+    actions = expert_policy(obs) #just to get the shape for printing
+
+
+    # --- Step 4 : Define variable for model training
+    use_cuda = not args_cli.cpu and torch.cuda.is_available()
+
+    # Set seeds
+    # torch.manual_seed(args_cli.seed)
+
+    # Set device
+    if use_cuda:  device = torch.device("cuda")
+    else:         device = torch.device("cpu")
+
+    # Set training and testing arguments
+    train_kwargs = {'batch_size': args_cli.batch_size}
+
+    #  Define Model criteria : model, optimizer and loss criterion and scheduler
+    input_size = obs.shape[-1]
+    output_size = 8 + (p_param*p_len) + (F_param*F_len)
+
+    student_policy  = Model(input_size, output_size).to(device) #Model(input_size, output_size).to(device)
+    # student_policy  = BigModel(input_size, output_size).to(device) #Model(input_size, output_size).to(device)
+    # student_policy  = AlternativeModel(input_size, output_size).to(device) #Model(input_size, output_size).to(device)
+    # student_policy  = TransformerModel(input_size, output_size).to(device) #Model(input_size, output_size).to(device)
+
+    modelDict = model_to_dict(student_policy)
+
+    # optimizer       = optim.Adam(student_policy.parameters())
+    optimizer       = optim.Adadelta(student_policy.parameters(), lr=args_cli.lr)
+    train_criterion = nn.MSELoss() 
+    scheduler       = StepLR(optimizer, step_size=1, gamma=args_cli.gamma) # for adadelta
+    # scheduler       = StepLR(optimizer, step_size=1, gamma=0.95) # for adam
+    epoch_avg_train_loss_list = []
+    avg_epoch_reward_list = []
+
+    # Printing
+    if True : 
+        print('\n---------------------------------------------------------------------')
+        print('\n----- Datalogger Configuration -----\n')
+
+        print(f"\nLoading experiment from directory: {log_root_path}")
+        print(f"Loading model checkpoint from: {resume_path}")
+
+        print(f"\nNumber of envs: {args_cli.num_envs}")
+
+        print('\nInitial observation shape:', obs.shape[-1])
+        print('Initial   action    shape:', actions.shape[-1])
+
+        print(f"\nSimulation runs with time step {env.unwrapped.physics_dt} [s], at frequency {1/env.unwrapped.physics_dt} [Hz]")
+        print(f"Policy runs with time step {env.unwrapped.step_dt} [s], at frequency {1/env.unwrapped.step_dt} [Hz]")
+        print(f"Dataset will be recorded with time step {env.unwrapped.step_dt*frequency_reduction} [s], at frequency {1/(frequency_reduction*env.unwrapped.step_dt)} [Hz]")
+        print(f"Which will correspond in a prediction horizon of {buffer_size*env.unwrapped.step_dt*frequency_reduction} [s]")
+
+        print(f"\nType of p action recorded: {p_typeAction}")
+        print(f"Type of F action recorded: {F_typeAction}")
+        print(f"with N = {buffer_size} prediction horizon")
+
+        print('\nDataset Input  size :', obs.shape[-1])
+        print('Dataset Output size :', output_size,'\n')
+
+        # Check if configuration is correct    
+        while True:
+            is_input_valid = input("Proceed with these parameters [Yes/No] ?")
+            if is_input_valid == "No":
+                return
+            elif is_input_valid == "Yes":
+                break
+        print('\n----- Simulation -----')
+
 
     # Continue to play the policy
     while simulation_app.is_running():

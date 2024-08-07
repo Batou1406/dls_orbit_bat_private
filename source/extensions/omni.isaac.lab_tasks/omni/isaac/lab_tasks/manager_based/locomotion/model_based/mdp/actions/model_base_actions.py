@@ -43,7 +43,7 @@ import weakref
 
 verbose_mb = False
 verbose_loop = 40
-vizualise_debug = {'foot': False, 'jacobian': False, 'foot_traj': False, 'lift-off': False, 'touch-down': False, 'GRF': False, 'touch-down polygon': True}
+vizualise_debug = {'foot': False, 'jacobian': False, 'foot_traj': False, 'lift-off': False, 'touch-down': False, 'GRF': False, 'touch-down polygon': False}
 torch.set_printoptions(precision=4, linewidth=200, sci_mode=False)
 if verbose_mb: import omni.isaac.debug_draw._debug_draw as omni_debug_draw
 # import omni.isaac.debug_draw._debug_draw as omni_debug_draw
@@ -306,8 +306,8 @@ class ModelBaseAction(ActionTerm):
                 optimizerCfg=cfg.optimizerCfg
             ) 
 
+        self.my_visualizer = {}
         if verbose_mb:
-            self.my_visualizer = {}
             self.my_visualizer['foot'] = {'foot_swing' : define_markers('sphere', {'radius': 0.03, 'color': (1.0,1.0,0)}),
                                           'foot_stance': define_markers('sphere', {'radius': 0.03, 'color': (0.0,1.0,0)})}
             self.my_visualizer['jacobian'] = define_markers('arrow_x', {'scale':(0.1,0.1,1.0), 'color': (1.0,0,0)})

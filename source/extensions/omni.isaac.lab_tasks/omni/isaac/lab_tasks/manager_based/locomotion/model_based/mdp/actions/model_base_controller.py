@@ -542,7 +542,10 @@ class samplingController(modelBaseController):
         # Call the optimizer
         if self.optimizer_active: # To enable or not optimization in real time
             f_star, d_star, p0_star_lw, F0_star_lw = self.samplingOptimizer.optimize_latent_variable(f=f, d=d, p_lw=p_lw, delta_F_lw=delta_F_lw, phase=self.phase)
-        else : f_star, d_star, p0_star_lw, delta_F0_star_lw = f, d, p_lw[:,:,:,0], delta_F_lw[:,:,:,0]
+        else : 
+            f_star, d_star = f, d
+            p0_star_lw = self.samplingOptimizer.interpolation_p(parameters=p_lw,       step=0, horizon=1) # shape(batch, num_legs, 3)
+            delta_F0_star_lw = self.samplingOptimizer.interpolation_F(parameters=delta_F_lw, step=0, horizon=1) # shape(batch, num_legs, 3)
 
         # Compute the contact sequence and update the phase
         c_star, self.phase = gait_generator(f=f_star, d=d_star, phase=self.phase, horizon=1, dt=self._dt_out)
@@ -1060,6 +1063,8 @@ class SamplingOptimizer():
         if self.optimize_p : print('p - cum. diff. : %3.2f' % torch.sum(torch.abs(p_star_lw - p_lw_samples[0,...])))
         if self.optimize_F : print('F - cum. diff. : %5.1f' % torch.sum(torch.abs(delta_F_star_lw - delta_F_lw_samples[0,...])))
 
+        print(c_star)
+
         # Add gravity compensation
         F0_star_lw -= c_star[:,:,0].unsqueeze(-1) * self.gravity_lw.unsqueeze(0).unsqueeze(0) * self.robot_mass / (torch.sum(c_star[:,:,0]).clamp_min(min=1)).unsqueeze(0).unsqueeze(-1) # shape(1, num_legs, 3)
 
@@ -1505,27 +1510,33 @@ class SamplingBatchedTrainer():
         self.mu = mu #optimizerCfg.mu
 
         # Define Interpolation method for GRF and interfer GRF input size 
-        if   optimizerCfg.parametrization_F == 'cubic_spline' : 
+        if   optimizerCfg.parametrization_F == 'cubic_spline': 
             self.interpolation_F=compute_cubic_spline
             self.F_param = 4
-        elif optimizerCfg.parametrization_F == 'discrete'     :
+        elif optimizerCfg.parametrization_F == 'discrete':
             self.interpolation_F=compute_discrete
             self.F_param = self.sampling_horizon
-        elif optimizerCfg.parametrization_F == 'from_discrete_fit_spline'     :
+        elif optimizerCfg.parametrization_F == 'from_discrete_fit_spline':
             self.interpolation_F=compute_cubic_spline
             self.F_param = 4
+        elif optimizerCfg.parametrization_F == 'from_single_expand_discrete':
+            self.interpolation_F=compute_discrete
+            self.F_param = self.sampling_horizon
         else : raise NotImplementedError('Request interpolation method is not implemented yet')
 
         # Define Interpolation method for foot touch down position and interfer foot touch down position input size 
-        if   optimizerCfg.parametrization_p == 'cubic_spline' : 
+        if   optimizerCfg.parametrization_p == 'cubic_spline': 
             self.interpolation_p=compute_cubic_spline
             self.p_param = 4
-        elif optimizerCfg.parametrization_p == 'discrete'     : 
+        elif optimizerCfg.parametrization_p == 'discrete': 
             self.interpolation_p=compute_discrete
             self.p_param = self.sampling_horizon
-        elif optimizerCfg.parametrization_p == 'from_discrete_fit_spline' : 
+        elif optimizerCfg.parametrization_p == 'from_discrete_fit_spline': 
             self.interpolation_p=compute_cubic_spline
             self.p_param = 4
+        elif optimizerCfg.parametrization_p == 'from_single_expand_discrete':
+            self.interpolation_p=compute_discrete
+            self.p_param = self.sampling_horizon
         else : raise NotImplementedError('Request interpolation method is not implemented yet')
 
         # Input and State dimension for centroidal model : hardcoded because the centroidal model is hardcoded # TODO get rid of these
@@ -1579,6 +1590,16 @@ class SamplingBatchedTrainer():
         self.F_best =     torch.zeros((1,self.num_legs,3,self.F_param ), device=device)
         self.F_best[:,:,2,:] = 0.0
 
+        # For plotting
+        self.live_plot = True
+        self.robot_height_list = [0.0]
+        self.robot_height_ref_list = [0.0]
+        self.cost_list = [0.0]
+        self.FL_foot_list = [np.array([0.0, 0.0, 0.0])]
+        self.FR_foot_list = [np.array([0.0, 0.0, 0.0])]
+        self.RL_foot_list = [np.array([0.0, 0.0, 0.0])]
+        self.RR_foot_list = [np.array([0.0, 0.0, 0.0])]
+
 
     def compute_batched_rollout_cost(self, f:torch.Tensor, d:torch.Tensor, p_lw:torch.Tensor, delta_F_lw:torch.Tensor, phase:torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """ Given latent variable f,d,F,p, returns f*,d*,F*,p*, optimized with a sampling optimization 
@@ -1596,8 +1617,13 @@ class SamplingBatchedTrainer():
             p_star_lw (Tensor): Foot touch down position     of shape(batch_size, num_leg, 3, p_param)
             F_star_lw (Tensor): ground Reaction Forces       of shape(batch_size, num_leg, 3, F_param)
         """
+        # --- Step 0 : modify F and p if necessary.
+        if self.cfg.parametrization_F == 'from_single_expand_discrete' :
+            delta_F_lw = delta_F_lw.expand(self._env.num_envs, self.num_legs, 3, self.sampling_horizon) # shape(batch, leg , 3, 1) -> shape(batch, leg , 3, F_param)
+        if self.cfg.parametrization_p == 'from_single_expand_discrete' :
+            p_lw = p_lw.expand(self._env.num_envs, self.num_legs, 3, self.sampling_horizon) # shape(batch, leg , 3, 1) -> shape(batch, leg , 3, p_param)
 
-        # --- Step 2 : Given f and d samples -> generate the contact sequence for the samples
+        # --- Step 1 : Given f and d samples -> generate the contact sequence for the samples
         batched_c, new_phase = gait_generator(f=f, d=d, phase=phase, horizon=self.sampling_horizon, dt=self.mpc_dt)
 
         # --- Step 2 : prepare the variables 
@@ -1618,6 +1644,12 @@ class SamplingBatchedTrainer():
         F0_star_lw = enforce_friction_cone_constraints_torch(F=F0_star_lw, mu=self.mu, F_z_min=self.F_z_min, F_z_max=self.F_z_max) # shape(batch, num_legs, 3)
 
         # print('batched cost :', bacthed_cost)
+        # Save live variable to enable live plotting
+        if self.live_plot:
+            # Save best cost
+            self.cost_list.append(bacthed_cost[0].cpu().numpy())
+            if len(self.cost_list) > 100 : self.cost_list.pop(0)
+            np.savetxt('live_variable/cost.csv', [self.cost_list], delimiter=',', fmt='%.3f')
 
         return bacthed_cost, p0_star_lw, F0_star_lw
     
@@ -1764,6 +1796,31 @@ class SamplingBatchedTrainer():
         batched_action_param['p_lw']       = batched_p_lw.clone().detach()       # Foot touch down position samples          # shape(batch, num_legs, 3 p_param)
         batched_action_param['delta_F_lw'] = batched_delta_F_lw.clone().detach() # Delta Ground Reaction Forces samples      # shape(batch, num_legs, 3 F_param)
 
+        # ----- Step 4 : Save variable for live plotting
+        if self.live_plot : 
+            # Save Robot's Height
+            self.robot_height_list.append(com_pos_lw[0,2].cpu().numpy())
+            if len(self.robot_height_list) > 100 : self.robot_height_list.pop(0)
+            np.savetxt('live_variable/height.csv', [self.robot_height_list], delimiter=',', fmt='%.3f')
+
+            # Save Robot's Height reference
+            self.robot_height_ref_list.append(self.height_ref)
+            if len(self.robot_height_ref_list) > 100 : self.robot_height_ref_list.pop(0)
+            np.savetxt('live_variable/height_ref.csv', [self.robot_height_ref_list], delimiter=',', fmt='%.3f')
+
+            # Save foot position's
+            self.FL_foot_list.append(batched_initial_state['p_lw'][0,0,:].cpu().numpy())
+            if len(self.FL_foot_list) > 100 : self.FL_foot_list.pop(0)
+            np.savetxt('live_variable/FL_foot.csv', self.FL_foot_list, delimiter=',', fmt='%.3f')
+            self.FR_foot_list.append(batched_initial_state['p_lw'][0,1,:].cpu().numpy())
+            if len(self.FR_foot_list) > 100 : self.FR_foot_list.pop(0)
+            np.savetxt('live_variable/FR_foot.csv', self.FR_foot_list, delimiter=',', fmt='%.3f')
+            self.RL_foot_list.append(batched_initial_state['p_lw'][0,2,:].cpu().numpy())
+            if len(self.RL_foot_list) > 100 : self.RL_foot_list.pop(0)
+            np.savetxt('live_variable/RL_foot.csv', self.RL_foot_list, delimiter=',', fmt='%.3f')
+            self.RR_foot_list.append(batched_initial_state['p_lw'][0,3,:].cpu().numpy())
+            if len(self.RR_foot_list) > 100 : self.RR_foot_list.pop(0)
+            np.savetxt('live_variable/RR_foot.csv', self.RR_foot_list, delimiter=',', fmt='%.3f')
 
         return batched_initial_state, batched_reference_seq_state, bacthed_reference_seq_input, batched_action_param
     
