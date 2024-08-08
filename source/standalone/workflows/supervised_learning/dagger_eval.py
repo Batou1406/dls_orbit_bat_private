@@ -17,14 +17,12 @@ parser.add_argument("--disable_fabric", action="store_true", default=False,  hel
 parser.add_argument("--num_envs",     type=int,   default=256,               help="Number of environments to simulate.")
 parser.add_argument("--task",         type=str,   default=None,              help="Name of the task.")
 parser.add_argument("--seed",         type=int,   default=None,              help="Seed used for the environment")
-parser.add_argument("--buffer_size",  type=int,   default=5,                 help="Number of prediction steps")
 parser.add_argument('--epochs',       type=int,   default=60,  metavar='N',  help='number of epochs to train (default: 14)')
 parser.add_argument('--batch-size',   type=int,   default=64,  metavar='N',  help='input batch size for training (default: 64)')
 parser.add_argument('--lr',           type=float, default=1.0, metavar='LR', help='learning rate (default: 1.0)')
 parser.add_argument('--gamma',        type=float, default=0.7, metavar='M',  help='Learning rate step gamma (default: 0.7)')
-parser.add_argument("--model-name",   type=str,   default='dagger50Hz10Act',  help="Name of the model to be saved")
-parser.add_argument('--folder-name',  type=str,   default='SpeedGoodPolicy',  help="Name of the folder to save the trained model in 'model/task/folder-name'")
-parser.add_argument("--freq_reduction",type=int,default=1,    help="Factor of reduction of the recording frequency compare to playing frequency")
+parser.add_argument("--model-name",   type=str,   default='model1',          help="Name of the model to be saved")
+parser.add_argument('--folder-name',  type=str,   default='DAggerEvaluation',help="Name of the folder to save the trained model in 'model/task/folder-name'")
 
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
@@ -53,7 +51,6 @@ from omni.isaac.lab_tasks.utils.wrappers.rsl_rl import (
 import time
 
 from torch.utils.data import Dataset, DataLoader
-# from dataloader import ObservationActionDataset, ChunkedObservationActionDataset
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
@@ -366,15 +363,18 @@ def get_touchdowns(c, p):
     return p2
 
 
-
-
+""" --- DAgger Trainer --- """
 def DAgger_Train(env, expert_policy, student_policy, scheduler, optimizer, train_criterion, device, tot_epoch, logging_directory, trajectory_length_s, trajectory_length_iter, buffer_size, frequency_reduction,
-                 p_typeAction, F_typeAction, p_param, F_param, dataset_max_size, train_kwargs):
+                 p_typeAction, F_typeAction, p_param, F_param, p_shape, F_shape, dataset_max_size, train_kwargs, modelDict):
 
     observations_data = torch.empty(0,device=device)
     actions_data = torch.empty(0, device=device)
     debug_counter=10
     f_len, d_len, p_len, F_len = 4, 4, 8, 12
+    epoch_avg_train_loss_list = []
+    avg_epoch_reward_list = []
+    last_time_outloop = time.time()
+    last_time = time.time()
 
     for epoch in range(tot_epoch):
         print(f'\n----- Epoch {epoch+1} / {tot_epoch} ----- Total Remaining Time {(tot_epoch-epoch)*(time.time()-last_time_outloop):4.1f}[s]')
@@ -630,13 +630,8 @@ def main():
 
 
     # --- Step 2 : Define usefull variables
+    f_len, d_len, p_len, F_len = 4, 4, 8, 12
 
-    # Buffer size : number of prediction horizon for the student policy
-    buffer_size =  args_cli.buffer_size
-
-    # Factor of the simulation frequency at which the dataset will be recorded
-    frequency_reduction = args_cli.freq_reduction
-    
     # Trajectory length that are recorded between epoch
     trajectory_length_s = 3 # [s]
 
@@ -646,11 +641,14 @@ def main():
     # Dataset maximum size before clipping
     dataset_max_size =  1000000 # 300000 # [datapoints]
 
+    # Buffer size : number of prediction horizon for the student policy
+    buffer_size_list = 
+
+    # Factor of the simulation frequency at which the dataset will be recorded
+    frequency_reduction_list = 
+
     # oder helper variables
-    trajectory_length_iter = int(trajectory_length_s / (buffer_size*env.unwrapped.step_dt))
-    last_time_outloop = time.time()
-    last_time = time.time()
-    f_len, d_len, p_len, F_len = 4, 4, 8, 12
+    trajectory_length_iter = int(trajectory_length_s / (frequency_reduction*buffer_size*env.unwrapped.step_dt))
 
     # Type of action recorded
     p_typeAction = 'double' # 'spline', 'discrete', 'double
@@ -709,17 +707,12 @@ def main():
     output_size = 8 + (p_param*p_len) + (F_param*F_len)
 
     student_policy  = Model(input_size, output_size).to(device) #Model(input_size, output_size).to(device)
-    # student_policy  = BigModel(input_size, output_size).to(device) #Model(input_size, output_size).to(device)
-    # student_policy  = AlternativeModel(input_size, output_size).to(device) #Model(input_size, output_size).to(device)
-    # student_policy  = TransformerModel(input_size, output_size).to(device) #Model(input_size, output_size).to(device)
 
     modelDict = model_to_dict(student_policy)
 
-    # optimizer       = optim.Adam(student_policy.parameters())
     optimizer       = optim.Adadelta(student_policy.parameters(), lr=args_cli.lr)
     train_criterion = nn.MSELoss() 
     scheduler       = StepLR(optimizer, step_size=1, gamma=args_cli.gamma) # for adadelta
-    # scheduler       = StepLR(optimizer, step_size=1, gamma=0.95) # for adam
     epoch_avg_train_loss_list = []
     avg_epoch_reward_list = []
 
@@ -757,36 +750,7 @@ def main():
                 break
         print('\n----- Simulation -----')
 
-
-    # Continue to play the policy
-    while simulation_app.is_running():
-        # run everything in inference mode
-        with torch.inference_mode():
-
-            student_actions = student_policy(obs)   # shape (num_envs, 4 + 4 + buffer_size*(8 + 12))
-
-            # extract first action from student policy
-            f = student_actions[:, 0                             : f_len                           ]                  # shape (num_envs, f_len)
-            d = student_actions[:, f_len                         :(f_len+d_len)                    ]                  # shape (num_envs, d_len)
-            p = student_actions[:,(f_len+d_len)                  :(f_len+d_len+(p_param*p_len))     ].reshape(p_shape) # shape (num_envs, 4, 2, buffer_size)
-            F = student_actions[:,(f_len+d_len+(p_param*p_len)):(f_len+d_len+(p_param*p_len)+(F_param*F_len))].reshape(F_shape) # shape (num_envs, 4, 3, buffer_size)
-            
-            if p_typeAction == 'discrete':
-                p = p[:,:,:,0].flatten(1,-1)
-            if p_typeAction == 'spline':
-                p = compute_cubic_spline(parameters=p, step=0, horizon=1).flatten(1,-1)
-            if p_typeAction == 'double' : 
-                p = p[:,:,:,0].flatten(1,-1)
-
-            if F_typeAction == 'discrete':
-                F = F[:,:,:,0].flatten(1,-1)
-            if F_typeAction == 'spline':
-                F = compute_cubic_spline(parameters=F, step=0, horizon=1).flatten(1,-1)
-
-            student_first_action  = torch.cat((f,d,p,F),dim=1) 
-
-            # env stepping
-            obs, _, _, _ = env.step(student_first_action)
+    
 
     # close the simulator
     env.close()
