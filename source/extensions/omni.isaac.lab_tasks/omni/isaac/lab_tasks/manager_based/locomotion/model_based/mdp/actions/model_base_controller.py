@@ -1157,10 +1157,10 @@ class SamplingOptimizer():
         delta_F_lw_samples[-1,:,:,:] = self.F_best[0,:,:,:]
 
         # Put the RL actions as the first samples
-        f_samples[0,:]              = f[0,:]
-        d_samples[0,:]              = d[0,:]
-        p_lw_samples[0,:,:,:]       = p_lw[0,:,:,:]
-        delta_F_lw_samples[0,:,:,:] = delta_F_lw[0,:,:,:]
+        # f_samples[0,:]              = f[0,:]
+        # d_samples[0,:]              = d[0,:]
+        # p_lw_samples[0,:,:,:]       = p_lw[0,:,:,:]
+        # delta_F_lw_samples[0,:,:,:] = delta_F_lw[0,:,:,:]
 
         # If optimization is set to false, samples are feed with initial guess
         if not self.optimize_f : f_samples[:,:]              = f.clone().detach()

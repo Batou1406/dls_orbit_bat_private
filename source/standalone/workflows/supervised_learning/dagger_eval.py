@@ -21,7 +21,6 @@ parser.add_argument('--epochs',       type=int,   default=60,  metavar='N',  hel
 parser.add_argument('--batch-size',   type=int,   default=64,  metavar='N',  help='input batch size for training (default: 64)')
 parser.add_argument('--lr',           type=float, default=1.0, metavar='LR', help='learning rate (default: 1.0)')
 parser.add_argument('--gamma',        type=float, default=0.7, metavar='M',  help='Learning rate step gamma (default: 0.7)')
-parser.add_argument("--model-name",   type=str,   default='model1',          help="Name of the model to be saved")
 parser.add_argument('--folder-name',  type=str,   default='DAggerEvaluation',help="Name of the folder to save the trained model in 'model/task/folder-name'")
 
 # append RSL-RL cli arguments
@@ -364,7 +363,7 @@ def get_touchdowns(c, p):
 
 
 """ --- DAgger Trainer --- """
-def DAgger_Train(env, expert_policy, student_policy, scheduler, optimizer, train_criterion, device, tot_epoch, logging_directory, trajectory_length_s, trajectory_length_iter, buffer_size, frequency_reduction,
+def DAgger_Train(env, expert_policy, student_policy, scheduler, optimizer, train_criterion, device, tot_epoch, experiment_directory, trajectory_length_s, buffer_size, frequency_reduction,
                  p_typeAction, F_typeAction, p_param, F_param, p_shape, F_shape, dataset_max_size, train_kwargs, modelDict):
 
     observations_data = torch.empty(0,device=device)
@@ -375,6 +374,12 @@ def DAgger_Train(env, expert_policy, student_policy, scheduler, optimizer, train
     avg_epoch_reward_list = []
     last_time_outloop = time.time()
     last_time = time.time()
+
+    with torch.inference_mode():
+        obs, _ = env.get_observations()
+
+    # Number of simulations iteration required to have the desired trajectory length
+    trajectory_length_iter = int(trajectory_length_s / (frequency_reduction*buffer_size*env.unwrapped.step_dt))
 
     for epoch in range(tot_epoch):
         print(f'\n----- Epoch {epoch+1} / {tot_epoch} ----- Total Remaining Time {(tot_epoch-epoch)*(time.time()-last_time_outloop):4.1f}[s]')
@@ -401,7 +406,7 @@ def DAgger_Train(env, expert_policy, student_policy, scheduler, optimizer, train
                 buffer_obs = []
                 buffer_c = []
 
-                # Roll the simulation for buffer_size time to generate a single datapoint
+                # Step the simulation buffer_size*frequency_reduction time to generate a single datapoint (obs_0, act_0, ..., act_buffer_size)
                 for i in range(frequency_reduction*buffer_size): 
                     
                     if i%frequency_reduction == 0 : 
@@ -433,17 +438,13 @@ def DAgger_Train(env, expert_policy, student_policy, scheduler, optimizer, train
                     aggregate_actions = student_first_action #.clone().detach()
                     aggregate_actions[expert_idx] = expert_actions[expert_idx]
 
-                    # If necessary, retrieve the contact sequence
-                    if (p_typeAction) == 'double' and (i%frequency_reduction == 0):
-                        buffer_c.append(env.unwrapped.action_manager.get_term('model_base_variable').c0_star.unsqueeze(-1).expand(args_cli.num_envs, 4, 2))    #(batch_size, num_legs, 1->2)
-
                     obs, rew, dones, extras = env.step(aggregate_actions)
 
                     epoch_reward += float(torch.sum(rew) / env.num_envs)
 
-                    # # If necessary, retrieve the contact sequence
-                    # if (p_typeAction) == 'double' and (i%frequency_reduction == 0):
-                    #     buffer_c.append(env.unwrapped.action_manager.get_term('model_base_variable').c0_star.unsqueeze(-1).expand(args_cli.num_envs, 4, 2))    #(batch_size, num_legs, 1->2)
+                    # If necessary, retrieve the contact sequence
+                    if (p_typeAction) == 'double' and (i%frequency_reduction == 0):
+                        buffer_c.append(env.unwrapped.action_manager.get_term('model_base_variable').c0_star.unsqueeze(-1).expand(args_cli.num_envs, 4, 2))    #(batch_size, num_legs, 1->2)
 
 
                 # --- Step 3 : Re-roll these trajectory and query expert 'Action'
@@ -551,8 +552,8 @@ def DAgger_Train(env, expert_policy, student_policy, scheduler, optimizer, train
 
 
     # Save the trained model
-    torch.save(student_policy.state_dict(),logging_directory + '/' + args_cli.model_name + '.pt')
-    print('\nModel saved as : ',logging_directory + '/' + args_cli.model_name + '.pt\n')
+    torch.save(student_policy.state_dict(),experiment_directory + '/' + 'model.pt')
+    print('\nModel saved as : ',experiment_directory + '/' + 'model.pt\n')
     print('\n\n\n----- Saving -----')
     print('\nobservations_data shape ', observations_data.shape[-1])
     print('   actions_data   shape ', actions_data.shape[-1])
@@ -569,7 +570,7 @@ def DAgger_Train(env, expert_policy, student_policy, scheduler, optimizer, train
     json_data['Input_size'] = observations_data.shape[-1]
     json_data['Output_size'] = actions_data.shape[-1]
     json_data['buffer_size'] = buffer_size
-    json_data['num_snvs'] = env.num_envs
+    json_data['num_envs'] = env.num_envs
     json_data['trajectory_length_s'] = trajectory_length_s
     json_data['tot_epoch'] = tot_epoch
     json_data['dataset_max_size'] = dataset_max_size
@@ -578,7 +579,7 @@ def DAgger_Train(env, expert_policy, student_policy, scheduler, optimizer, train
     json_data['F_typeAction'] = F_typeAction
     json_data['F_param'] = F_param
     json_data['model'] = modelDict
-    with open(f'{logging_directory}/info.json', 'w') as file:
+    with open(f'{experiment_directory}/info.json', 'w') as file:
         json.dump(json_data, file, indent=4)
     
 
@@ -588,14 +589,29 @@ def DAgger_Train(env, expert_policy, student_policy, scheduler, optimizer, train
     plt.title('Average Training Loss')
     plt.xlabel('iterations')
     plt.ylabel('Loss')
-    plt.savefig(os.path.join(logging_directory, 'average_training_loss.png'))
+    plt.savefig(os.path.join(experiment_directory, 'average_training_loss.png'))
     plt.figure(2)
     plt.plot(avg_epoch_reward_list)
     plt.title('Average Epoch Reward')
     plt.xlabel('iterations')
     plt.ylabel('Reward')
-    plt.savefig(os.path.join(logging_directory, 'average_epoch_reward.png'))
+    plt.savefig(os.path.join(experiment_directory, 'average_epoch_reward.png'))
     # plt.show()
+
+
+
+    # Run the evaluation : 
+    # 1. Reward on a trajectory : Expert vs student
+    # 2. MSE : On reconstructed actions : expert vs student
+    # 3. MSE : On dataset feating : Same as 2. for not encoded actions
+    # 4. MSE : On first action 
+
+
+
+
+
+
+
     
     return
 
@@ -629,8 +645,17 @@ def main():
     expert_policy = ppo_runner.get_inference_policy(device=env.unwrapped.device)
 
 
-    # --- Step 2 : Define usefull variables
-    f_len, d_len, p_len, F_len = 4, 4, 8, 12
+
+    # --- Step 2 : Define training Variables
+    # Buffer size : number of prediction horizon for the student policy
+    buffer_size_list = [5, 6] #[5, 10, 15]
+
+    # Factor of the simulation frequency at which the dataset will be recorded
+    frequency_reduction_list = [1, 2]
+
+    # The encoding of the actions
+    action_encoding_list = [('discrete', 'discrete'), ('discrete', 'spline')]#, ('spline', 'discrete'), ('spline', 'spline'), ('double', 'discrete'), ('double', 'spline')] 
+
 
     # Trajectory length that are recorded between epoch
     trajectory_length_s = 3 # [s]
@@ -641,115 +666,130 @@ def main():
     # Dataset maximum size before clipping
     dataset_max_size =  1000000 # 300000 # [datapoints]
 
-    # Buffer size : number of prediction horizon for the student policy
-    buffer_size_list = 
-
-    # Factor of the simulation frequency at which the dataset will be recorded
-    frequency_reduction_list = 
-
-    # oder helper variables
-    trajectory_length_iter = int(trajectory_length_s / (frequency_reduction*buffer_size*env.unwrapped.step_dt))
-
-    # Type of action recorded
-    p_typeAction = 'double' # 'spline', 'discrete', 'double
-    F_typeAction = 'spline' # 'spline', 'discrete'
-
-    if F_typeAction == 'spline':
-        F_param = 4
-    if F_typeAction == 'discrete':
-        F_param = buffer_size
-    if p_typeAction == 'spline':
-        p_param = 4
-    if p_typeAction == 'discrete':
-        p_param = buffer_size
-    if p_typeAction == 'double':
-        p_param = 2
-
-    p_shape = (env.num_envs, 4, 2, p_param)
-    F_shape = (env.num_envs, 4, 3, F_param)
 
 
-    # Create logging directory if necessary
-    logging_directory = f'model/{args_cli.task}/{args_cli.folder_name}'
-    if not os.path.exists(logging_directory):
-        os.makedirs(logging_directory)
-    #increment logging dir number if already exists
-    else :
-        i = 1
-        new_logging_directory = f"{logging_directory}{i}"
-        while os.path.exists(new_logging_directory):
-            i += 1
-            new_logging_directory = f"{logging_directory}{i}"
-        os.makedirs(new_logging_directory)
-        logging_directory = new_logging_directory
-
-
-    # --- Step 3 : Reset environment
-    obs, _ = env.get_observations()
-    actions = expert_policy(obs) #just to get the shape for printing
-
-
-    # --- Step 4 : Define variable for model training
-    use_cuda = not args_cli.cpu and torch.cuda.is_available()
+    # --- Step 3 : Define Helper variables    
+    f_len, d_len, p_len, F_len = 4, 4, 8, 12
 
     # Set seeds
     # torch.manual_seed(args_cli.seed)
 
     # Set device
+    use_cuda = not args_cli.cpu and torch.cuda.is_available()
     if use_cuda:  device = torch.device("cuda")
     else:         device = torch.device("cpu")
 
     # Set training and testing arguments
     train_kwargs = {'batch_size': args_cli.batch_size}
 
-    #  Define Model criteria : model, optimizer and loss criterion and scheduler
-    input_size = obs.shape[-1]
-    output_size = 8 + (p_param*p_len) + (F_param*F_len)
+    # Create logging directory if necessary
+    logging_directory = f'model/{args_cli.task}/{args_cli.folder_name}'
+    if not os.path.exists(logging_directory):
+        os.makedirs(logging_directory)
+    else :
+        print('There is already an experiment setup in this directory, Please provide another folder_name')
+        raise KeyError
 
-    student_policy  = Model(input_size, output_size).to(device) #Model(input_size, output_size).to(device)
 
-    modelDict = model_to_dict(student_policy)
+    # Save the model info as a JSON file
+    json_data = {}
+    json_data['num_envs'] = env.num_envs
+    json_data['trajectory_length_s'] = trajectory_length_s
+    json_data['tot_epoch'] = tot_epoch
+    json_data['dataset_max_size'] = dataset_max_size
+    with open(f'{logging_directory}/info.json', 'w') as file:
+        json.dump(json_data, file, indent=4)
 
-    optimizer       = optim.Adadelta(student_policy.parameters(), lr=args_cli.lr)
-    train_criterion = nn.MSELoss() 
-    scheduler       = StepLR(optimizer, step_size=1, gamma=args_cli.gamma) # for adadelta
-    epoch_avg_train_loss_list = []
-    avg_epoch_reward_list = []
+    # --- Step 4 : Create the config for the Experiment
+    experiment_idx = 0
 
-    # Printing
-    if True : 
-        print('\n---------------------------------------------------------------------')
-        print('\n----- Datalogger Configuration -----\n')
+    for buffer_size in buffer_size_list :
+        for frequency_reduction in frequency_reduction_list :
+            for p_typeAction, F_typeAction in action_encoding_list : 
 
-        print(f"\nLoading experiment from directory: {log_root_path}")
-        print(f"Loading model checkpoint from: {resume_path}")
+                experiment_idx += 1
 
-        print(f"\nNumber of envs: {args_cli.num_envs}")
+                # Type of action recorded
+                if F_typeAction == 'spline':
+                    F_param = 4
+                if F_typeAction == 'discrete':
+                    F_param = buffer_size
+                if p_typeAction == 'spline':
+                    p_param = 4
+                if p_typeAction == 'discrete':
+                    p_param = buffer_size
+                if p_typeAction == 'double':
+                    p_param = 2
+                p_shape = (env.num_envs, 4, 2, p_param)
+                F_shape = (env.num_envs, 4, 3, F_param)
 
-        print('\nInitial observation shape:', obs.shape[-1])
-        print('Initial   action    shape:', actions.shape[-1])
+                experiment_directory = f'model/{args_cli.task}/{args_cli.folder_name}/experiment{experiment_idx}'
+                if not os.path.exists(experiment_directory):
+                    os.makedirs(experiment_directory)
 
-        print(f"\nSimulation runs with time step {env.unwrapped.physics_dt} [s], at frequency {1/env.unwrapped.physics_dt} [Hz]")
-        print(f"Policy runs with time step {env.unwrapped.step_dt} [s], at frequency {1/env.unwrapped.step_dt} [Hz]")
-        print(f"Dataset will be recorded with time step {env.unwrapped.step_dt*frequency_reduction} [s], at frequency {1/(frequency_reduction*env.unwrapped.step_dt)} [Hz]")
-        print(f"Which will correspond in a prediction horizon of {buffer_size*env.unwrapped.step_dt*frequency_reduction} [s]")
+                # Get New Observations and reset the Environment
+                with torch.inference_mode():
+                    obs, _ = env.reset()
 
-        print(f"\nType of p action recorded: {p_typeAction}")
-        print(f"Type of F action recorded: {F_typeAction}")
-        print(f"with N = {buffer_size} prediction horizon")
 
-        print('\nDataset Input  size :', obs.shape[-1])
-        print('Dataset Output size :', output_size,'\n')
+                #  Define Model criteria : model, optimizer and loss criterion and scheduler
+                input_size = obs.shape[-1]
+                output_size = 8 + (p_param*p_len) + (F_param*F_len)
 
-        # Check if configuration is correct    
-        while True:
-            is_input_valid = input("Proceed with these parameters [Yes/No] ?")
-            if is_input_valid == "No":
-                return
-            elif is_input_valid == "Yes":
-                break
-        print('\n----- Simulation -----')
+                student_policy  = Model(input_size, output_size).to(device) #Model(input_size, output_size).to(device)
+                modelDict = model_to_dict(student_policy)
 
+                optimizer       = optim.Adadelta(student_policy.parameters(), lr=args_cli.lr)
+                train_criterion = nn.MSELoss() 
+                scheduler       = StepLR(optimizer, step_size=1, gamma=args_cli.gamma) # for adadelta
+
+                    # Printing
+                if True : 
+                    print('\n---------------------------------------------------------------------')
+                    print('\n----- Datalogger Configuration -----\n')
+
+                    print(f"\nSimulation runs with time step {env.unwrapped.physics_dt} [s], at frequency {1/env.unwrapped.physics_dt} [Hz]")
+                    print(f"Policy runs with time step {env.unwrapped.step_dt} [s], at frequency {1/env.unwrapped.step_dt} [Hz]")
+                    print(f"Dataset will be recorded with time step {env.unwrapped.step_dt*frequency_reduction} [s], at frequency {1/(frequency_reduction*env.unwrapped.step_dt)} [Hz]")
+                    print(f"Which will correspond in a prediction horizon of {buffer_size*env.unwrapped.step_dt*frequency_reduction} [s]")
+
+                    print(f"\nType of p action recorded: {p_typeAction}")
+                    print(f"Type of F action recorded: {F_typeAction}")
+                    print(f"with N = {buffer_size} prediction horizon")
+
+                    print('\nModel Input  size :', obs.shape[-1])
+                    print('Model Output size :', output_size,'\n')
+
+                    print('\n----- Simulation -----')
+
+                    experiment_dict = {}
+                    experiment_dict['buffer_size'] = buffer_size
+                    experiment_dict['frequency'] = f'{50/frequency_reduction} [Hz]'
+                    experiment_dict['p_typeAction'] = p_typeAction
+                    experiment_dict['F_typeAction'] = F_typeAction
+                    json_data[f'experiment{experiment_idx}'] = experiment_dict
+                    with open(f'{logging_directory}/info.json', 'w') as file:
+                        json.dump(json_data, file, indent=4)
+
+                # Train a policy
+                DAgger_Train(env,
+                             expert_policy,
+                             student_policy, 
+                             scheduler, 
+                             optimizer, 
+                             train_criterion, 
+                             device, 
+                             tot_epoch, 
+                             experiment_directory, 
+                             trajectory_length_s,  
+                             buffer_size, 
+                             frequency_reduction,
+                             p_typeAction, F_typeAction, 
+                             p_param, F_param, 
+                             p_shape, F_shape, 
+                             dataset_max_size, 
+                             train_kwargs, 
+                             modelDict)
     
 
     # close the simulator
