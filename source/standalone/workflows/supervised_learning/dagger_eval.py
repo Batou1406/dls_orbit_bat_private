@@ -18,7 +18,7 @@ parser.add_argument("--num_envs",     type=int,   default=256,               hel
 parser.add_argument("--task",         type=str,   default=None,              help="Name of the task.")
 parser.add_argument("--seed",         type=int,   default=None,              help="Seed used for the environment")
 parser.add_argument('--epochs',       type=int,   default=60,  metavar='N',  help='number of epochs to train (default: 14)')
-parser.add_argument('--batch-size',   type=int,   default=64,  metavar='N',  help='input batch size for training (default: 64)')
+parser.add_argument('--batch-size',   type=int,   default=256,  metavar='N',  help='input batch size for training (default: 64)')
 parser.add_argument('--lr',           type=float, default=1.0, metavar='LR', help='learning rate (default: 1.0)')
 parser.add_argument('--gamma',        type=float, default=0.7, metavar='M',  help='Learning rate step gamma (default: 0.7)')
 parser.add_argument('--folder-name',  type=str,   default='DAggerEvaluation',help="Name of the folder to save the trained model in 'model/task/folder-name'")
@@ -59,6 +59,7 @@ import matplotlib
 matplotlib.use('GTK4Agg')
 import matplotlib.pyplot as plt
 import json
+import numpy as np
 
 """ --- Model Definition --- """    
 class Model(nn.Module):
@@ -140,6 +141,24 @@ class ObservationActionDataset(Dataset):
 
     def __getitem__(self, idx):
         return self.observations[idx], self.actions[idx]
+    
+class DatasetFromFile(Dataset):
+    """Cutsom dataloader to load generated dataset
+    Args :
+        file_path : The file path to the dataset"""
+    def __init__(self, file_path):
+        data = torch.load(file_path)
+        self.observations = data['observations']
+        self.actions = data['actions']
+
+    def __len__(self):
+        return len(self.observations)
+
+    def __getitem__(self, idx):
+        return self.observations[idx], self.actions[idx]
+    
+    def __call__(self) : 
+        return self.observations, self.actions
 
 
 """ --- Decay Function --- """
@@ -363,8 +382,8 @@ def get_touchdowns(c, p):
 
 
 """ --- DAgger Trainer --- """
-def DAgger_Train(env, expert_policy, student_policy, scheduler, optimizer, train_criterion, device, tot_epoch, experiment_directory, trajectory_length_s, buffer_size, frequency_reduction,
-                 p_typeAction, F_typeAction, p_param, F_param, p_shape, F_shape, dataset_max_size, train_kwargs, modelDict):
+def DAgger_Train(env, expert_policy, student_policy, scheduler, optimizer, train_criterion, device, tot_epoch, logging_directory, experiment_directory, trajectory_length_s, buffer_size, max_buffer_size,  frequency_reduction,
+                 p_typeAction, F_typeAction, p_param, F_param, p_shape, F_shape, dataset_max_size, train_kwargs, modelDict, test_iter):
 
     observations_data = torch.empty(0,device=device)
     actions_data = torch.empty(0, device=device)
@@ -427,6 +446,8 @@ def DAgger_Train(env, expert_policy, student_policy, scheduler, optimizer, train
                         p = compute_cubic_spline(parameters=p, step=0, horizon=1).flatten(1,-1)
                     if p_typeAction == 'double' : 
                         p = p[:,:,:,0].flatten(1,-1)
+                    if p_typeAction == 'first' : 
+                        p = p[:,:,:,0].flatten(1,-1)
 
                     if F_typeAction == 'discrete':
                         F = F[:,:,:,0].flatten(1,-1)
@@ -476,6 +497,8 @@ def DAgger_Train(env, expert_policy, student_policy, scheduler, optimizer, train
                     p_raw = raw_actions[:,(f_len+d_len):(f_len+d_len+p_len), :].unsqueeze(2).reshape(args_cli.num_envs, 4, 2, buffer_size)  # shape (num_envs, num_legs, 2, buffer_size)
                     p = get_touchdowns(c=c.reshape(-1, buffer_size), p=p_raw.reshape(-1, buffer_size)).reshape(args_cli.num_envs, 4, 2, 2).flatten(1,3) # shape (num_envs*num_legs*2, buffer_size)
                     
+                if p_typeAction == 'first':
+                    p = raw_actions[:,(f_len+d_len)      :(f_len+d_len+p_len)      , 0]# shape (num_envs, p_len)
 
                 if F_typeAction == 'spline':
                     # extract the p and F action with the right parameters
@@ -545,8 +568,8 @@ def DAgger_Train(env, expert_policy, student_policy, scheduler, optimizer, train
         scheduler.step()
 
         # Save the training metrics
-        epoch_avg_train_loss_list.append(avg_train_loss)
-        avg_epoch_reward_list.append(epoch_reward / (trajectory_length_iter*buffer_size) )
+        epoch_avg_train_loss_list.append(float(avg_train_loss))
+        avg_epoch_reward_list.append(float(epoch_reward / (trajectory_length_iter*buffer_size) ))
         # print('Average Epoch %d Reward : %.2f \n' % (epoch, avg_epoch_reward_list[-1]))
         print('Average Epoch Reward : %.2f' % (avg_epoch_reward_list[-1]))
 
@@ -597,6 +620,8 @@ def DAgger_Train(env, expert_policy, student_policy, scheduler, optimizer, train
     plt.ylabel('Reward')
     plt.savefig(os.path.join(experiment_directory, 'average_epoch_reward.png'))
     # plt.show()
+    np.savetxt(f'{experiment_directory}/average_training_loss.csv', epoch_avg_train_loss_list, delimiter=',', fmt='%.6f')
+    np.savetxt(f'{experiment_directory}/average_epoch_reward.csv', avg_epoch_reward_list, delimiter=',', fmt='%.6f')
 
 
 
@@ -605,15 +630,217 @@ def DAgger_Train(env, expert_policy, student_policy, scheduler, optimizer, train
     # 2. MSE : On reconstructed actions : expert vs student
     # 3. MSE : On dataset feating : Same as 2. for not encoded actions
     # 4. MSE : On first action 
+    results = {}
+
+    # Run a trajectory
+    epoch_reward_test = 0.0
+    epoch_reward_stud = 0.0
+
+    with torch.inference_mode():
+        obs, _ = env.reset()
+
+        for i in range(test_iter):
+
+            expert_actions  = expert_policy(obs)    # shape (num_envs, 4 + 4 + 8 + 12)
+            student_actions = student_policy(obs)   # shape (num_envs, 4 + 4 + buffer_size*(8 + 12))
+
+            # extract first action from student policy
+            f = student_actions[:, 0                           : f_len                           ]                  # shape (num_envs, f_len)
+            d = student_actions[:, f_len                       :(f_len+d_len)                    ]                  # shape (num_envs, d_len)
+            p = student_actions[:,(f_len+d_len)                :(f_len+d_len+(p_param*p_len))     ].reshape(p_shape) # shape (num_envs, 4, 2, buffer_size)
+            F = student_actions[:,(f_len+d_len+(p_param*p_len)):(f_len+d_len+(p_param*p_len)+(F_param*F_len))].reshape(F_shape) # shape (num_envs, 4, 3, buffer_size)
+            
+            if p_typeAction == 'discrete':
+                p = p[:,:,:,0].flatten(1,-1)
+            if p_typeAction == 'first':
+                p = p[:,:,:,0].flatten(1,-1)
+            if p_typeAction == 'spline':
+                p = compute_cubic_spline(parameters=p, step=0, horizon=1).flatten(1,-1)
+            if p_typeAction == 'double' : 
+                p = p[:,:,:,0].flatten(1,-1)
+
+            if F_typeAction == 'discrete':
+                F = F[:,:,:,0].flatten(1,-1)
+            if F_typeAction == 'spline':
+                F = compute_cubic_spline(parameters=F, step=0, horizon=1).flatten(1,-1)
+
+            student_first_action  = torch.cat((f,d,p,F),dim=1) 
+
+            aggregate_actions = student_first_action
+            aggregate_actions[int(env.num_envs/2):] = expert_actions[int(env.num_envs/2):]
+
+            obs, rew, dones, extras = env.step(aggregate_actions)
+            
+            epoch_reward_stud += float(torch.sum(rew[:int(env.num_envs/2)] / (env.num_envs/2)))
+            epoch_reward_test += float(torch.sum(rew[int(env.num_envs/2):] / (env.num_envs/2)))
+
+    Epoch_Reward = {'epoch_reward_stud': epoch_reward_stud, 'epoch_reward_test': epoch_reward_test}
+    results['Epoch_Reward'] = Epoch_Reward
+
+    # --- Step 1 : Load the test set
+    test_dataset  = DatasetFromFile(f'{logging_directory}/testing_data.pt')
+
+    # --- Step 2 : Reconstruct the test expert actions
+    test_observations, test_actions = test_dataset()
+
+    # extract the test expert actions
+    f_test = test_actions[:, 0                                   : f_len                                                       ]                                    # shape (test_points, f_len)
+    d_test = test_actions[:, f_len                               :(f_len+d_len)                                                ]                                    # shape (test_points, d_len)
+    p_test = test_actions[:,(f_len+d_len)                        :(f_len+d_len+(max_buffer_size*p_len))                        ].reshape(-1, 4, 2, max_buffer_size) # shape (test_points, 4, 2, buffer_size)
+    F_test = test_actions[:,(f_len+d_len+(max_buffer_size*p_len)):(f_len+d_len+(max_buffer_size*p_len)+(max_buffer_size*F_len))].reshape(-1, 4, 3, max_buffer_size) # shape (test_points, 4, 3, buffer_size)
+
+    # reshape the actions to match the current frequency_reduction
+    p_test_discrete = p_test[:,:,:,::frequency_reduction][:,:,:,:buffer_size] # Discrete exact actions
+    F_test_discrete = F_test[:,:,:,::frequency_reduction][:,:,:,:buffer_size]
+
+    # reconstruct the encoded actions
+    p_test_encoded = p_test_discrete
+    F_test_encoded = F_test_discrete
+    if p_typeAction == 'spline':
+        p_test_encoded = fit_cubic(y=p_test_discrete) # shape (test_points, num_legs, 2, 4)
+    if p_typeAction == 'first':
+        p_test_encoded = p_test_encoded[:,:,:,0].unsqueeze(-1)
+
+    # double not possible, because c is not available
+        
+    if F_typeAction == 'spline':
+        F_test_encoded = fit_cubic(y=F_test_discrete) # shape (test_points, num_legs, 3, 4)
+    
+    # --- Step 3 : Compute MSE
+    student_actions = student_policy(test_observations)
+
+    f_stud = student_actions[:, 0                           : f_len                                       ]                                    # shape (test_points, f_len)
+    d_stud = student_actions[:, f_len                       :(f_len+d_len)                                ]                                    # shape (test_points, d_len)
+    p_stud = student_actions[:,(f_len+d_len)                :(f_len+d_len+(p_param*p_len))                ].reshape(-1, 4, 2, p_param) # shape (test_points, 4, 2, p_param)
+    F_stud = student_actions[:,(f_len+d_len+(p_param*p_len)):(f_len+d_len+(p_param*p_len)+(F_param*F_len))].reshape(-1, 4, 3, F_param) # shape (test_points, 4, 3, F_param)
+
+    p_stud_encoded = p_stud
+    F_stud_encoded = F_stud
+
+    # Reconstruct the discrete actions
+    if p_typeAction == 'discrete':
+        p_stud_discrete = p_stud_encoded
+    if p_typeAction == 'first':
+        p_stud_discrete = p_stud_encoded.expand_as(p_test_discrete)
+    if p_typeAction == 'spline':
+        p_stud_discrete = torch.empty_like(p_test_discrete)
+        for i in range(buffer_size):
+            p_stud_discrete[:,:,:,i] = compute_cubic_spline(parameters=p_stud_encoded, step=i, horizon=buffer_size) # shape (test_points, num_legs, 2, buffer_size)
+
+    # double not possible, because c is not available
+        
+    if F_typeAction == 'discrete':
+        F_stud_discrete = F_stud_encoded
+    if F_typeAction == 'spline':
+        F_stud_discrete = torch.empty_like(F_test_discrete)
+        for i in range(buffer_size):
+            F_stud_discrete[:,:,:,i] = compute_cubic_spline(parameters=F_stud_encoded, step=i, horizon=buffer_size) # shape (test_points, num_legs, 2, buffer_size)
 
 
 
+    # --- Step 4 : Compute MSE
+
+    # 1. MSE : On first action 
+    mse_first_action = {}
+    mse_first_action['f'] = float(torch.mean(torch.square(f_test - f_stud)))
+    mse_first_action['d'] = float(torch.mean(torch.square(d_test - d_stud)))
+    mse_first_action['p'] = float(torch.mean(torch.square(p_test_discrete[:,:,:,0] - p_stud_discrete[:,:,:,0])))
+    mse_first_action['F'] = float(torch.mean(torch.square(F_test_discrete[:,:,:,0] - F_stud_discrete[:,:,:,0])))
+    
+    test_first_action = torch.cat((f_test, d_test, p_test_discrete[:,:,:,0].flatten(1,-1), F_test_discrete[:,:,:,0].flatten(1,-1)),dim=1)
+    stud_first_action = torch.cat((f_stud, d_stud, p_stud_discrete[:,:,:,0].flatten(1,-1), F_stud_discrete[:,:,:,0].flatten(1,-1)),dim=1)
+    mse_first_action['Total'] = float(torch.mean(torch.square(test_first_action - stud_first_action)))
+
+    results['mse_first_action'] = mse_first_action
 
 
+    # 2. MSE : On all discrete action
+    mse_discrete_action = {}
+    mse_discrete_action['f'] = float(torch.mean(torch.square(f_test - f_stud)))
+    mse_discrete_action['d'] = float(torch.mean(torch.square(d_test - d_stud)))
+    mse_discrete_action['p'] = float(torch.mean(torch.square(p_test_discrete - p_stud_discrete)))
+    mse_discrete_action['F'] = float(torch.mean(torch.square(F_test_discrete - F_stud_discrete)))
+    
+    test_discrete_action = torch.cat((f_test, d_test, p_test_discrete.flatten(1,-1), F_test_discrete.flatten(1,-1)),dim=1)
+    stud_discrete_action = torch.cat((f_stud, d_stud, p_stud_discrete.flatten(1,-1), F_stud_discrete.flatten(1,-1)),dim=1)
+    mse_discrete_action['Total'] = float(torch.mean(torch.square(test_discrete_action - stud_discrete_action)))
 
+    results['mse_discrete_action'] = mse_discrete_action
 
+    # 3. MSE : On encoded actions
+    mse_encoded_action = {}
+    mse_encoded_action['f'] = float(torch.mean(torch.square(f_test - f_stud)))
+    mse_encoded_action['d'] = float(torch.mean(torch.square(d_test - d_stud)))
+    mse_encoded_action['p'] = float(torch.mean(torch.square(p_test_encoded - p_stud_encoded)))
+    mse_encoded_action['F'] = float(torch.mean(torch.square(F_test_encoded - F_stud_encoded)))
+    
+    test_encoded_action = torch.cat((f_test, d_test, p_test_encoded.flatten(1,-1), F_test_encoded.flatten(1,-1)),dim=1)
+    stud_encoded_action = torch.cat((f_stud, d_stud, p_stud_encoded.flatten(1,-1), F_stud_encoded.flatten(1,-1)),dim=1)
+    mse_encoded_action['Total'] = float(torch.mean(torch.square(test_encoded_action - stud_encoded_action)))
+
+    results['mse_encoded_action'] = mse_encoded_action
+
+    with open(f'{experiment_directory}/results.json', 'w') as file:
+        json.dump(results, file, indent=4)
     
     return
+
+
+""" --- Record a Test Set --- """
+def Record_test_set(env, expert_policy, device, test_set_size, max_buffer_size, logging_directory):
+
+
+    observations_data = torch.empty(0,device=device)
+    actions_data = torch.empty(0, device=device)
+    f_len, d_len, p_len, F_len = 4, 4, 8, 12
+
+
+    with torch.inference_mode():
+        obs, _ = env.reset()
+
+        while (len(observations_data) < test_set_size):
+            buffer_obs = []
+            buffer_act = []
+
+            # Roll the simultaion to query enough data points
+            for i in range(max_buffer_size):
+                # Record the observation
+                buffer_obs.append(obs)
+
+                # Query the expert for the action
+                expert_actions  = expert_policy(obs)
+
+                # Step the envirionment
+                obs, rew, dones, extras = env.step(expert_actions)
+
+                # Save the expert action
+                buffer_act.append(expert_actions) 
+            
+            # Reconstruct the actions correctly
+            raw_actions = torch.stack(buffer_act,dim=2)                            # shape (num_envs, act_dim, buffer_size)
+            f = raw_actions[:, 0                 : f_len                   , 0]             # shape (num_envs, f_len)
+            d = raw_actions[:, f_len             :(f_len+d_len)            , 0]             # shape (num_envs, d_len)
+            p = raw_actions[:,(f_len+d_len)      :(f_len+d_len+p_len)      , :].flatten(1,2)# shape (num_envs, buffer_size*p_len) /!\ Transpose to store the data with the right format
+            F = raw_actions[:,(f_len+d_len+p_len):(f_len+d_len+p_len+F_len), :].flatten(1,2)# shape (num_envs, buffer_size*F_len)
+            process_actions = torch.cat((f,d,p,F),dim=1)                                    # shape (num_envs, f_len+d_len+buffer_size*(p_len+F_len))
+
+            # Concatenate all observations and actions
+            observations_data = torch.cat((observations_data, buffer_obs[0]), dim=0)    # shape(num_data, obs_dim)
+            actions_data      = torch.cat((actions_data, process_actions), dim=0)       # shape(num_data, f_len+d_len+buffer_size*(p_len+F_len))
+
+
+        # Downsample to keep the correct dataset size
+        if observations_data.size(0) > test_set_size:
+            indices = torch.randperm(observations_data.size(0))[:test_set_size]
+            observations_data = observations_data[indices]
+            actions_data = actions_data[indices]
+
+    # Save the Generated dataset
+    data = {
+        'observations': observations_data,
+        'actions': actions_data
+    }
+    torch.save(data, f'{logging_directory}/testing_data.pt') 
 
 
 """ --- Main --- """
@@ -648,23 +875,27 @@ def main():
 
     # --- Step 2 : Define training Variables
     # Buffer size : number of prediction horizon for the student policy
-    buffer_size_list = [5, 6] #[5, 10, 15]
+    buffer_size_list = [5, 10, 15]
 
     # Factor of the simulation frequency at which the dataset will be recorded
     frequency_reduction_list = [1, 2]
 
     # The encoding of the actions
-    action_encoding_list = [('discrete', 'discrete'), ('discrete', 'spline')]#, ('spline', 'discrete'), ('spline', 'spline'), ('double', 'discrete'), ('double', 'spline')] 
+    action_encoding_list = [('discrete', 'discrete'), ('discrete', 'spline'), ('spline', 'discrete'), ('spline', 'spline'), ('first', 'discrete'), ('first', 'spline')] 
 
 
     # Trajectory length that are recorded between epoch
-    trajectory_length_s = 3 # [s]
+    trajectory_length_s = 10 # [s]
 
     # Number of epoch
     tot_epoch = args_cli.epochs
 
     # Dataset maximum size before clipping
-    dataset_max_size =  1000000 # 300000 # [datapoints]
+    dataset_max_size =  800000 # 300000 # [datapoints]
+
+    test_set_size = 20000 # [datapoints]
+
+    test_iter = 50*15
 
 
 
@@ -700,7 +931,14 @@ def main():
     with open(f'{logging_directory}/info.json', 'w') as file:
         json.dump(json_data, file, indent=4)
 
-    # --- Step 4 : Create the config for the Experiment
+
+    # --- Step 4 : Record a test set
+    max_buffer_size = max(buffer_size_list)*max(frequency_reduction_list)
+
+    Record_test_set(env, expert_policy, device, test_set_size, max_buffer_size, logging_directory)
+
+
+    # --- Step 5 : Create the config for the Experiment
     experiment_idx = 0
 
     for buffer_size in buffer_size_list :
@@ -720,6 +958,8 @@ def main():
                     p_param = buffer_size
                 if p_typeAction == 'double':
                     p_param = 2
+                if p_typeAction == 'first':
+                    p_param = 1
                 p_shape = (env.num_envs, 4, 2, p_param)
                 F_shape = (env.num_envs, 4, 3, F_param)
 
@@ -771,6 +1011,8 @@ def main():
                     with open(f'{logging_directory}/info.json', 'w') as file:
                         json.dump(json_data, file, indent=4)
 
+
+                # --- Step 6 : Run the experiment
                 # Train a policy
                 DAgger_Train(env,
                              expert_policy,
@@ -780,16 +1022,19 @@ def main():
                              train_criterion, 
                              device, 
                              tot_epoch, 
+                             logging_directory,
                              experiment_directory, 
                              trajectory_length_s,  
-                             buffer_size, 
+                             buffer_size,
+                             max_buffer_size, 
                              frequency_reduction,
                              p_typeAction, F_typeAction, 
                              p_param, F_param, 
                              p_shape, F_shape, 
                              dataset_max_size, 
                              train_kwargs, 
-                             modelDict)
+                             modelDict,
+                             test_iter)
     
 
     # close the simulator

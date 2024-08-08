@@ -186,11 +186,9 @@ def plot_spline(buffer_size, F, F_expert_raw, p_expert_raw, student_policy, buff
     for i, coord in enumerate(['x', 'y', 'z']):
         axs_F[i].scatter(x=x_param.cpu().numpy(), y=F_expert_param[env_idx, leg_idx, i, :].cpu().numpy(), c='red', label='Expert Param')
 
-    # Plot student param for F
+
     student_actions = student_policy(buffer_obs[0])
     F_student_param = student_actions[:, (f_len + d_len + (p_param * p_len)):(f_len + d_len + (p_param * p_len) + (F_param * F_len))].reshape(F_shape)
-    for i, coord in enumerate(['x', 'y', 'z']):
-        axs_F[i].scatter(x=x_param.cpu().numpy(), y=F_student_param[env_idx, leg_idx, i, :].cpu().numpy(), c='blue', label='Student Param')
 
     # Plot student trajectory for F
     F_student_traj = torch.empty((F_student_param.shape[0], F_student_param.shape[1], F_student_param.shape[2], 101), device=F_student_param.device)
@@ -198,6 +196,13 @@ def plot_spline(buffer_size, F, F_expert_raw, p_expert_raw, student_policy, buff
         F_student_traj[:, :, :, i] = compute_cubic_spline(parameters=F_student_param, step=int(t[i]), horizon=100)
     for i, coord in enumerate(['x', 'y', 'z']):
         axs_F[i].plot(t.cpu().numpy() / 100, F_student_traj[env_idx, leg_idx, i, :].cpu().numpy(), c='blue', label='Student Trajectory')
+
+    # Plot student param for F
+    F_student_param[:,:,:,0] = 10*F_student_param[:,:,:,0] 
+    F_student_param[:,:,:,3] = 10*F_student_param[:,:,:,3] 
+    for i, coord in enumerate(['x', 'y', 'z']):
+        axs_F[i].scatter(x=x_param.cpu().numpy(), y=F_student_param[env_idx, leg_idx, i, :].cpu().numpy(), c='blue', label='Student Param')
+
 
     # Adding legends
     for ax in axs_F:
@@ -228,7 +233,7 @@ def plot_spline(buffer_size, F, F_expert_raw, p_expert_raw, student_policy, buff
     for i, coord in enumerate(['x', 'y']):
         axs_p[i].scatter(x=x_param.cpu().numpy(), y=p_expert_param[env_idx, leg_idx, i, :].cpu().numpy(), c='red', label='Expert Param')
 
-    # Plot student param for p
+    
     student_actions = student_policy(buffer_obs[0])
     p_student_param = student_actions[:, (f_len + d_len):(f_len + d_len + (p_param * p_len))].reshape(p_shape)
     for i, coord in enumerate(['x', 'y']):
@@ -241,6 +246,11 @@ def plot_spline(buffer_size, F, F_expert_raw, p_expert_raw, student_policy, buff
     for i, coord in enumerate(['x', 'y']):
         axs_p[i].plot(t.cpu().numpy() / 100, p_student_traj[env_idx, leg_idx, i, :].cpu().numpy(), c='blue', label='Student Trajectory')
 
+    # Plot student param for p
+    p_student_param[:,:,:,0] = 10*p_student_param[:,:,:,0] 
+    p_student_param[:,:,:,3] = 10*p_student_param[:,:,:,3] 
+    for i, coord in enumerate(['x', 'y']):
+        axs_p[i].scatter(x=x_param.cpu().numpy(), y=p_student_param[env_idx, leg_idx, i, :].cpu().numpy(), c='blue', label='Student Param')
 
     # Adding legends
     for ax in axs_p:
@@ -731,7 +741,7 @@ def main():
         expert_idx = torch.randperm(args_cli.num_envs)[:n]
 
         # If we want to plot splines
-        if (epoch == 0) or (epoch == 20) or (epoch == 10) or (epoch == 30) or (epoch == 15) or (epoch == 25):
+        if (epoch == 0) or (epoch == 33) or (epoch == 34):# or (epoch == 10) or (epoch == 30) or (epoch == 15) or (epoch == 25):
             debug_counter=0
 
 
