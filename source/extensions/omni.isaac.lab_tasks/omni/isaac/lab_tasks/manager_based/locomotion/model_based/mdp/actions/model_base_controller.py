@@ -1117,6 +1117,10 @@ class SamplingOptimizer():
         if self.cfg.parametrization_p == 'from_single_expand_discrete' :
             p_lw = p_lw.expand_as(self.p_best) # shape(batch, leg , 3, 1) -> shape(batch, leg , 3, p_param)
 
+        if self.cfg.parametrization_F == 'cubic_spline':
+            # Since the cubic spline fitting has been normalised with first and last coefficient 10 times smaller than what they should be
+            delta_F_lw[:,:,:,0] = 10*delta_F_lw[:,:,:,0]
+            delta_F_lw[:,:,:,3] = 10*delta_F_lw[:,:,:,3] 
 
         # Define how much samples from the RL or from the previous solution we're going to sample
         if iter == 0:
@@ -1157,10 +1161,10 @@ class SamplingOptimizer():
         delta_F_lw_samples[-1,:,:,:] = self.F_best[0,:,:,:]
 
         # Put the RL actions as the first samples
-        # f_samples[0,:]              = f[0,:]
-        # d_samples[0,:]              = d[0,:]
-        # p_lw_samples[0,:,:,:]       = p_lw[0,:,:,:]
-        # delta_F_lw_samples[0,:,:,:] = delta_F_lw[0,:,:,:]
+        f_samples[0,:]              = f[0,:]
+        d_samples[0,:]              = d[0,:]
+        p_lw_samples[0,:,:,:]       = p_lw[0,:,:,:]
+        delta_F_lw_samples[0,:,:,:] = delta_F_lw[0,:,:,:]
 
         # If optimization is set to false, samples are feed with initial guess
         if not self.optimize_f : f_samples[:,:]              = f.clone().detach()

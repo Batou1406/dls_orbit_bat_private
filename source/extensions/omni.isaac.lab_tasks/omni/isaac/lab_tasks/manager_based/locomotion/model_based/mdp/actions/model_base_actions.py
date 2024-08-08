@@ -730,11 +730,6 @@ class ModelBaseAction(ActionTerm):
 
             F = torch.cat((F_x, F_y, F_z), dim=2).reshape_as(self.delta_F_lw)
 
-            # Since the cubic spline fitting has been normalised with first and last coefficient 10 times smaller than what they should be
-            if self.cfg.optimizerCfg.parametrization_F == 'cubic_spline':
-                F[:,:,:,0] = 10*F[:,:,:,0]
-                F[:,:,:,3] = 10*F[:,:,:,3] 
-
 
         #--- Normalize p ---
         # p:[-1,1]->[std_n, std_p]      : mean=(std_n+std_p)/2, std=(std_p-std_n)/2     : clipped to (min, max)
@@ -785,11 +780,6 @@ class ModelBaseAction(ActionTerm):
         # F_z:[-1,1]->[mean-std,mean+std]      : mean=m*g/2, std=mean/10
         # shape(batch_size, num_legs, 3, F_param)
         if F is not None :            
-            # Since the cubic spline fitting has been normalised with first and last coefficient 10 times smaller than what they should be
-            if (self.cfg.optimizerCfg.parametrization_F) == 'cubic_spline' and (F.shape[3] == 4): #added the second condition when F0 is passed 
-                F[:,:,:,0] = F[:,:,:,0] / 10
-                F[:,:,:,3] = F[:,:,:,3] / 10
-
             std_xy_F = (torch.tensor(param.std_xy_F, device=self.device)).unsqueeze(-1).unsqueeze(-1) # shape (batch_size,1,1)
             F_x = F[:,:,0,:] / (std_xy_F * (self.robot_mass * 9.81))
             F_y = F[:,:,1,:] / (std_xy_F * (self.robot_mass * 9.81))
