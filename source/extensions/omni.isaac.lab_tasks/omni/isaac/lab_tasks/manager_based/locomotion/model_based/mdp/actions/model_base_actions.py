@@ -345,8 +345,8 @@ class ModelBaseAction(ActionTerm):
         after inverse_normalisation(inverse_transformation(optimization(transformation(normalisation(raw_actions))))) 
         Dimension is always 4+4+8+12 = (batch_size, 28) """
 
-        f, d, delta_p_h, delta_F_h = self.inverse_transformation(f=self.f_star, d=self.d_star, p_lw=self.p0_star_lw.unsqueeze(-1), F_lw=self.F0_star_lw.unsqueeze(-1), c0=self.c0_star)
-        f_raw, d_raw, p_raw, F_raw = self. inverse_normalization(f=f, d=d, p=delta_p_h, F=delta_F_h)
+        f, d, delta_p0_h, delta_F0_h = self.inverse_transformation(f=self.f_star, d=self.d_star, p_lw=self.p0_star_lw.unsqueeze(-1), F_lw=self.F0_star_lw.unsqueeze(-1), c0=self.c0_star)
+        f_raw, d_raw, p_raw, F_raw = self. inverse_normalization(f=f, d=d, p=delta_p0_h, F=delta_F0_h)
         return  torch.cat((f_raw.flatten(1,-1), d_raw.flatten(1,-1), p_raw.flatten(1,-1), F_raw.flatten(1,-1)),dim=1)
 
     @property
@@ -730,6 +730,11 @@ class ModelBaseAction(ActionTerm):
 
             F = torch.cat((F_x, F_y, F_z), dim=2).reshape_as(self.delta_F_lw)
 
+            # Since the cubic spline fitting has been normalised with first and last coefficient 10 times smaller than what they should be
+            if self.cfg.optimizerCfg.parametrization_F == 'cubic_spline':
+                F[:,:,:,0] = 10*F[:,:,:,0]
+                F[:,:,:,3] = 10*F[:,:,:,3] 
+
 
         #--- Normalize p ---
         # p:[-1,1]->[std_n, std_p]      : mean=(std_n+std_p)/2, std=(std_p-std_n)/2     : clipped to (min, max)
@@ -780,6 +785,11 @@ class ModelBaseAction(ActionTerm):
         # F_z:[-1,1]->[mean-std,mean+std]      : mean=m*g/2, std=mean/10
         # shape(batch_size, num_legs, 3, F_param)
         if F is not None :            
+            # Since the cubic spline fitting has been normalised with first and last coefficient 10 times smaller than what they should be
+            if (self.cfg.optimizerCfg.parametrization_F) == 'cubic_spline' and (F.shape[3] == 4): #added the second condition when F0 is passed 
+                F[:,:,:,0] = F[:,:,:,0] / 10
+                F[:,:,:,3] = F[:,:,:,3] / 10
+
             std_xy_F = (torch.tensor(param.std_xy_F, device=self.device)).unsqueeze(-1).unsqueeze(-1) # shape (batch_size,1,1)
             F_x = F[:,:,0,:] / (std_xy_F * (self.robot_mass * 9.81))
             F_y = F[:,:,1,:] / (std_xy_F * (self.robot_mass * 9.81))
