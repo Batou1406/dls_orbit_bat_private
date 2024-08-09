@@ -440,7 +440,7 @@ def get_touchdowns(c, p):
 
 
 """ --- DAgger Trainer --- """
-def DAgger_Train(env, expert_policy, student_policy, scheduler, optimizer, train_criterion, test_criterion, device, tot_epoch, logging_directory, experiment_directory, trajectory_length_s, buffer_size, max_buffer_size,  frequency_reduction,
+def DAgger_Train(env, expert_policy, student_policy, scheduler, optimizer, train_criterion, device, tot_epoch, logging_directory, experiment_directory, datapoints_generated_per_iter, buffer_size, max_buffer_size,  frequency_reduction,
                  p_typeAction, F_typeAction, p_param, F_param, p_shape, F_shape, dataset_max_size, train_kwargs, modelDict, test_iter):
 
     observations_data = torch.empty(0,device=device)
@@ -457,7 +457,8 @@ def DAgger_Train(env, expert_policy, student_policy, scheduler, optimizer, train
         obs, _ = env.get_observations()
 
     # Number of simulations iteration required to have the desired trajectory length
-    trajectory_length_iter = int(trajectory_length_s / (frequency_reduction*buffer_size*env.unwrapped.step_dt))
+    # trajectory_length_iter = int(trajectory_length_s / (frequency_reduction*buffer_size*env.unwrapped.step_dt))
+    num_iter_to_gen_required_datapoints = int(datapoints_generated_per_iter / args_cli.num_envs)
 
     for epoch in range(tot_epoch):
         print(f'\n----- Epoch {epoch+1} / {tot_epoch} ----- Total Remaining Time {(tot_epoch-epoch)*(time.time()-last_time_outloop):4.1f}[s]')
@@ -475,16 +476,17 @@ def DAgger_Train(env, expert_policy, student_policy, scheduler, optimizer, train
         with torch.inference_mode(): # step 2 and 3 (and 4 but not required) in inference mode to avoid gradient computations
             epoch_reward = 0.0
             # Roll the simulation for trajectory_length_s time
-            for j in range(trajectory_length_iter):
+            # for j in range(trajectory_length_iter):
+            for j in range(num_iter_to_gen_required_datapoints):
                 # Printing
-                print('Recording data : {:2.1f}% - time remaning : {:4.1f}[s]'.format(100*j/trajectory_length_iter, ((time.time()-last_time)*(trajectory_length_iter-j))), end='\r', flush=True)
+                print('Recording data : {:2.1f}% - time remaning : {:4.1f}[s]'.format(100*j/num_iter_to_gen_required_datapoints, ((time.time()-last_time)*(num_iter_to_gen_required_datapoints-j))), end='\r', flush=True)
                 last_time = time.time()
 
                 # --- Step 2 : Sample 'Observation' Trajectory with actions from mixture policy (Expert + Student)
                 buffer_obs = []
                 buffer_c = []
 
-                # Step the simulation buffer_size*frequency_reduction time to generate a single datapoint (obs_0, act_0, ..., act_buffer_size)
+                # Step the simulation buffer_size*frequency_reduction time to generate a single (num_envs) datapoint (obs_0, act_0, ..., act_buffer_size)
                 for i in range(frequency_reduction*buffer_size): 
                     
                     if i%frequency_reduction == 0 : 
@@ -634,7 +636,8 @@ def DAgger_Train(env, expert_policy, student_policy, scheduler, optimizer, train
         # Save the training metrics
         epoch_avg_train_loss_list.append(float(avg_train_loss))
         epoch_mse_test_loss.append(mse_test_loss)
-        avg_epoch_reward_list.append(float(epoch_reward / (trajectory_length_iter*buffer_size) ))
+        avg_epoch_reward_list.append(float(epoch_reward / (num_iter_to_gen_required_datapoints*buffer_size) ))
+        print(f"\nAverage Test Loss {mse_test_loss[-1]:.4f}")
         print('Average Epoch Reward : %.2f' % (avg_epoch_reward_list[-1]))
 
 
@@ -658,7 +661,8 @@ def DAgger_Train(env, expert_policy, student_policy, scheduler, optimizer, train
     json_data['Output_size'] = actions_data.shape[-1]
     json_data['buffer_size'] = buffer_size
     json_data['num_envs'] = env.num_envs
-    json_data['trajectory_length_s'] = trajectory_length_s
+    # json_data['trajectory_length_s'] = trajectory_length_s
+    json_data['datapoints_generated_per_iter'] = datapoints_generated_per_iter
     json_data['tot_epoch'] = tot_epoch
     json_data['dataset_max_size'] = dataset_max_size
     json_data['p_typeAction'] = p_typeAction
@@ -671,18 +675,50 @@ def DAgger_Train(env, expert_policy, student_policy, scheduler, optimizer, train
     
 
     # Plot the training results
-    plt.figure(1)
-    plt.plot(epoch_avg_train_loss_list)
-    plt.title('Average Training Loss')
-    plt.xlabel('iterations')
-    plt.ylabel('Loss')
-    plt.savefig(os.path.join(experiment_directory, 'average_training_loss.png'))
-    plt.figure(2)
-    plt.plot(avg_epoch_reward_list)
-    plt.title('Average Epoch Reward')
-    plt.xlabel('iterations')
-    plt.ylabel('Reward')
-    plt.savefig(os.path.join(experiment_directory, 'average_epoch_reward.png'))
+    if True :
+        plt.figure(1, figsize=(15, 10)).clf()
+        plt.plot(epoch_avg_train_loss_list)
+        plt.title('Average Training Loss')
+        plt.xlabel('iterations')
+        plt.ylabel('Loss')
+        plt.savefig(os.path.join(experiment_directory, 'average_training_loss.pdf'), bbox_inches='tight')
+        plt.figure(2, figsize=(15, 10)).clf()
+        plt.plot(avg_epoch_reward_list)
+        plt.title('Average Epoch Reward')
+        plt.xlabel('iterations')
+        plt.ylabel('Reward')
+        plt.savefig(os.path.join(experiment_directory, 'average_epoch_reward.pdf'), bbox_inches='tight')
+        plt.figure(3, figsize=(15, 10)).clf()
+        plt.plot([mse_tot[-1] for mse_tot in epoch_mse_test_loss])
+        plt.title('Average Testing Loss')
+        plt.xlabel('iterations')
+        plt.ylabel('Reward')
+        plt.savefig(os.path.join(experiment_directory, 'average_testing_loss.pdf'), bbox_inches='tight')
+
+        # These figure aren't reseted, thus cumulative line would be drawn
+        label = f'H{buffer_size} dt{env.unwrapped.step_dt*frequency_reduction}[s] - ({p_typeAction},{F_typeAction})'
+        plt.figure(4, figsize=(15, 10))
+        plt.plot(epoch_avg_train_loss_list, label=label)
+        plt.title('Average Training Loss')
+        plt.xlabel('iterations')
+        plt.ylabel('MSE Loss')
+        plt.legend()
+        plt.savefig(os.path.join(logging_directory, 'average_training_loss.pdf'), bbox_inches='tight')
+        plt.figure(5, figsize=(15, 10))
+        plt.plot(avg_epoch_reward_list, label=label)
+        plt.title('Average Epoch Reward')
+        plt.xlabel('iterations')
+        plt.ylabel('Reward')
+        plt.legend()
+        plt.savefig(os.path.join(logging_directory, 'average_epoch_reward.pdf'), bbox_inches='tight')
+        plt.figure(6, figsize=(15, 10))
+        plt.plot([mse_tot[-1] for mse_tot in epoch_mse_test_loss], label=label)
+        plt.title('Average Testing Loss')
+        plt.xlabel('iterations')
+        plt.ylabel('MSE Loss')
+        plt.legend()
+        plt.savefig(os.path.join(logging_directory, 'average_testing_loss.pdf'), bbox_inches='tight')
+
     # plt.show()
     np.savetxt(f'{experiment_directory}/average_training_loss.csv', epoch_avg_train_loss_list, delimiter=',', fmt='%.6f')
     np.savetxt(f'{experiment_directory}/average_epoch_reward.csv', avg_epoch_reward_list, delimiter=',', fmt='%.6f')
@@ -940,23 +976,30 @@ def main():
 
     # --- Step 2 : Define training Variables
     # Buffer size : number of prediction horizon for the student policy
-    buffer_size_list = [5, 10, 15]
+    # buffer_size_list = [5, 10, 15]
+    buffer_size_list = [12]
 
     # Factor of the simulation frequency at which the dataset will be recorded
-    frequency_reduction_list = [1, 2]
+    # frequency_reduction_list = [1, 2]
+    frequency_reduction_list = [1]
 
     # The encoding of the actions
-    action_encoding_list = [('discrete', 'discrete'), ('discrete', 'spline'), ('spline', 'discrete'), ('spline', 'spline'), ('first', 'discrete'), ('first', 'spline')] 
+    # action_encoding_list = [('discrete', 'discrete'), ('discrete', 'spline'), ('spline', 'discrete'), ('spline', 'spline'), ('first', 'discrete'), ('first', 'spline')] 
+    action_encoding_list = [('first', 'spline'), ('first', 'discrete')]#, ('discrete', 'discrete'), ('discrete', 'spline')] 
 
 
     # Trajectory length that are recorded between epoch
-    trajectory_length_s = 10 # [s]
+    # trajectory_length_s = 10 # [s]
+    # trajectory_length_s = 5 # [s]
 
     # Number of epoch
     tot_epoch = args_cli.epochs
 
     # Dataset maximum size before clipping
     dataset_max_size =  800000 # 300000 # [datapoints]
+
+    # datapoints_generated_per_iter = int(0.10 * dataset_max_size)
+    datapoints_generated_per_iter = 4*args_cli.num_envs
 
     test_set_size = 50000 # [datapoints]
 
@@ -983,14 +1026,14 @@ def main():
     if not os.path.exists(logging_directory):
         os.makedirs(logging_directory)
     else :
-        print('There is already an experiment setup in this directory, Please provide another folder_name')
-        raise KeyError
+        raise KeyError('There is already an experiment setup in this directory, Please provide another folder_name')
 
 
     # Save the model info as a JSON file
     json_data = {}
     json_data['num_envs'] = env.num_envs
-    json_data['trajectory_length_s'] = trajectory_length_s
+    # json_data['trajectory_length_s'] = trajectory_length_s
+    json_data['datapoints_generated_per_iter'] = datapoints_generated_per_iter
     json_data['tot_epoch'] = tot_epoch
     json_data['dataset_max_size'] = dataset_max_size
     with open(f'{logging_directory}/info.json', 'w') as file:
@@ -1046,7 +1089,6 @@ def main():
 
                 optimizer       = optim.Adadelta(student_policy.parameters(), lr=args_cli.lr)
                 train_criterion = nn.MSELoss() 
-                test_criterion  = nn.MSELoss() 
                 scheduler       = StepLR(optimizer, step_size=1, gamma=args_cli.gamma) # for adadelta
 
                     # Printing
@@ -1086,12 +1128,12 @@ def main():
                              scheduler, 
                              optimizer, 
                              train_criterion,
-                             test_criterion, 
                              device, 
                              tot_epoch, 
                              logging_directory,
                              experiment_directory, 
-                             trajectory_length_s,  
+                            #  trajectory_length_s, 
+                             datapoints_generated_per_iter, 
                              buffer_size,
                              max_buffer_size, 
                              frequency_reduction,
