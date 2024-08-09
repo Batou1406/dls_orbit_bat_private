@@ -393,7 +393,7 @@ class RewardsCfg:
     penalty_failed         = RewTerm(func=mdp.is_terminated, weight=1.0)
     
     # penalty_constraint_violation = RewTerm(func=mdp.penalize_constraint_violation,    weight=-0.02)
-    penalty_sampling_rollout     = RewTerm(func=mdp.penalize_sampling_controller_cost,weight=-0.0) #-1e-7
+    # penalty_sampling_rollout     = RewTerm(func=mdp.penalize_sampling_controller_cost,weight=-0.0) #-1e-7
 
 
 @configclass
