@@ -56,7 +56,7 @@ import torch.optim as optim
 from torch.optim.lr_scheduler import StepLR
 
 import matplotlib
-matplotlib.use('GTK4Agg')
+# matplotlib.use('GTK4Agg')
 import matplotlib.pyplot as plt
 import json
 import numpy as np
@@ -125,6 +125,63 @@ def train(model, device, train_loader, optimizer, epoch, criterion):
     # print(f"\nEpoch {epoch} : Average Train Loss {train_loss_avg}")
     print(f"\nAverage Train Loss {train_loss_avg:.4f}")
     return train_loss_avg
+
+
+def test(model, device, logging_directory, buffer_size, max_buffer_size, frequency_reduction, p_typeAction, F_typeAction, p_param, F_param):
+    f_len, d_len, p_len, F_len = 4, 4, 8, 12
+
+    model.eval()
+    with torch.no_grad():
+        test_dataset  = DatasetFromFile(f'{logging_directory}/testing_data.pt')
+        test_observations, test_actions = test_dataset()
+
+        # --- Step 1 : extract the test expert actions
+        f_test = test_actions[:, 0                                   : f_len                                                       ]                                    # shape (test_points, f_len)
+        d_test = test_actions[:, f_len                               :(f_len+d_len)                                                ]                                    # shape (test_points, d_len)
+        p_test = test_actions[:,(f_len+d_len)                        :(f_len+d_len+(max_buffer_size*p_len))                        ].reshape(-1, 4, 2, max_buffer_size) # shape (test_points, 4, 2, buffer_size)
+        F_test = test_actions[:,(f_len+d_len+(max_buffer_size*p_len)):(f_len+d_len+(max_buffer_size*p_len)+(max_buffer_size*F_len))].reshape(-1, 4, 3, max_buffer_size) # shape (test_points, 4, 3, buffer_size)
+
+        # reshape the actions to match the current frequency_reduction
+        p_test_discrete = p_test[:,:,:,::frequency_reduction][:,:,:,:buffer_size] # Discrete exact actions
+        F_test_discrete = F_test[:,:,:,::frequency_reduction][:,:,:,:buffer_size]
+
+        f_test_encoded = f_test
+        d_test_encoded = d_test
+
+        # reconstruct the encoded actions
+        if p_typeAction == 'discrete':
+            p_test_encoded = p_test_discrete
+        if p_typeAction == 'spline':
+            p_test_encoded = fit_cubic(y=p_test_discrete) # shape (test_points, num_legs, 2, 4)
+        if p_typeAction == 'first':
+            p_test_encoded = p_test_discrete[:,:,:,0].unsqueeze(-1)
+
+        # double not possible, because c is not available
+        if F_typeAction == 'discrete':
+            F_test_encoded = F_test_discrete
+        if F_typeAction == 'spline':
+            F_test_encoded = fit_cubic(y=F_test_discrete) # shape (test_points, num_legs, 3, 4)
+
+        test_encoded_action = torch.cat((f_test_encoded, d_test_encoded, p_test_encoded.flatten(1,-1), F_test_encoded.flatten(1,-1)),dim=1)
+
+
+        # --- Step 2 : Extract the student actions
+        stud_encoded_action = model(test_observations)
+
+        f_stud_encoded = stud_encoded_action[:, 0                           : f_len                                       ]                                    # shape (test_points, f_len)
+        d_stud_encoded = stud_encoded_action[:, f_len                       :(f_len+d_len)                                ]                                    # shape (test_points, d_len)
+        p_stud_encoded = stud_encoded_action[:,(f_len+d_len)                :(f_len+d_len+(p_param*p_len))                ].reshape(-1, 4, 2, p_param) # shape (test_points, 4, 2, p_param)
+        F_stud_encoded = stud_encoded_action[:,(f_len+d_len+(p_param*p_len)):(f_len+d_len+(p_param*p_len)+(F_param*F_len))].reshape(-1, 4, 3, F_param) # shape (test_points, 4, 3, F_param)
+
+
+        # --- Step 3 : Compute MSE
+        mse_f   = float(torch.mean(torch.square(f_test_encoded - f_stud_encoded)))
+        mse_d   = float(torch.mean(torch.square(d_test_encoded - d_stud_encoded)))
+        mse_p   = float(torch.mean(torch.square(p_test_encoded - p_stud_encoded)))
+        mse_F   = float(torch.mean(torch.square(F_test_encoded - F_stud_encoded)))
+        mse_tot = float(torch.mean(torch.square(test_encoded_action - stud_encoded_action)))
+
+        return mse_f, mse_d, mse_p, mse_F, mse_tot
 
 
 """ --- Dataset Class --- """
@@ -382,7 +439,7 @@ def get_touchdowns(c, p):
 
 
 """ --- DAgger Trainer --- """
-def DAgger_Train(env, expert_policy, student_policy, scheduler, optimizer, train_criterion, device, tot_epoch, logging_directory, experiment_directory, trajectory_length_s, buffer_size, max_buffer_size,  frequency_reduction,
+def DAgger_Train(env, expert_policy, student_policy, scheduler, optimizer, train_criterion, test_criterion, device, tot_epoch, logging_directory, experiment_directory, trajectory_length_s, buffer_size, max_buffer_size,  frequency_reduction,
                  p_typeAction, F_typeAction, p_param, F_param, p_shape, F_shape, dataset_max_size, train_kwargs, modelDict, test_iter):
 
     observations_data = torch.empty(0,device=device)
@@ -391,6 +448,7 @@ def DAgger_Train(env, expert_policy, student_policy, scheduler, optimizer, train
     f_len, d_len, p_len, F_len = 4, 4, 8, 12
     epoch_avg_train_loss_list = []
     avg_epoch_reward_list = []
+    epoch_mse_test_loss = []
     last_time_outloop = time.time()
     last_time = time.time()
 
@@ -565,12 +623,17 @@ def DAgger_Train(env, expert_policy, student_policy, scheduler, optimizer, train
         
         # Train the network and update the scheduler
         avg_train_loss = train(student_policy, device, train_loader, optimizer, epoch, train_criterion)
+
+        # Test the network and the test set (return mse_f, mse_d, mse_p, mse_F and mse_tot)
+        mse_test_loss = test(student_policy, device, logging_directory, buffer_size, max_buffer_size, frequency_reduction, p_typeAction, F_typeAction, p_param, F_param)
+
+        # Step the trainer parameters
         scheduler.step()
 
         # Save the training metrics
         epoch_avg_train_loss_list.append(float(avg_train_loss))
+        epoch_mse_test_loss.append(mse_test_loss)
         avg_epoch_reward_list.append(float(epoch_reward / (trajectory_length_iter*buffer_size) ))
-        # print('Average Epoch %d Reward : %.2f \n' % (epoch, avg_epoch_reward_list[-1]))
         print('Average Epoch Reward : %.2f' % (avg_epoch_reward_list[-1]))
 
 
@@ -622,6 +685,7 @@ def DAgger_Train(env, expert_policy, student_policy, scheduler, optimizer, train
     # plt.show()
     np.savetxt(f'{experiment_directory}/average_training_loss.csv', epoch_avg_train_loss_list, delimiter=',', fmt='%.6f')
     np.savetxt(f'{experiment_directory}/average_epoch_reward.csv', avg_epoch_reward_list, delimiter=',', fmt='%.6f')
+    np.savetxt(f'{experiment_directory}/epoch_mse_test_loss.csv', epoch_mse_test_loss, delimiter=',', fmt='%.6f')
 
 
 
@@ -875,17 +939,17 @@ def main():
 
     # --- Step 2 : Define training Variables
     # Buffer size : number of prediction horizon for the student policy
-    buffer_size_list = [5, 10, 15]
+    buffer_size_list = [5,6]#[5, 10, 15]
 
     # Factor of the simulation frequency at which the dataset will be recorded
-    frequency_reduction_list = [1, 2]
+    frequency_reduction_list = [1]#[1, 2]
 
     # The encoding of the actions
-    action_encoding_list = [('discrete', 'discrete'), ('discrete', 'spline'), ('spline', 'discrete'), ('spline', 'spline'), ('first', 'discrete'), ('first', 'spline')] 
+    action_encoding_list = [('discrete', 'discrete'), ('discrete', 'spline')]#, ('spline', 'discrete'), ('spline', 'spline'), ('first', 'discrete'), ('first', 'spline')] 
 
 
     # Trajectory length that are recorded between epoch
-    trajectory_length_s = 10 # [s]
+    trajectory_length_s = 2#10 # [s]
 
     # Number of epoch
     tot_epoch = args_cli.epochs
@@ -895,7 +959,7 @@ def main():
 
     test_set_size = 20000 # [datapoints]
 
-    test_iter = 50*15
+    test_iter = 10#50*15
 
 
 
@@ -981,6 +1045,7 @@ def main():
 
                 optimizer       = optim.Adadelta(student_policy.parameters(), lr=args_cli.lr)
                 train_criterion = nn.MSELoss() 
+                test_criterion  = nn.MSELoss() 
                 scheduler       = StepLR(optimizer, step_size=1, gamma=args_cli.gamma) # for adadelta
 
                     # Printing
@@ -1019,7 +1084,8 @@ def main():
                              student_policy, 
                              scheduler, 
                              optimizer, 
-                             train_criterion, 
+                             train_criterion,
+                             test_criterion, 
                              device, 
                              tot_epoch, 
                              logging_directory,
