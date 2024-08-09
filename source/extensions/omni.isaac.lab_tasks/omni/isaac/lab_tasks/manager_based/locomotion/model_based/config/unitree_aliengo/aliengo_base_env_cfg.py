@@ -128,7 +128,7 @@ class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
 
 
         """ ----- rewards ----- """
-        training = 'normal' # 'normal' or 'with_sampling'
+        training = 'with_sampling' # 'normal' or 'with_sampling'
 
         if training == 'normal' :
             # -- task
@@ -213,7 +213,7 @@ class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
             self.rewards.penalty_leg_duty_cycle.params  = params={"action_name": "model_base_variable", "bound": (0.35,0.7)}
             self.curriculum.penalty_leg_duty_cycle_curr = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_leg_duty_cycle", "weight": 0.1, "num_steps": (400*24)})
 
-            self.rewards.penalty_sampling_rollout.weight     = -0.1
+            self.rewards.penalty_sampling_rollout.weight     = -0.5
             # self.curriculum.penalty_sampling_rollout_curr = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_sampling_rollout", "weight": -2.5e-2, "num_steps": (1000*24)})
 
             # -- Additionnal Reward : Need a positive weight
