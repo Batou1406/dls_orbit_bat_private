@@ -940,17 +940,17 @@ def main():
 
     # --- Step 2 : Define training Variables
     # Buffer size : number of prediction horizon for the student policy
-    buffer_size_list = [5,6]#[5, 10, 15]
+    buffer_size_list = [5, 10, 15]
 
     # Factor of the simulation frequency at which the dataset will be recorded
-    frequency_reduction_list = [1]#[1, 2]
+    frequency_reduction_list = [1, 2]
 
     # The encoding of the actions
-    action_encoding_list = [('discrete', 'discrete'), ('discrete', 'spline')]#, ('spline', 'discrete'), ('spline', 'spline'), ('first', 'discrete'), ('first', 'spline')] 
+    action_encoding_list = [('discrete', 'discrete'), ('discrete', 'spline'), ('spline', 'discrete'), ('spline', 'spline'), ('first', 'discrete'), ('first', 'spline')] 
 
 
     # Trajectory length that are recorded between epoch
-    trajectory_length_s = 2#10 # [s]
+    trajectory_length_s = 10 # [s]
 
     # Number of epoch
     tot_epoch = args_cli.epochs
@@ -958,9 +958,9 @@ def main():
     # Dataset maximum size before clipping
     dataset_max_size =  800000 # 300000 # [datapoints]
 
-    test_set_size = 200 # [datapoints]
+    test_set_size = 50000 # [datapoints]
 
-    test_iter = 10#50*15
+    test_iter = 50*15
 
 
 
@@ -1006,8 +1006,8 @@ def main():
     # --- Step 5 : Create the config for the Experiment
     experiment_idx = 0
 
-    for buffer_size in buffer_size_list :
-        for frequency_reduction in frequency_reduction_list :
+    for frequency_reduction in frequency_reduction_list :
+        for buffer_size in buffer_size_list :
             for p_typeAction, F_typeAction in action_encoding_list : 
 
                 experiment_idx += 1
