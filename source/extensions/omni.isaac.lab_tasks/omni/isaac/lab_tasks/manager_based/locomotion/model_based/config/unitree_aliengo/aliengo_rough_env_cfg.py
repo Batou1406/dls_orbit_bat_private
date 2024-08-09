@@ -135,6 +135,7 @@ class UnitreeAliengoRoughEnvCfg(LocomotionModelBasedEnvCfg):
         self.rewards.penalty_CoT.weight                  = -0.04 #None
         self.rewards.penalty_close_feet                  = None
         self.rewards.penalize_foot_trac_err              = None
+        self.rewards.penalty_constraint_violation        = None
 
         # -- Model based penalty : Positive weight -> penalty is already negative
         self.rewards.penalty_leg_frequency.weight        = 2.0    #None
