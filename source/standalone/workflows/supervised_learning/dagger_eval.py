@@ -57,6 +57,7 @@ from torch.optim.lr_scheduler import StepLR
 
 import matplotlib
 # matplotlib.use('GTK4Agg')
+matplotlib.use('Agg') # not interactive, used to be run in headless
 import matplotlib.pyplot as plt
 import json
 import numpy as np
@@ -957,7 +958,7 @@ def main():
     # Dataset maximum size before clipping
     dataset_max_size =  800000 # 300000 # [datapoints]
 
-    test_set_size = 20000 # [datapoints]
+    test_set_size = 200 # [datapoints]
 
     test_iter = 10#50*15
 
