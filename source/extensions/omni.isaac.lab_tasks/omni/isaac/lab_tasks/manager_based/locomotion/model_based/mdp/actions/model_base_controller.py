@@ -14,7 +14,8 @@ import omni.isaac.lab.utils.math as math_utils
 from omni.isaac.lab.assets.articulation import Articulation
 from omni.isaac.lab.envs import ManagerBasedRLEnv
 
-from .helper import inverse_conjugate_euler_xyz_rate_matrix, rotation_matrix_from_w_to_b, gait_generator, compute_cubic_spline, compute_discrete, normal_sampling, uniform_sampling, fit_cubic, enforce_friction_cone_constraints_torch, from_zero_twopi_to_minuspi_pluspi
+from .helper import inverse_conjugate_euler_xyz_rate_matrix, rotation_matrix_from_w_to_b, gait_generator, compute_cubic_spline, compute_discrete, normal_sampling, uniform_sampling
+from .helper import fit_cubic, enforce_friction_cone_constraints_torch, from_zero_twopi_to_minuspi_pluspi, compute_unique
 
 
 class baseController(ABC):
@@ -222,8 +223,8 @@ class modelBaseController(baseController):
         # No optimizer
         f_star, d_star, p0_star_lw, delta_F0_star_lw = f, d, p_lw[:,:,:,0], delta_F_lw[:,:,:,0]
 
-        # Compute the contact sequence and update the phase
-        c_star, self.phase = gait_generator(f=f_star, d=d_star, phase=self.phase, horizon=1, dt=self._dt_out)
+        # Compute the contact sequence and update the phase (c at current time, phase at next time (after one f*dt increment)) (need at least an horizon 2 to have c_0 and phase_1)
+        c_star, next_phase = gait_generator(f=f_star, d=d_star, phase=self.phase, horizon=2, dt=self._dt_out)
         c0_star = c_star[:,:,0] # shape (batch_size, num_legs)
 
         # Generate the swing trajectory
@@ -237,6 +238,9 @@ class modelBaseController(baseController):
 
         # Enforce the friction cone constraints
         F0_star_lw = enforce_friction_cone_constraints_torch(F=F0_star_lw, mu=self._mu, F_z_min=0.0, F_z_max=9.81*self._robot_mass) # shape(num_samples, num_legs, 3)
+
+        # update the phase variable
+        self.phase = next_phase
 
         return f_star, d_star, c0_star, p0_star_lw, F0_star_lw, pt_star_lw, full_pt_lw
     
@@ -547,8 +551,8 @@ class samplingController(modelBaseController):
             p0_star_lw = self.samplingOptimizer.interpolation_p(parameters=p_lw,       step=0, horizon=1) # shape(batch, num_legs, 3)
             delta_F0_star_lw = self.samplingOptimizer.interpolation_F(parameters=delta_F_lw, step=0, horizon=1) # shape(batch, num_legs, 3)
 
-        # Compute the contact sequence and update the phase
-        c_star, self.phase = gait_generator(f=f_star, d=d_star, phase=self.phase, horizon=1, dt=self._dt_out)
+        # Compute the contact sequence and update the phase (c at current time, phase at next time (after one f*dt increment)) (need at least an horizon 2 to have c_0 and phase_1)
+        c_star, next_phase = gait_generator(f=f_star, d=d_star, phase=self.phase, horizon=2, dt=self._dt_out)
         c0_star = c_star[:,:,0] # shape (batch_size, num_legs)
 
         # Generate the swing trajectory
@@ -563,6 +567,9 @@ class samplingController(modelBaseController):
 
             # Enforce the friction cone constraints
             F0_star_lw = enforce_friction_cone_constraints_torch(F=F0_star_lw, mu=self._mu, F_z_min=0.0, F_z_max=9.81*self._robot_mass) # shape(num_samples, num_legs, 3)
+
+        # update the phase variable
+        self.phase = next_phase
 
         return f_star, d_star, c0_star, p0_star_lw, F0_star_lw, pt_star_lw, full_pt_lw 
 
@@ -607,12 +614,15 @@ class samplingTrainer(modelBaseController):
         d_star = d
         self.batched_cost = batched_cost
 
-        # Compute the contact sequence and update the phase
-        c_star, self.phase = gait_generator(f=f, d=d, phase=self.phase, horizon=1, dt=self._dt_out)
+        # Compute the contact sequence and update the phase (c at current time, phase at next time (after one f*dt increment)) (need at least an horizon 2 to have c_0 and phase_1)
+        c_star, next_phase = gait_generator(f=f, d=d, phase=self.phase, horizon=2, dt=self._dt_out)
         c0_star = c_star[:,:,0] # shape (batch_size, num_legs)
 
         # Generate the swing trajectory
         pt_star_lw, full_pt_lw = self.full_swing_trajectory_generator(p_lw=p0_star_lw, c0=c0_star, d=d_star, f=f_star)
+
+        # update the phase variable
+        self.phase = next_phase
 
         return f_star, d_star, c0_star, p0_star_lw, F0_star_lw, pt_star_lw, full_pt_lw 
     
@@ -622,7 +632,7 @@ class SamplingOptimizer():
     """ Model Based optimizer based on the centroidal model 
     
     Properties
-        c_prev (Tensor): Contact sequence determined at previous iteration of shape (batch_size, num_leg)
+        c_actual (Tensor): Contact sequence determined at previous iteration of shape (batch_size, num_leg)
         
     """
 
@@ -686,6 +696,9 @@ class SamplingOptimizer():
         elif optimizerCfg.parametrization_p == 'from_single_expand_discrete':
             self.interpolation_p=compute_discrete
             self.p_param = self.sampling_horizon
+        elif optimizerCfg.parametrization_p == 'first':
+            self.interpolation_p=compute_unique
+            self.p_param = 1
         else : raise NotImplementedError('Request interpolation method is not implemented yet')
 
         # Input and State dimension for centroidal model : hardcoded because the centroidal model is hardcoded # TODO get rid of these
@@ -730,8 +743,8 @@ class SamplingOptimizer():
         self.std_p = torch.tensor((0.02), device=device)
         self.std_F = torch.tensor((5.00), device=device)
 
-        # Previous contact sequence : used to reset solution when switch to swing shape (batch_size, num_leg)
-        self.c_prev = torch.ones((1, self.num_legs), device=device)
+        # Current contact sequence : used to reset solution when switch to swing shape (batch_size, num_leg)
+        self.c_actual = torch.ones((1, self.num_legs), device=device)
 
         # State weight - shape(state_dim)
         self.Q_vec = torch.zeros(self.state_dim, device=self.device)
@@ -801,11 +814,11 @@ class SamplingOptimizer():
             # --- Step 1 : Generate the samples and bound them to valid input
             f_samples, d_samples, p_lw_samples, delta_F_lw_samples = self.generate_samples(iter=i, f=f, d=d, p_lw=p_lw, delta_F_lw=delta_F_lw)
 
-            # --- Step 2 : Given f and d samples -> generate the contact sequence for the samples
-            c_samples, new_phase = gait_generator(f=f_samples, d=d_samples, phase=phase.squeeze(0), horizon=self.sampling_horizon, dt=self.mpc_dt)
+            # --- Step 2 : Given f and d samples -> generate the contact sequence for the samples, contact sequence start at time t_0, next phase is phase at time t_1
+            c_samples, next_phase = gait_generator(f=f_samples, d=d_samples, phase=phase.squeeze(0), horizon=max(2, self.sampling_horizon), dt=self.mpc_dt)
 
             # --- Step 2 : prepare the variables 
-            initial_state, reference_seq_state, reference_seq_input_samples, action_param_samples = self.prepare_variable_for_compute_rollout(c_samples=c_samples, p_lw_samples=p_lw_samples, delta_F_lw_samples=delta_F_lw_samples, feet_in_contact=self.c_prev[0,])
+            initial_state, reference_seq_state, reference_seq_input_samples, action_param_samples = self.prepare_variable_for_compute_rollout(c_samples=c_samples, p_lw_samples=p_lw_samples, delta_F_lw_samples=delta_F_lw_samples, feet_in_contact=self.c_actual[0,])
 
             # --- Step 3 : Compute the rollouts to find the rollout cost : can't used named argument with VMAP...
             cost_samples = self.compute_rollout( initial_state, reference_seq_state, reference_seq_input_samples, action_param_samples, c_samples)
@@ -833,7 +846,7 @@ class SamplingOptimizer():
             c_samples       (t.bool): Foot contact sequence sample                                                      of shape(num_samples, num_legs, sampling_horizon)
             p_lw_samples    (Tensor): Foot touch down position                                                          of shape(num_samples, num_legs, 3, p_param)
             F_lw_samples    (Tensor): ground Reaction Forces                                                            of shape(num_samples, num_legs, 3, F_param)
-            feet_in_contact (Tensor): Feet in contact, determined by prevous solution                                   of shape(num_legs)
+            feet_in_contact (Tensor): Feet in contact, This is equivalent to c0                                         of shape(num_legs)
 
         
         Return :
@@ -1046,12 +1059,8 @@ class SamplingOptimizer():
         # self.f_best, self.d_best, self.p_best, self.F_best = self.shift_actions(f=self.f_best, d=self.d_best, p=self.p_best, F=self.F_best)
 
         # reset the delta of the actions if contact ended (ie. started swing phase)
-        lift_off_mask = ((self.c_prev[:,:] == 1) * (c_star[:,:,0] == 0)) # shape (1,num_legs)
-        self.F_best[lift_off_mask] = 0.0
-
-        # Update c_prev for next iteration
-        self.c_prev = c_star[:,:,0] # shape (batch_size, num_legs)
- 
+        lift_off_mask = ((self.c_actual[:,:] == 1) * (c_star[:,:,1] == 0)) # shape (1,num_legs)
+        self.F_best[lift_off_mask] = 0.0 
 
         # Retrive action to be applied at next time step
         p0_star_lw = self.interpolation_p(parameters=p_star_lw,       step=0, horizon=self.sampling_horizon) # shape(1, num_legs, 3)
@@ -1071,6 +1080,9 @@ class SamplingOptimizer():
         # Enforce force constraints (Friction cone constraints)
         # F0_star_lw = self.enforce_friction_cone_constraints_torch(F=F0_star_lw, mu=self.mu)                           # shape(num_samples, num_legs, 3)
         F0_star_lw = enforce_friction_cone_constraints_torch(F=F0_star_lw, mu=self.mu, F_z_min=self.F_z_min, F_z_max=self.F_z_max) # shape(num_samples, num_legs, 3)
+
+        # Update c_actual for next iteration
+        self.c_actual = c_star[:,:,1] # shape (batch_size, num_legs)
 
         return f_star, d_star, p0_star_lw, F0_star_lw
 
@@ -1114,7 +1126,7 @@ class SamplingOptimizer():
         if self.cfg.parametrization_F == 'from_single_expand_discrete' :
             delta_F_lw = delta_F_lw.expand_as(self.F_best) # shape(batch, leg , 3, 1) -> shape(batch, leg , 3, F_param)
         
-        if self.cfg.parametrization_p == 'from_single_expand_discrete' :
+        if self.cfg.parametrization_p == 'from_single_expand_discrete':
             p_lw = p_lw.expand_as(self.p_best) # shape(batch, leg , 3, 1) -> shape(batch, leg , 3, p_param)
 
         if self.cfg.parametrization_F == 'cubic_spline':
@@ -1541,6 +1553,9 @@ class SamplingBatchedTrainer():
         elif optimizerCfg.parametrization_p == 'from_single_expand_discrete':
             self.interpolation_p=compute_discrete
             self.p_param = self.sampling_horizon
+        elif optimizerCfg.parametrization_p == 'first':
+            self.interpolation_p=compute_unique
+            self.p_param = 1
         else : raise NotImplementedError('Request interpolation method is not implemented yet')
 
         # Input and State dimension for centroidal model : hardcoded because the centroidal model is hardcoded # TODO get rid of these
@@ -1566,8 +1581,8 @@ class SamplingBatchedTrainer():
         # Define the height reference for the tracking
         self.height_ref = optimizerCfg.height_ref
 
-        # Previous contact sequence : used to reset solution when switch to swing shape (batch_size, num_leg)
-        self.c_prev = torch.ones((self._env.num_envs, self.num_legs), device=device)
+        # Current contact sequence : used to reset solution when switch to swing shape (batch_size, num_leg)
+        self.c_actual = torch.ones((self._env.num_envs, self.num_legs), device=device)
 
         # State weight - shape(state_dim)
         self.Q_vec = torch.zeros(self.state_dim, device=self.device)
@@ -1628,11 +1643,10 @@ class SamplingBatchedTrainer():
             p_lw = p_lw.expand(self._env.num_envs, self.num_legs, 3, self.sampling_horizon) # shape(batch, leg , 3, 1) -> shape(batch, leg , 3, p_param)
 
         # --- Step 1 : Given f and d samples -> generate the contact sequence for the samples
-        batched_c, new_phase = gait_generator(f=f, d=d, phase=phase, horizon=self.sampling_horizon, dt=self.mpc_dt)
+        batched_c, next_phase = gait_generator(f=f, d=d, phase=phase, horizon=max(2,self.sampling_horizon), dt=self.mpc_dt)
 
         # --- Step 2 : prepare the variables 
-        batched_initial_state, batched_reference_seq_state, batched_reference_seq_input, batched_action_param = self.prepare_variable_for_compute_rollout(batched_c=batched_c, batched_p_lw=p_lw, batched_delta_F_lw=delta_F_lw, feet_in_contact=self.c_prev)
-        self.c_prev = batched_c[:,:,0]
+        batched_initial_state, batched_reference_seq_state, batched_reference_seq_input, batched_action_param = self.prepare_variable_for_compute_rollout(batched_c=batched_c, batched_p_lw=p_lw, batched_delta_F_lw=delta_F_lw, feet_in_contact=self.c_actual)
 
         # --- Step 3 : Compute the rollouts to find the rollout cost : can't used named argument with VMAP...
         bacthed_cost = self.batched_compute_rollout(batched_initial_state, batched_reference_seq_state, batched_reference_seq_input, batched_action_param, batched_c)
@@ -1654,6 +1668,9 @@ class SamplingBatchedTrainer():
             self.cost_list.append(bacthed_cost[0].cpu().numpy())
             if len(self.cost_list) > 100 : self.cost_list.pop(0)
             np.savetxt('live_variable/cost.csv', [self.cost_list], delimiter=',', fmt='%.3f')
+
+        # Update for next iteration
+        self.c_actual = batched_c[:,:,1]
 
         return bacthed_cost, p0_star_lw, F0_star_lw
     

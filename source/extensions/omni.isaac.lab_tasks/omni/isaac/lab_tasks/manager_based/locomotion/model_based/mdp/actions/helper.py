@@ -132,25 +132,24 @@ def gait_generator(f: torch.Tensor, d: torch.Tensor, phase: torch.Tensor, horizo
         - c     (t.bool): Foot contact sequence samples         of shape(batch, num_legs, sampling_horizon)
         - phase (Tensor): The phase samples updated by 1 dt     of shape(batch, num_legs)
     """
-    
-    # Increment phase of f*dt: new_phases[0] : incremented of 1 step, new_phases[1] incremented of 2 steps, etc. without a for loop.
-    # new_phases = phase + f*dt*[1,2,...,sampling_horizon]
-    #                    (1 or n, num_legs, 1)                 + (samples, legs, 1)       * (1, 1, sampling_horizon) -> shape(samples, legs, sampling_horizon)
+    # Increment phase of f*dt: new_phases[1] : incremented of 1 step, new_phases[2] incremented of 2 steps, etc. without a for loop.
     if phase.dim() == 1 : 
         phase = phase.unsqueeze(0)
-    new_phases = phase.unsqueeze(-1) + (f.unsqueeze(-1) * torch.linspace(start=1, end=horizon, steps=horizon, device=f.device).unsqueeze(0).unsqueeze(1)*dt)
+    # new_phases = phase.unsqueeze(-1) + (f.unsqueeze(-1) * torch.linspace(start=1, end=horizon, steps=horizon, device=f.device).unsqueeze(0).unsqueeze(1)*dt) # new_phases = phase + f*dt*[1,2,...,sampling_horizon]
+    new_phases = phase.unsqueeze(-1) + (f.unsqueeze(-1) * torch.arange(horizon, device=f.device).unsqueeze(0).unsqueeze(1)*dt) # new_phases = phase + f*dt*[0,1,2,...,sampling_horizon-1]
 
     # Make the phases circular (like sine) (% is modulo operation)
     new_phases = new_phases%1
 
     # Save first phase -> shape(num_samples, num_legs)
-    new_phase = new_phases[..., 0]
+    # next_phase = new_phases[..., 0]
+    next_phase = new_phases[..., 1]
 
     # Make comparaison to return discret contat sequence : c = 1 if phase < d, 0 otherwise
     # (samples, legs, sampling_horizon) <= (samples, legs, 1) -> shape(num_samples, num_legs, sampling_horizon)
     c = new_phases <= d.unsqueeze(-1)
 
-    return c, new_phase
+    return c, next_phase
 
 
 @torch.jit.script
@@ -266,6 +265,23 @@ def compute_discrete(parameters: torch.Tensor, step: int, horizon: int):
     """
 
     actions = parameters[:,:,:,step]
+    return actions
+
+@torch.jit.script
+def compute_unique(parameters: torch.Tensor, step: int, horizon: int):
+    """ If actions are unique action, no interpolation are required.
+    This function simply return the action
+
+    Args :
+        parameters (Tensor): Discrete action parameter    of shape(batch, num_legs, 3, 1)
+        step          (int): The current step index along horizon
+        horizon       (int): Not used : here for compatibility
+
+    Returns :
+        actions    (Tensor): Discrete action              of shape(batch, num_legs, 3)
+    """
+
+    actions = parameters[:,:,:,0]
     return actions
 
 

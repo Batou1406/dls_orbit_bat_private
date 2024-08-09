@@ -16,18 +16,27 @@ from omni.isaac.lab_assets.unitree import UNITREE_ALIENGO_CFG, UNITREE_GO2_CFG, 
 from omni.isaac.lab_assets.anymal import ANYMAL_C_CFG  # isort: skip
 
 from omni.isaac.lab.terrains.config.niceFlat import COBBLESTONE_ROAD_CFG
+from omni.isaac.lab.terrains.config.climb import STAIRS_TERRAINS_CFG
+from omni.isaac.lab.terrains.config.speed import SPEED_TERRAINS_CFG
+from omni.isaac.lab.terrains.config.rough import ROUGH_TERRAINS_CFG
 
 from omni.isaac.lab_tasks.manager_based.locomotion.model_based.mdp import modify_reward_weight
 from omni.isaac.lab.managers import CurriculumTermCfg as CurrTerm
+
+from omni.isaac.lab.terrains import randomTerrainImporter
 
 @configclass
 class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
     def __post_init__(self):
 
-        self.scene.terrain.terrain_generator = COBBLESTONE_ROAD_CFG
+        self.scene.terrain.terrain_generator = COBBLESTONE_ROAD_CFG # Flat
+        # self.scene.terrain.terrain_generator = STAIRS_TERRAINS_CFG
+        # self.scene.terrain.terrain_generator = SPEED_TERRAINS_CFG
+        # self.scene.terrain.terrain_generator = ROUGH_TERRAINS_CFG
+        
 
-        # post init of parent
-        super().__post_init__()
+        # --- Change the standard curriculum, must be done before super().__post_init__()
+        self.scene.terrain.class_type = randomTerrainImporter
 
         """ ----- Scene Settings ----- """
         # --- Select the robot : Unitree Aliengo
@@ -63,9 +72,11 @@ class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
 
         if Terrain_curriculum : 
             # --- scale down the terrains because the robot is small
-            self.scene.terrain.terrain_generator.sub_terrains["boxes"].grid_height_range = (0.025, 0.1)
-            self.scene.terrain.terrain_generator.sub_terrains["random_rough"].noise_range = (0.01, 0.06)
-            self.scene.terrain.terrain_generator.sub_terrains["random_rough"].noise_step = 0.01
+            try :
+                self.scene.terrain.terrain_generator.sub_terrains["boxes"].grid_height_range = (0.025, 0.1)
+                self.scene.terrain.terrain_generator.sub_terrains["random_rough"].noise_range = (0.01, 0.06)
+                self.scene.terrain.terrain_generator.sub_terrains["random_rough"].noise_step = 0.01
+            except : pass
         else :
             self.curriculum.terrain_levels = None                                                                       # By default activated
             # self.scene.terrain.terrain_type = 'plane'
@@ -170,4 +181,7 @@ class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
 
 
         """ ----- terminations ----- """
+
+        # post init of parent
+        super().__post_init__()
  
