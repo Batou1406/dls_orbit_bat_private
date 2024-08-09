@@ -65,7 +65,7 @@ class ModelBaseActionCfg(ActionTermCfg):
         parametrization_p: Literal['discrete', 'cubic_spline', 'from_discrete_fit_spline', 'from_single_expand_discrete', 'first'] = 'first'
         """ Define how p, foot touch down position, are encoded : can be 'discrete', 'cubic_spline' or from_discrete_fit_spline, this modify p_param  """
 
-        parametrization_F: Literal['discrete', 'cubic_spline', 'from_discrete_fit_spline', 'from_single_expand_discrete'] = 'discrete'
+        parametrization_F: Literal['discrete', 'cubic_spline', 'from_discrete_fit_spline', 'from_single_expand_discrete'] = 'cubic_spline'
         """ Define how F, Ground Reaction Forces, are encoded : can be 'discrete', 'cubic_spline' or 'from_discrete_fit_spline', this modify F_param """
 
         height_ref: float = 0.35 #0.35 #0.38

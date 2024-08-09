@@ -1637,10 +1637,16 @@ class SamplingBatchedTrainer():
             F_star_lw (Tensor): ground Reaction Forces       of shape(batch_size, num_leg, 3, F_param)
         """
         # --- Step 0 : modify F and p if necessary.
-        if self.cfg.parametrization_F == 'from_single_expand_discrete' :
-            delta_F_lw = delta_F_lw.expand(self._env.num_envs, self.num_legs, 3, self.sampling_horizon) # shape(batch, leg , 3, 1) -> shape(batch, leg , 3, F_param)
         if self.cfg.parametrization_p == 'from_single_expand_discrete' :
             p_lw = p_lw.expand(self._env.num_envs, self.num_legs, 3, self.sampling_horizon) # shape(batch, leg , 3, 1) -> shape(batch, leg , 3, p_param)
+ 
+        if self.cfg.parametrization_F == 'from_single_expand_discrete' :
+            delta_F_lw = delta_F_lw.expand(self._env.num_envs, self.num_legs, 3, self.sampling_horizon) # shape(batch, leg , 3, 1) -> shape(batch, leg , 3, F_param)
+        if self.cfg.parametrization_F == 'cubic_spline':
+            # Since the cubic spline fitting has been normalised with first and last coefficient 10 times smaller than what they should be
+            delta_F_lw[:,:,:,0] = 10*delta_F_lw[:,:,:,0]
+            delta_F_lw[:,:,:,3] = 10*delta_F_lw[:,:,:,3] 
+
 
         # --- Step 1 : Given f and d samples -> generate the contact sequence for the samples
         batched_c, next_phase = gait_generator(f=f, d=d, phase=phase, horizon=max(2,self.sampling_horizon), dt=self.mpc_dt)
