@@ -1063,8 +1063,8 @@ class SamplingOptimizer():
         self.F_best[lift_off_mask] = 0.0 
 
         # Retrive action to be applied at next time step
-        p0_star_lw = self.interpolation_p(parameters=p_star_lw,       step=0, horizon=self.sampling_horizon) # shape(1, num_legs, 3)
-        F0_star_lw = self.interpolation_F(parameters=delta_F_star_lw, step=0, horizon=self.sampling_horizon) # shape(1, num_legs, 3)
+        p0_star_lw = self.interpolation_p(parameters=p_star_lw,       step=0, horizon=self.sampling_horizon).clone().detach() # shape(1, num_legs, 3)
+        F0_star_lw = self.interpolation_F(parameters=delta_F_star_lw, step=0, horizon=self.sampling_horizon).clone().detach() # shape(1, num_legs, 3)
 
         # Print difference with RL warm start
         if self.optimize_f : print('f - cum. diff. : %3.2f' % torch.sum(torch.abs(f_star - f_samples[0,...])))
