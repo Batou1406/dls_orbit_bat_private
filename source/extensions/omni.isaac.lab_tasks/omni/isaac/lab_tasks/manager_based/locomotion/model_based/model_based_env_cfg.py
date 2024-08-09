@@ -182,9 +182,9 @@ class ActionsCfg:
     model_base_variable = mdp.ModelBaseActionCfg(
         asset_name="robot",
         joint_names=[".*"], 
-        controller=mdp.samplingController,
-        optimizerCfg=mdp.ModelBaseActionCfg.OptimizerCfg(),
-        # controller=mdp.modelBaseController,
+        # controller=mdp.samplingController,
+        # optimizerCfg=mdp.ModelBaseActionCfg.OptimizerCfg(),
+        controller=mdp.modelBaseController,
         # controller=mdp.samplingTrainer,
         )
     
@@ -392,7 +392,7 @@ class RewardsCfg:
     reward_is_alive        = RewTerm(func=mdp.is_alive, weight=0.25)
     penalty_failed         = RewTerm(func=mdp.is_terminated, weight=1.0)
     
-    # penalty_constraint_violation = RewTerm(func=mdp.penalize_constraint_violation,    weight=-0.02)
+    penalty_constraint_violation = RewTerm(func=mdp.penalize_constraint_violation,    weight=-0.03)
     # penalty_sampling_rollout     = RewTerm(func=mdp.penalize_sampling_controller_cost,weight=-0.0) #-1e-7
 
 
@@ -461,7 +461,7 @@ class LocomotionModelBasedEnvCfg(ManagerBasedRLEnvCfg):
     def __post_init__(self):
         """Post initialization."""
         # general settings
-        self.decimation = 2 #2
+        self.decimation = 4 #2
         self.episode_length_s = 15.0
         # simulation settings
         self.sim.dt = 0.005

@@ -976,16 +976,16 @@ def main():
 
     # --- Step 2 : Define training Variables
     # Buffer size : number of prediction horizon for the student policy
-    # buffer_size_list = [5, 10, 15]
-    buffer_size_list = [12]
+    buffer_size_list = [5, 10, 15]
+    # buffer_size_list = [12]
 
     # Factor of the simulation frequency at which the dataset will be recorded
-    # frequency_reduction_list = [1, 2]
-    frequency_reduction_list = [1]
+    frequency_reduction_list = [1, 2]
+    # frequency_reduction_list = [1]
 
     # The encoding of the actions
-    # action_encoding_list = [('discrete', 'discrete'), ('discrete', 'spline'), ('spline', 'discrete'), ('spline', 'spline'), ('first', 'discrete'), ('first', 'spline')] 
-    action_encoding_list = [('first', 'spline'), ('first', 'discrete')]#, ('discrete', 'discrete'), ('discrete', 'spline')] 
+    action_encoding_list = [('discrete', 'discrete'), ('discrete', 'spline'), ('spline', 'discrete'), ('spline', 'spline'), ('first', 'discrete'), ('first', 'spline')] 
+    # action_encoding_list = [('first', 'spline'), ('first', 'discrete')]#, ('discrete', 'discrete'), ('discrete', 'spline')] 
 
 
     # Trajectory length that are recorded between epoch
@@ -996,7 +996,7 @@ def main():
     tot_epoch = args_cli.epochs
 
     # Dataset maximum size before clipping
-    dataset_max_size =  800000 # 300000 # [datapoints]
+    dataset_max_size =  600000 # 300000 # [datapoints] 800000 too much for GPU and horizon=15
 
     datapoints_generated_per_iter = int(0.10 * dataset_max_size)
     # datapoints_generated_per_iter = 4*args_cli.num_envs
