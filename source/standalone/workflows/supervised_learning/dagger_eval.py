@@ -637,7 +637,7 @@ def DAgger_Train(env, expert_policy, student_policy, scheduler, optimizer, train
         epoch_avg_train_loss_list.append(float(avg_train_loss))
         epoch_mse_test_loss.append(mse_test_loss)
         avg_epoch_reward_list.append(float(epoch_reward / (num_iter_to_gen_required_datapoints*buffer_size) ))
-        print(f"\nAverage Test Loss {mse_test_loss[-1]:.4f}")
+        print(f"Average Test Loss {mse_test_loss[-1]:.4f}")
         print('Average Epoch Reward : %.2f' % (avg_epoch_reward_list[-1]))
 
 
@@ -998,8 +998,8 @@ def main():
     # Dataset maximum size before clipping
     dataset_max_size =  800000 # 300000 # [datapoints]
 
-    # datapoints_generated_per_iter = int(0.10 * dataset_max_size)
-    datapoints_generated_per_iter = 4*args_cli.num_envs
+    datapoints_generated_per_iter = int(0.10 * dataset_max_size)
+    # datapoints_generated_per_iter = 4*args_cli.num_envs
 
     test_set_size = 50000 # [datapoints]
 
