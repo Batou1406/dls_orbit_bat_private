@@ -1928,6 +1928,12 @@ class SamplingBatchedTrainer():
             # Update the trajectory cost
             bacthed_cost += step_cost                                                                                           # shape(num_samples)
 
+
+            # print('Lin vel ', state['lin_com_vel_lw'])
+            # print('Lin vel ref ', batched_reference_seq_state['lin_com_vel_lw'][...,i])
+            # print('state error ', state_error)
+            # print()
+
         return bacthed_cost
     
 
