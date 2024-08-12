@@ -172,8 +172,10 @@ def penalize_Forces_variation_L2(env: ManagerBasedRLEnv, action_name: str) -> to
     action : ModelBaseAction = env.action_manager.get_term(action_name)
 
     # Shape (batch_size, num_legs, 3, prediction_horizon) -> (batch_size, num_legs * 3 * prediction_horizon)
-    F:     torch.Tensor = action.delta_F_h.flatten(1,-1)
-    F_prev:torch.Tensor = action.delta_F_h_prev.flatten(1,-1)
+    # F:     torch.Tensor = action.delta_F_h.flatten(1,-1)
+    # F_prev:torch.Tensor = action.delta_F_h_prev.flatten(1,-1)
+    F:     torch.Tensor = action.F_raw.flatten(1,-1)
+    F_prev:torch.Tensor = action.F_raw_prev.flatten(1,-1)
 
     penalty = -torch.sum(torch.square(F-F_prev), dim=1)
 

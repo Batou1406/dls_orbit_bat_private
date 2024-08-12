@@ -239,6 +239,7 @@ class ModelBaseAction(ActionTerm):
         self.d_prev         = self.d_raw.clone().detach() 
         self.delta_p_h_prev = self.p_raw.clone().detach() 
         self.delta_F_h_prev = self.F_raw.clone().detach() 
+        self.F_raw_prev     = self.F_raw.clone().detach() 
 
         # Normalized and transformed to frame RL output
         self.p_lw        = torch.zeros(self.num_envs, self._num_legs, 3, self._p_param, device=self.device) 
@@ -376,6 +377,7 @@ class ModelBaseAction(ActionTerm):
         self.d_prev      = self.d
         self.delta_p_h_prev = self.delta_p_h
         self.delta_F_h_prev = self.delta_F_h
+        self.F_raw_prev  = self.F_raw
 
         # store the raw actions
         self._raw_actions[:] = actions
