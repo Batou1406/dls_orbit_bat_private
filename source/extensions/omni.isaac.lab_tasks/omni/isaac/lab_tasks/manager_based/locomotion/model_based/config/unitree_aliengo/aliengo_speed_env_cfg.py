@@ -33,21 +33,7 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
 
 
         """ ----- Reward and Event Curriculum ----- """
-        # push_robot_curriculum = True
-        # randomize_physical_properties_curriculum = True
-        # observation_noise_curriculum = True
-        frequency_variation_curriculum = True
 
-        if frequency_variation_curriculum :
-            num_iter_activate = 800
-            self.curriculum.penalty_frequency_variation_curr    = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_frequency_variation",  "weight": 0.2,  "num_steps": (num_iter_activate*24)})
-            self.curriculum.penatly_duty_cycle_variation_curr   = CurrTerm(func=modify_reward_weight, params={"term_name": "penatly_duty_cycle_variation", "weight": 1.0,  "num_steps": (num_iter_activate*24)})
-            self.curriculum.penalty_step_variation_curr         = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_step_variation",       "weight": 1.0,  "num_steps": (num_iter_activate*24)})
-            self.curriculum.penatly_force_variation_curr        = CurrTerm(func=modify_reward_weight, params={"term_name": "penatly_force_variation",      "weight": 2e-5, "num_steps": (num_iter_activate*24)})
-
-
-        # post init of parent
-        super().__post_init__()
 
         """ ----- Scene Settings ----- """
         # --- Select the robot : Unitree Aliengo
@@ -184,6 +170,13 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
             self.rewards.reward_is_alive                     = None
             self.rewards.penalty_failed                      = None
 
+            num_iter_activate = 800
+            self.curriculum.penalty_frequency_variation_curr    = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_frequency_variation",  "weight": 0.2,  "num_steps": (num_iter_activate*24)})
+            self.curriculum.penatly_duty_cycle_variation_curr   = CurrTerm(func=modify_reward_weight, params={"term_name": "penatly_duty_cycle_variation", "weight": 1.0,  "num_steps": (num_iter_activate*24)})
+            self.curriculum.penalty_step_variation_curr         = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_step_variation",       "weight": 1.0,  "num_steps": (num_iter_activate*24)})
+            self.curriculum.penatly_force_variation_curr        = CurrTerm(func=modify_reward_weight, params={"term_name": "penatly_force_variation",      "weight": 2e-5, "num_steps": (num_iter_activate*24)})
+
+
         if training == 'with_sampling' :
             # -- task
             self.rewards.track_lin_vel_xy_exp                = None
@@ -275,5 +268,15 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
 
             self.rewards.penalty_sampling_rollout.weight     = -0.01
 
+            num_iter_activate = 800
+            self.curriculum.penalty_frequency_variation_curr    = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_frequency_variation",  "weight": 0.2,  "num_steps": (num_iter_activate*24)})
+            self.curriculum.penatly_duty_cycle_variation_curr   = CurrTerm(func=modify_reward_weight, params={"term_name": "penatly_duty_cycle_variation", "weight": 1.0,  "num_steps": (num_iter_activate*24)})
+            self.curriculum.penalty_step_variation_curr         = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_step_variation",       "weight": 1.0,  "num_steps": (num_iter_activate*24)})
+            self.curriculum.penatly_force_variation_curr        = CurrTerm(func=modify_reward_weight, params={"term_name": "penatly_force_variation",      "weight": 2e-5, "num_steps": (num_iter_activate*24)})
+
         """ ----- terminations ----- """
+
+
+        # post init of parent
+        super().__post_init__()
  

@@ -15,7 +15,7 @@ from omni.isaac.lab_tasks.manager_based.locomotion.model_based.model_based_env_c
 from omni.isaac.lab_assets.unitree import UNITREE_ALIENGO_CFG, UNITREE_GO2_CFG, UNITREE_ALIENGO_TORQUE_CONTROL_CFG, UNITREE_ALIENGO_SELF_COLLISION_TORQUE_CONTROL_CFG  # isort: skip
 from omni.isaac.lab_assets.anymal import ANYMAL_C_CFG  # isort: skip
 
-from omni.isaac.lab.terrains.config.niceFlat import COBBLESTONE_ROAD_CFG
+from omni.isaac.lab.terrains.config.niceFlat import COBBLESTONE_ROAD_CFG, COBBLESTONE_FLAT_CFG
 from omni.isaac.lab.terrains.config.climb import STAIRS_TERRAINS_CFG
 from omni.isaac.lab.terrains.config.speed import SPEED_TERRAINS_CFG
 from omni.isaac.lab.terrains.config.rough import ROUGH_TERRAINS_CFG
@@ -29,7 +29,8 @@ from omni.isaac.lab.terrains import randomTerrainImporter
 class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
     def __post_init__(self):
 
-        self.scene.terrain.terrain_generator = COBBLESTONE_ROAD_CFG # Flat
+        self.scene.terrain.terrain_generator = COBBLESTONE_FLAT_CFG # very Flat
+        # self.scene.terrain.terrain_generator = COBBLESTONE_ROAD_CFG # Flat
         # self.scene.terrain.terrain_generator = STAIRS_TERRAINS_CFG
         # self.scene.terrain.terrain_generator = SPEED_TERRAINS_CFG
         # self.scene.terrain.terrain_generator = ROUGH_TERRAINS_CFG

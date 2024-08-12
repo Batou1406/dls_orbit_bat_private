@@ -1118,9 +1118,6 @@ class SamplingOptimizer():
         """
         # Prepare RL input if needed
         if self.cfg.parametrization_F == 'from_discrete_fit_spline' :
-            # Since the cubic spline fitting has been normalised with first and last coefficient 10 times smaller than what they should be
-            delta_F_lw[:,:,:,0] = 10*delta_F_lw[:,:,:,0]
-            delta_F_lw[:,:,:,3] = 10*delta_F_lw[:,:,:,3] 
             delta_F_lw = fit_cubic(delta_F_lw)  # shape(batch, leg , 3, sampling_horizon) -> shape(batch, leg , 3, F_param)
         
         if self.cfg.parametrization_p == 'from_discrete_fit_spline' :
