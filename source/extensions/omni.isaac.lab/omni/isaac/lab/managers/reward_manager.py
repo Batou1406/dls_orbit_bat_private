@@ -109,7 +109,7 @@ class RewardManager(ManagerBase):
             episodic_sum_avg = torch.mean(self._episode_sums[key][env_ids])
             extras["Episode Reward/" + key] = episodic_sum_avg / self._env.max_episode_length_s
 
-            episodic_mean_length = torch.mean(self._env.episode_length_buf[env_ids])
+            episodic_mean_length = torch.mean(self._env.episode_length_buf[env_ids].float())
             extras["Bat Step Mean Reward/" + key] = episodic_sum_avg / episodic_mean_length
             # reset episodic sum
             self._episode_sums[key][env_ids] = 0.0
