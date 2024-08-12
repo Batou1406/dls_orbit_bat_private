@@ -292,7 +292,7 @@ class BatManagerBasedRLEnvWindow(BaseEnvWindow):
                     )
                     omni.isaac.ui.ui_utils.add_line_rect_flourish()                
 
-                # Create a slider to chnage the leg frequency standard variation in the sampling law
+                # Create a slider to change the leg frequency standard variation in the sampling law
                 f_std_cfg = {
                     "label": "f std [Hz]",
                     "type": "button",
@@ -305,7 +305,7 @@ class BatManagerBasedRLEnvWindow(BaseEnvWindow):
                 self.ui_window_elements["f std"] = omni.isaac.ui.ui_utils.float_builder(**f_std_cfg)
                 self.ui_window_elements["f std"].add_value_changed_fn(self._update_f_std)
 
-                # Create a slider to chnage the leg duty cycle standard variation in the sampling law
+                # Create a slider to change the leg duty cycle standard variation in the sampling law
                 d_std_cfg = {
                     "label": "d std",
                     "type": "button",
@@ -318,7 +318,7 @@ class BatManagerBasedRLEnvWindow(BaseEnvWindow):
                 self.ui_window_elements["d std"] = omni.isaac.ui.ui_utils.float_builder(**d_std_cfg)
                 self.ui_window_elements["d std"].add_value_changed_fn(self._update_d_std)
 
-                # Create a slider to chnage the foot touch down position standard variation in the sampling law
+                # Create a slider to change the foot touch down position standard variation in the sampling law
                 p_std_cfg = {
                     "label": "p std [m]",
                     "type": "button",
@@ -331,7 +331,7 @@ class BatManagerBasedRLEnvWindow(BaseEnvWindow):
                 self.ui_window_elements["p std"] = omni.isaac.ui.ui_utils.float_builder(**p_std_cfg)
                 self.ui_window_elements["p std"].add_value_changed_fn(self._update_p_std)
 
-                # Create a slider to chnage the ground reaction forces standard variation in the sampling law
+                # Create a slider to change the ground reaction forces standard variation in the sampling law
                 F_std_cfg = {
                     "label": "F std [N]",
                     "type": "button",
@@ -342,6 +342,18 @@ class BatManagerBasedRLEnvWindow(BaseEnvWindow):
                 }
                 self.ui_window_elements["F std"] = omni.isaac.ui.ui_utils.float_builder(**F_std_cfg)
                 self.ui_window_elements["F std"].add_value_changed_fn(self._update_F_std)
+
+                # Create a slider to change the ground reaction forces standard variation for the first and last element of the spline in the sampling law
+                F_spline_std_cfg = {
+                    "label": "scale F std [N]",
+                    "type": "button",
+                    "default_val": float(self.modelBaseAction.controller.samplingOptimizer.spline_std_F),
+                    "min": 0.0,
+                    "max": 30.0,
+                    "tooltip": "Set the standard deviation scaling factor for the spline parameters of the GRF in the sampling law",
+                }
+                self.ui_window_elements["F std"] = omni.isaac.ui.ui_utils.float_builder(**F_spline_std_cfg)
+                self.ui_window_elements["F std"].add_value_changed_fn(self._update_F_spline_std)
 
 
     def _build_plotting_frame(self):
@@ -428,6 +440,10 @@ class BatManagerBasedRLEnvWindow(BaseEnvWindow):
 
     def _update_F_std(self, model: omni.ui.SimpleFloatModel):
         self.modelBaseAction.controller.samplingOptimizer.std_F = (model.as_float)*torch.ones_like(self.modelBaseAction.controller.samplingOptimizer.std_F)
+
+    def _update_F_spline_std(self, model: omni.ui.SimpleFloatModel):
+        self.modelBaseAction.controller.samplingOptimizer.spline_std_F = (model.as_float)
+
 
     def _update_num_iter(self, model: omni.ui.SimpleIntModel):
         self.modelBaseAction.controller.samplingOptimizer.num_optimizer_iterations = model.as_int

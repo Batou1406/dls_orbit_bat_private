@@ -742,6 +742,7 @@ class SamplingOptimizer():
         self.std_d = torch.tensor((0.05), device=device)
         self.std_p = torch.tensor((0.02), device=device)
         self.std_F = torch.tensor((5.00), device=device)
+        self.spline_std_F = 10.0
 
         # Current contact sequence : used to reset solution when switch to swing shape (batch_size, num_leg)
         self.c_actual = torch.ones((1, self.num_legs), device=device)
@@ -1142,17 +1143,23 @@ class SamplingOptimizer():
             num_samples_previous_best = self.num_samples
             num_samples_RL = 0
 
+        # Fix to have to different range for F splines
+        std_F = self.std_F
+        if self.cfg.parametrization_F == 'cubic_spline' or self.cfg.parametrization_F == 'from_discrete_fit_spline' : 
+            std_F = self.std_F.repeat(delta_F_lw.shape).clone().detach() #shape (1, batch_size, num_leg, 3, F_param)
+            std_F[:,:,:,(0,3)] = self.spline_std_F * std_F[:,:,:,(0,3)]
+
         # Samples from the previous best solution
         f_samples_best          = self.sampling_law(num_samples=num_samples_previous_best, mean=self.f_best[0], std=self.std_f, clip=self.clip_sample)
         d_samples_best          = self.sampling_law(num_samples=num_samples_previous_best, mean=self.d_best[0], std=self.std_d, clip=self.clip_sample)
         p_lw_samples_best       = self.sampling_law(num_samples=num_samples_previous_best, mean=self.p_best[0], std=self.std_p, clip=self.clip_sample)
-        delta_F_lw_samples_best = self.sampling_law(num_samples=num_samples_previous_best, mean=self.F_best[0], std=self.std_F, clip=self.clip_sample)
+        delta_F_lw_samples_best = self.sampling_law(num_samples=num_samples_previous_best, mean=self.F_best[0], std=std_F, clip=self.clip_sample)
 
         # Samples from the provided guess
         f_samples_rl          = self.sampling_law(num_samples=num_samples_RL, mean=f[0],    std=self.std_f, clip=self.clip_sample)
         d_samples_rl          = self.sampling_law(num_samples=num_samples_RL, mean=d[0],    std=self.std_d, clip=self.clip_sample)
         p_lw_samples_rl       = self.sampling_law(num_samples=num_samples_RL, mean=p_lw[0], std=self.std_p, clip=self.clip_sample)
-        delta_F_lw_samples_rl = self.sampling_law(num_samples=num_samples_RL, mean=delta_F_lw[0], std=self.std_F, clip=self.clip_sample)
+        delta_F_lw_samples_rl = self.sampling_law(num_samples=num_samples_RL, mean=delta_F_lw[0], std=std_F, clip=self.clip_sample)
 
         # Concatenate the samples
         f_samples          = torch.cat((f_samples_rl,          f_samples_best),          dim=0)
@@ -1173,10 +1180,11 @@ class SamplingOptimizer():
         delta_F_lw_samples[-1,:,:,:] = self.F_best[0,:,:,:]
 
         # Put the RL actions as the first samples
-        f_samples[0,:]              = f[0,:]
-        d_samples[0,:]              = d[0,:]
-        p_lw_samples[0,:,:,:]       = p_lw[0,:,:,:]
-        delta_F_lw_samples[0,:,:,:] = delta_F_lw[0,:,:,:]
+        if not self.propotion_previous_solution > 0.999 :
+            f_samples[0,:]              = f[0,:]
+            d_samples[0,:]              = d[0,:]
+            p_lw_samples[0,:,:,:]       = p_lw[0,:,:,:]
+            delta_F_lw_samples[0,:,:,:] = delta_F_lw[0,:,:,:]
 
         # If optimization is set to false, samples are feed with initial guess
         if not self.optimize_f : f_samples[:,:]              = f.clone().detach()
