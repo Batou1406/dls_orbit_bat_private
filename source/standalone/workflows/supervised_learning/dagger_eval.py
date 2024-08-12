@@ -18,7 +18,7 @@ parser.add_argument("--num_envs",     type=int,   default=256,               hel
 parser.add_argument("--task",         type=str,   default=None,              help="Name of the task.")
 parser.add_argument("--seed",         type=int,   default=None,              help="Seed used for the environment")
 parser.add_argument('--epochs',       type=int,   default=60,  metavar='N',  help='number of epochs to train (default: 14)')
-parser.add_argument('--batch-size',   type=int,   default=256,  metavar='N',  help='input batch size for training (default: 64)')
+parser.add_argument('--batch-size',   type=int,   default=2048,  metavar='N',  help='input batch size for training (default: 64)')
 parser.add_argument('--lr',           type=float, default=1.0, metavar='LR', help='learning rate (default: 1.0)')
 parser.add_argument('--gamma',        type=float, default=0.7, metavar='M',  help='Learning rate step gamma (default: 0.7)')
 parser.add_argument('--folder-name',  type=str,   default='DAggerEvaluation',help="Name of the folder to save the trained model in 'model/task/folder-name'")
