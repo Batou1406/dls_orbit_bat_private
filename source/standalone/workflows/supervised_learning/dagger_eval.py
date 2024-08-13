@@ -452,9 +452,49 @@ def DAgger_Train(env, expert_policy, student_policy, scheduler, optimizer, train
     epoch_mse_test_loss = []
     last_time_outloop = time.time()
     last_time = time.time()
+    results = {}
 
     with torch.inference_mode():
         obs, _ = env.get_observations()
+
+
+
+    # Before training, evaluate the uninitalised policy
+    epoch_reward_test = 0.0
+    epoch_reward_stud = 0.0
+    with torch.inference_mode():
+        obs, _ = env.reset()
+        for i in range(test_iter):
+
+            expert_actions  = expert_policy(obs)    # shape (num_envs, 4 + 4 + 8 + 12)
+            student_actions = student_policy(obs)   # shape (num_envs, 4 + 4 + buffer_size*(8 + 12))
+
+            # extract first action from student policy
+            f = student_actions[:, 0                           : f_len                           ]                  # shape (num_envs, f_len)
+            d = student_actions[:, f_len                       :(f_len+d_len)                    ]                  # shape (num_envs, d_len)
+            p = student_actions[:,(f_len+d_len)                :(f_len+d_len+(p_param*p_len))     ].reshape(p_shape) # shape (num_envs, 4, 2, buffer_size)
+            F = student_actions[:,(f_len+d_len+(p_param*p_len)):(f_len+d_len+(p_param*p_len)+(F_param*F_len))].reshape(F_shape) # shape (num_envs, 4, 3, buffer_size)
+            
+            if p_typeAction == 'discrete': p = p[:,:,:,0].flatten(1,-1)
+            if p_typeAction == 'first':    p = p[:,:,:,0].flatten(1,-1)
+            if p_typeAction == 'spline':   p = compute_cubic_spline(parameters=p, step=0, horizon=1).flatten(1,-1)
+            if p_typeAction == 'double' :  p = p[:,:,:,0].flatten(1,-1)
+
+            if F_typeAction == 'discrete': F = F[:,:,:,0].flatten(1,-1)
+            if F_typeAction == 'spline':   F = compute_cubic_spline(parameters=F, step=0, horizon=1).flatten(1,-1)
+
+            student_first_action  = torch.cat((f,d,p,F),dim=1) 
+            aggregate_actions = student_first_action
+            aggregate_actions[int(env.num_envs/2):] = expert_actions[int(env.num_envs/2):]
+
+            obs, rew, dones, extras = env.step(aggregate_actions)
+            
+            epoch_reward_stud += float(torch.sum(rew[:int(env.num_envs/2)] / (env.num_envs/2)))
+            epoch_reward_test += float(torch.sum(rew[int(env.num_envs/2):] / (env.num_envs/2)))
+
+    Epoch_Reward = {'epoch_reward_untrained_stud': epoch_reward_stud, 'epoch_reward_test': epoch_reward_test}
+    results['untrained_stud_Epoch_Reward'] = Epoch_Reward
+
 
     # Number of simulations iteration required to have the desired trajectory length
     # trajectory_length_iter = int(trajectory_length_s / (frequency_reduction*buffer_size*env.unwrapped.step_dt))
@@ -735,7 +775,6 @@ def DAgger_Train(env, expert_policy, student_policy, scheduler, optimizer, train
     # 2. MSE : On reconstructed actions : expert vs student
     # 3. MSE : On dataset feating : Same as 2. for not encoded actions
     # 4. MSE : On first action 
-    results = {}
 
     # Run a trajectory
     epoch_reward_test = 0.0

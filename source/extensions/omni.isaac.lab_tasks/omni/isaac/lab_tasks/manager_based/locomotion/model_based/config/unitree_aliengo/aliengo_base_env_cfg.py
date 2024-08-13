@@ -129,7 +129,7 @@ class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
 
 
         """ ----- rewards ----- """
-        training = 'with_sampling' # 'normal' or 'with_sampling'
+        training = 'normal' # 'normal' or 'with_sampling'
 
         if training == 'normal' :
             # -- task
@@ -166,10 +166,10 @@ class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
             self.rewards.penatly_force_variation.weight      = 2.5e-5 #1e-4
 
             # Curriculum update
-            self.rewards.penalty_leg_frequency.params  = {"action_name": "model_base_variable", "bound": (0.6,2.0)}
-            self.curriculum.penalty_leg_frequency_curr = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_leg_frequency", "weight": 1.0, "num_steps": (400*24)})
-            self.rewards.penalty_leg_duty_cycle.params  = params={"action_name": "model_base_variable", "bound": (0.35,0.7)}
-            self.curriculum.penalty_leg_duty_cycle_curr = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_leg_duty_cycle", "weight": 1.0, "num_steps": (400*24)})
+            # self.rewards.penalty_leg_frequency.params  = {"action_name": "model_base_variable", "bound": (0.6,2.0)}
+            # self.curriculum.penalty_leg_frequency_curr = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_leg_frequency", "weight": 1.0, "num_steps": (400*24)})
+            # self.rewards.penalty_leg_duty_cycle.params  = params={"action_name": "model_base_variable", "bound": (0.35,0.7)}
+            # self.curriculum.penalty_leg_duty_cycle_curr = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_leg_duty_cycle", "weight": 1.0, "num_steps": (400*24)})
             # self.rewards.penalty_large_step.params  = {"action_name": "model_base_variable", "bound_x": (0.08,-0.06), "bound_y": (0.06,-0.06)}
             # self.curriculum.penalty_large_step_curr = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_large_step", "weight": 1.0, "num_steps": (400*24)})
 
