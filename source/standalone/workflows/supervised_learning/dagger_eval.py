@@ -705,6 +705,8 @@ def DAgger_Train(env, expert_policy, student_policy, scheduler, optimizer, train
     json_data['prediction_horizon_step'] = buffer_size
     json_data['prediction_horizon_time'] = f"{env.unwrapped.step_dt*frequency_reduction}[s]"
     json_data['num_envs'] = env.num_envs
+    json_data['Activation function'] = activation_fuction
+    json_data['minibatach size'] = mini_batch_size
     # json_data['trajectory_length_s'] = trajectory_length_s
     json_data['datapoints_generated_per_iter'] = datapoints_generated_per_iter
     json_data['tot_epoch'] = tot_epoch
