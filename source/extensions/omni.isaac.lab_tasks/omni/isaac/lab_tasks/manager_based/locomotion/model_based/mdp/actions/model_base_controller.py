@@ -780,6 +780,7 @@ class SamplingOptimizer():
         self.robot_height_list = [0.0]
         self.robot_height_ref_list = [0.0]
         self.cost_list = [0.0]
+        self.wining_policy_list = [0]
         self.FL_foot_list = [np.array([0.0, 0.0, 0.0])]
         self.FR_foot_list = [np.array([0.0, 0.0, 0.0])]
         self.RL_foot_list = [np.array([0.0, 0.0, 0.0])]
@@ -1038,6 +1039,14 @@ class SamplingOptimizer():
         print('cost sample ',cost_samples)
         print('Best cost :', best_cost, ', best index :', best_index)
 
+        # Retrieve from wich law it has been sampled
+        num_samples_previous_best = int(self.num_samples * self.propotion_previous_solution)
+        num_samples_RL = self.num_samples - num_samples_previous_best
+
+        self.wining_policy = min(best_index // (num_samples_RL // self.number_of_policy), self.number_of_policy) # min to avoid having different number if previous best win
+
+
+
         # Retrieve best sample, given the best index
         f_star          = f_samples[best_index].unsqueeze(0).clone().detach()           # shape(1, num_leg)
         d_star          = d_samples[best_index].unsqueeze(0).clone().detach()           # shape(1, num_leg)
@@ -1051,6 +1060,11 @@ class SamplingOptimizer():
             self.cost_list.append(best_cost.cpu().numpy())
             if len(self.cost_list) > 100 : self.cost_list.pop(0)
             np.savetxt('live_variable/cost.csv', [self.cost_list], delimiter=',', fmt='%.3f')
+
+            # Save winning policy
+            self.wining_policy_list.append(self.wining_policy)
+            if len(self.wining_policy_list) > 100 : self.wining_policy_list.pop(0)
+            np.savetxt('live_variable/winning_policy.csv', [self.wining_policy_list], delimiter=',', fmt='%d')
             
             # Save best GRF
             np.savetxt("live_variable/F_best_FL.csv", delta_F_star_lw[0,0,:,:].cpu().numpy(), delimiter=",")
@@ -1204,10 +1218,10 @@ class SamplingOptimizer():
             delta_F_lw_samples[0,:,:,:] = delta_F_lw[0,:,:,:]
 
         # If optimization is set to false, samples are feed with initial guess
-        if not self.optimize_f : f_samples[:,:]              = f[self.wining_policy].clone().detach()
-        if not self.optimize_d : d_samples[:,:]              = d[self.wining_policy].clone().detach()
-        if not self.optimize_p : p_lw_samples[:,:,:,:]       = p_lw[self.wining_policy].clone().detach()
-        if not self.optimize_F : delta_F_lw_samples[:,:,:,:] = delta_F_lw[self.wining_policy].clone().detach()
+        if not self.optimize_f : f_samples[:,:]              = f[0].clone().detach()
+        if not self.optimize_d : d_samples[:,:]              = d[0].clone().detach()
+        if not self.optimize_p : p_lw_samples[:,:,:,:]       = p_lw[0].clone().detach()
+        if not self.optimize_F : delta_F_lw_samples[:,:,:,:] = delta_F_lw[0].clone().detach()
 
         return f_samples, d_samples, p_lw_samples, delta_F_lw_samples
 
