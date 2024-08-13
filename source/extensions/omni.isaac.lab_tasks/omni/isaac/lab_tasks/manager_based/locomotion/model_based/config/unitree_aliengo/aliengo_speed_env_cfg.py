@@ -260,7 +260,7 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
             self.rewards.penatly_force_variation.weight      = 0.0
 
             # -- Additionnal Reward : Need a positive weight
-            self.rewards.reward_is_alive                     = 1
+            self.rewards.reward_is_alive.weight              = 1
             self.rewards.penalty_failed                      = None
 
             self.rewards.penalty_leg_frequency.params  = {"action_name": "model_base_variable", "bound": (0.6,2.0)}
