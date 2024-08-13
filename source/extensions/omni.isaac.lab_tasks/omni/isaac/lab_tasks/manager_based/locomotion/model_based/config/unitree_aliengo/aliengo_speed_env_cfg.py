@@ -128,7 +128,7 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
 
 
         """ ----- rewards ----- """
-        training = 'with_sampling' # 'normal' or 'with_sampling' or 'with_sampling_and_normal
+        training = 'with_sampling_and_normal' # 'normal' or 'with_sampling' or 'with_sampling_and_normal
 
         if training == 'normal' :
             # -- task
@@ -260,7 +260,7 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
             self.rewards.penatly_force_variation.weight      = 0.0
 
             # -- Additionnal Reward : Need a positive weight
-            self.rewards.reward_is_alive                     = None
+            self.rewards.reward_is_alive                     = 1
             self.rewards.penalty_failed                      = None
 
             self.rewards.penalty_leg_frequency.params  = {"action_name": "model_base_variable", "bound": (0.6,2.0)}
@@ -268,13 +268,13 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
             self.rewards.penalty_leg_duty_cycle.params  = params={"action_name": "model_base_variable", "bound": (0.35,0.7)}
             self.curriculum.penalty_leg_duty_cycle_curr = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_leg_duty_cycle", "weight": 1.0, "num_steps": (400*24)})
 
-            self.rewards.penalty_sampling_rollout.weight     = -0.01
+            self.rewards.penalty_sampling_rollout.weight     = -0.1
 
             num_iter_activate = 800
             self.curriculum.penalty_frequency_variation_curr    = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_frequency_variation",  "weight": 0.2,  "num_steps": (num_iter_activate*24)})
             self.curriculum.penatly_duty_cycle_variation_curr   = CurrTerm(func=modify_reward_weight, params={"term_name": "penatly_duty_cycle_variation", "weight": 1.0,  "num_steps": (num_iter_activate*24)})
             self.curriculum.penalty_step_variation_curr         = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_step_variation",       "weight": 1.0,  "num_steps": (num_iter_activate*24)})
-            self.curriculum.penatly_force_variation_curr        = CurrTerm(func=modify_reward_weight, params={"term_name": "penatly_force_variation",      "weight": 2e-5, "num_steps": (num_iter_activate*24)})
+            self.curriculum.penatly_force_variation_curr        = CurrTerm(func=modify_reward_weight, params={"term_name": "penatly_force_variation",      "weight": 1e-5, "num_steps": (num_iter_activate*24)})
 
         """ ----- terminations ----- """
 
