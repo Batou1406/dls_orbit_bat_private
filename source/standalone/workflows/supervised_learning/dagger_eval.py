@@ -460,11 +460,13 @@ def DAgger_Train(env, expert_policy, student_policy, scheduler, optimizer, train
 
 
     # Before training, evaluate the uninitalised policy
+    print('\n---- Evaluating the policy before training ----')
     epoch_reward_test = 0.0
     epoch_reward_stud = 0.0
     with torch.inference_mode():
         obs, _ = env.reset()
         for i in range(test_iter):
+            print(f'Runing : {100*i/test_iter}%', end='\r', flush=True)
 
             expert_actions  = expert_policy(obs)    # shape (num_envs, 4 + 4 + 8 + 12)
             student_actions = student_policy(obs)   # shape (num_envs, 4 + 4 + buffer_size*(8 + 12))
@@ -781,12 +783,12 @@ def DAgger_Train(env, expert_policy, student_policy, scheduler, optimizer, train
     # Run a trajectory
     epoch_reward_test = 0.0
     epoch_reward_stud = 0.0
-
+    print('\n---- Evaluating the policy After training ----')
     with torch.inference_mode():
         obs, _ = env.reset()
 
         for i in range(test_iter):
-
+            print(f'Runing : {100*i/test_iter}%', end='\r', flush=True)
             expert_actions  = expert_policy(obs)    # shape (num_envs, 4 + 4 + 8 + 12)
             student_actions = student_policy(obs)   # shape (num_envs, 4 + 4 + buffer_size*(8 + 12))
 
@@ -940,11 +942,15 @@ def Record_test_set(env, expert_policy, device, test_set_size, max_buffer_size, 
     actions_data = torch.empty(0, device=device)
     f_len, d_len, p_len, F_len = 4, 4, 8, 12
 
+    print('\n---- Recording Test Set ----')
+
 
     with torch.inference_mode():
         obs, _ = env.reset()
 
         while (len(observations_data) < test_set_size):
+            print(f'Recording : {100*len(observations_data)/test_set_size}%', end='\r', flush=True)
+
             buffer_obs = []
             buffer_act = []
 
@@ -1048,7 +1054,7 @@ def main():
     tot_epoch = args_cli.epochs
 
     # Dataset maximum size before clipping
-    dataset_max_size =  800000 # 300000 # [datapoints] 800000 too much for GPU and horizon=15
+    dataset_max_size =  600000 # 300000 # [datapoints] 800000 too much for GPU and horizon=15
 
     datapoints_generated_per_iter = int(0.10 * dataset_max_size)
     # datapoints_generated_per_iter = 4*args_cli.num_envs
@@ -1155,6 +1161,9 @@ def main():
                             print(f"Type of F action recorded: {F_typeAction}")
                             print(f"with N = {buffer_size} prediction horizon")
 
+                            print(f"\nMini Batch size {mini_batch_size}")
+                            print(f"Policy selector function {activation_fuction['type']}, with parameters {activation_fuction['param']}")
+
                             print('\nModel Input  size :', obs.shape[-1])
                             print('Model Output size :', output_size,'\n')
 
@@ -1165,6 +1174,8 @@ def main():
                             experiment_dict['frequency'] = f'{50/frequency_reduction} [Hz]'
                             experiment_dict['p_typeAction'] = p_typeAction
                             experiment_dict['F_typeAction'] = F_typeAction
+                            experiment_dict['mini batch size'] = mini_batch_size
+                            experiment_dict['activation function'] = activation_fuction
                             json_data[f'experiment{experiment_idx}'] = experiment_dict
                             with open(f'{logging_directory}/info.json', 'w') as file:
                                 json.dump(json_data, file, indent=4)
