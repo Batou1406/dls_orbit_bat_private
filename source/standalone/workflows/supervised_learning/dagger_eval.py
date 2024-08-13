@@ -508,7 +508,10 @@ def DAgger_Train(env, expert_policy, student_policy, scheduler, optimizer, train
 
         # --- Step 1 : Get ID for student actions
         n = min(int(alpha(epoch, type=activation_fuction['type'], param=activation_fuction['param'])*args_cli.num_envs), args_cli.num_envs)
-        expert_idx = torch.randperm(args_cli.num_envs)[:n]
+        random_indx = torch.randperm(args_cli.num_envs)
+        # expert_idx = torch.randperm(args_cli.num_envs)[:n]
+        expert_idx = random_indx[:n]
+        student_idx = random_indx[n:]
 
         # If we want to plot splines
         # if (epoch == 0) or (epoch == 20) or (epoch == 10) or (epoch == 30) :
@@ -564,7 +567,8 @@ def DAgger_Train(env, expert_policy, student_policy, scheduler, optimizer, train
 
                     obs, rew, dones, extras = env.step(aggregate_actions)
 
-                    epoch_reward += float(torch.sum(rew) / env.num_envs)
+                    # epoch_reward += float(torch.sum(rew) / env.num_envs)
+                    epoch_reward += float(torch.sum(rew[student_idx]) / min(len(student_idx), 1))
 
                     # If necessary, retrieve the contact sequence
                     if (p_typeAction) == 'double' and (i%frequency_reduction == 0):
