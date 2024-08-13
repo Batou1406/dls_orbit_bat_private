@@ -1156,8 +1156,8 @@ class SamplingOptimizer():
 
         # Define how much samples from the RL or from the previous solution we're going to sample
         if iter == 0:
-            num_samples_previous_best = int(self.num_samples * self.propotion_previous_solution)
-            num_samples_RL = self.num_samples - num_samples_previous_best
+            num_samples_RL = self.num_samples - int(self.num_samples * self.propotion_previous_solution)
+            num_samples_previous_best = self.num_samples  - ((num_samples_RL//self.number_of_policy)*self.number_of_policy) # To avoid to loose a few sample due to rounding
         else :
             num_samples_previous_best = self.num_samples
             num_samples_RL = 0
@@ -1218,10 +1218,18 @@ class SamplingOptimizer():
             delta_F_lw_samples[0,:,:,:] = delta_F_lw[0,:,:,:]
 
         # If optimization is set to false, samples are feed with initial guess
-        if not self.optimize_f : f_samples[:,:]              = f[0].clone().detach()
-        if not self.optimize_d : d_samples[:,:]              = d[0].clone().detach()
-        if not self.optimize_p : p_lw_samples[:,:,:,:]       = p_lw[0].clone().detach()
-        if not self.optimize_F : delta_F_lw_samples[:,:,:,:] = delta_F_lw[0].clone().detach()
+        if not self.optimize_f :
+            for i in range(self.number_of_policy):
+                f_samples[i*(num_samples_RL//self.number_of_policy):(i+1)*(num_samples_RL//self.number_of_policy),:]              = f[i].clone().detach()
+        if not self.optimize_d :
+            for i in range(self.number_of_policy):
+                d_samples[i*(num_samples_RL//self.number_of_policy):(i+1)*(num_samples_RL//self.number_of_policy),:]              = d[i].clone().detach()
+        if not self.optimize_p :
+            for i in range(self.number_of_policy): 
+                p_lw_samples[i*(num_samples_RL//self.number_of_policy):(i+1)*(num_samples_RL//self.number_of_policy),:,:,:]       = p_lw[i].clone().detach()
+        if not self.optimize_F : 
+            for i in range(self.number_of_policy): 
+                delta_F_lw_samples[i*(num_samples_RL//self.number_of_policy):(i+1)*(num_samples_RL//self.number_of_policy),:,:,:] = delta_F_lw[i].clone().detach()
 
         return f_samples, d_samples, p_lw_samples, delta_F_lw_samples
 
