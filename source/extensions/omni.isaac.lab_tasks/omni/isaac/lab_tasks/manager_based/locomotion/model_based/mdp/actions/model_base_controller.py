@@ -1043,7 +1043,7 @@ class SamplingOptimizer():
         num_samples_previous_best = int(self.num_samples * self.propotion_previous_solution)
         num_samples_RL = self.num_samples - num_samples_previous_best
 
-        self.wining_policy = min(best_index // (num_samples_RL // self.number_of_policy), self.number_of_policy) # min to avoid having different number if previous best win
+        self.wining_policy = min((best_index // (num_samples_RL // self.number_of_policy)).cpu().numpy(), self.number_of_policy) # min to avoid having different number if previous best win
 
 
 
