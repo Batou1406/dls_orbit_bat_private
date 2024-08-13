@@ -173,6 +173,8 @@ class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
             # self.rewards.penalty_large_step.params  = {"action_name": "model_base_variable", "bound_x": (0.08,-0.06), "bound_y": (0.06,-0.06)}
             # self.curriculum.penalty_large_step_curr = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_large_step", "weight": 1.0, "num_steps": (400*24)})
 
+            self.rewards.penalty_sampling_rollout            = None
+
             # -- Additionnal Reward : Need a positive weight
             self.rewards.reward_is_alive                     = None #0.25
             self.rewards.penalty_failed                      = None

@@ -159,6 +159,9 @@ class ModelBaseAction(ActionTerm):
 
         # Define F and p size given how it is parametrised
         if self.cfg.optimizerCfg is not None:
+            # The number of policy to pass to the sampling controller
+            self.number_of_policy = self.cfg.optimizerCfg.multipolicy
+
             # Wether to bypass RL actions with some static gait
             self.debug_apply_action_status = self.cfg.optimizerCfg.debug_apply_action
 
@@ -188,6 +191,9 @@ class ModelBaseAction(ActionTerm):
             # Discrete Action : One action - One time step
             self._F_param = 1
             self._p_param = 1
+
+            # Only one policy
+            self.number_of_policy = 1
   
         # resolve the joints over which the action term is applied
         self._joint_ids, self._joint_names = self._asset.find_joints(self.cfg.joint_names)  # joint_ids = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
@@ -223,10 +229,10 @@ class ModelBaseAction(ActionTerm):
 
         
         # raw RL output
-        self.f_raw  = 1.0*torch.ones( self.num_envs, self._num_legs,                   device=self.device) 
-        self.d_raw  = 0.6*torch.ones( self.num_envs, self._num_legs,                   device=self.device)
-        self.p_raw  =     torch.zeros(self.num_envs, self._num_legs, 2, self._p_param, device=self.device)
-        self.F_raw  =     torch.zeros(self.num_envs, self._num_legs, 3, self._F_param, device=self.device)
+        self.f_raw  = 1.0*torch.ones( self.number_of_policy*self.num_envs, self._num_legs,                   device=self.device) 
+        self.d_raw  = 0.6*torch.ones( self.number_of_policy*self.num_envs, self._num_legs,                   device=self.device)
+        self.p_raw  =     torch.zeros(self.number_of_policy*self.num_envs, self._num_legs, 2, self._p_param, device=self.device)
+        self.F_raw  =     torch.zeros(self.number_of_policy*self.num_envs, self._num_legs, 3, self._F_param, device=self.device)
 
         # Normalized RL output
         self.f         = self.f_raw.clone().detach() 
@@ -242,8 +248,8 @@ class ModelBaseAction(ActionTerm):
         self.F_raw_prev     = self.F_raw.clone().detach() 
 
         # Normalized and transformed to frame RL output
-        self.p_lw        = torch.zeros(self.num_envs, self._num_legs, 3, self._p_param, device=self.device) 
-        self.delta_F_lw  = torch.zeros(self.num_envs, self._num_legs, 3, self._F_param, device=self.device)
+        self.p_lw        = torch.zeros(self.number_of_policy*self.num_envs, self._num_legs, 3, self._p_param, device=self.device) 
+        self.delta_F_lw  = torch.zeros(self.number_of_policy*self.num_envs, self._num_legs, 3, self._F_param, device=self.device)
 
         # For ease of reshaping variables
         self.f_len = self.f_raw.shape[1:].numel()
@@ -330,7 +336,7 @@ class ModelBaseAction(ActionTerm):
 
     @property
     def action_dim(self) -> int:
-        return self.f_len + self.d_len  + self.p_len + self.F_len 
+        return self.number_of_policy*(self.f_len + self.d_len  + self.p_len + self.F_len)
 
     @property
     def raw_actions(self) -> torch.Tensor:
@@ -392,10 +398,24 @@ class ModelBaseAction(ActionTerm):
             self._raw_actions = torch.nan_to_num(self._raw_actions)
 
         # reconstruct the latent variable from the RL poliy actions
-        self.f_raw = (self._raw_actions[:, 0                                    : self.f_len                                       ]).reshape_as(self.f_raw)
-        self.d_raw = (self._raw_actions[:, self.f_len                           : self.f_len + self.d_len                          ]).reshape_as(self.d_raw)
-        self.p_raw = (self._raw_actions[:, self.f_len + self.d_len              : self.f_len + self.d_len + self.p_len             ]).reshape_as(self.p_raw)
-        self.F_raw = (self._raw_actions[:, self.f_len + self.d_len + self.p_len : self.f_len + self.d_len + self.p_len + self.F_len]).reshape_as(self.F_raw)
+        f_list, d_list, p_list, F_list = [], [], [], []
+        for i in range(self.number_of_policy):
+            offset=i*(self.f_len + self.d_len + self.p_len + self.F_len)
+            f_list.append( (self._raw_actions[:, offset + 0                                    : offset + self.f_len                                       ]).reshape(self.num_envs, self._num_legs) )
+            d_list.append( (self._raw_actions[:, offset + self.f_len                           : offset + self.f_len + self.d_len                          ]).reshape(self.num_envs, self._num_legs) )
+            p_list.append( (self._raw_actions[:, offset + self.f_len + self.d_len              : offset + self.f_len + self.d_len + self.p_len             ]).reshape(self.num_envs, self._num_legs, 2, self._p_param) )
+            F_list.append( (self._raw_actions[:, offset + self.f_len + self.d_len + self.p_len : offset + self.f_len + self.d_len + self.p_len + self.F_len]).reshape(self.num_envs, self._num_legs, 3, self._F_param ) )
+
+        self.f_raw = torch.cat(f_list, dim=0)
+        self.d_raw = torch.cat(d_list, dim=0)
+        self.p_raw = torch.cat(p_list, dim=0)
+        self.F_raw = torch.cat(F_list, dim=0)
+
+        # # reconstruct the latent variable from the RL poliy actions
+        # self.f_raw = (self._raw_actions[:, 0                                    : self.f_len                                       ]).reshape_as(self.f_raw)
+        # self.d_raw = (self._raw_actions[:, self.f_len                           : self.f_len + self.d_len                          ]).reshape_as(self.d_raw)
+        # self.p_raw = (self._raw_actions[:, self.f_len + self.d_len              : self.f_len + self.d_len + self.p_len             ]).reshape_as(self.p_raw)
+        # self.F_raw = (self._raw_actions[:, self.f_len + self.d_len + self.p_len : self.f_len + self.d_len + self.p_len + self.F_len]).reshape_as(self.F_raw)
 
         # --- Step 1 : Normalization - Normalize the actions
         self.f, self.d, self.delta_p_h, self.delta_F_h = self.normalization(f=self.f_raw, d=self.d_raw, p=self.p_raw, F=self.F_raw)

@@ -667,6 +667,9 @@ class SamplingOptimizer():
         self.num_optimizer_iterations = optimizerCfg.num_optimizer_iterations
         self.mu = mu #optimizerCfg.mu
 
+        self.number_of_policy = optimizerCfg.multipolicy
+        self.wining_policy = 0
+
         # Define Interpolation method for GRF and interfer GRF input size 
         if   optimizerCfg.parametrization_F == 'cubic_spline': 
             self.interpolation_F=compute_cubic_spline
@@ -1125,10 +1128,12 @@ class SamplingOptimizer():
             p_lw = fit_cubic(p_lw)  # shape(batch, leg , 3, sampling_horizon) -> shape(batch, leg , 3, p_param)
 
         if self.cfg.parametrization_F == 'from_single_expand_discrete' :
-            delta_F_lw = delta_F_lw.expand_as(self.F_best) # shape(batch, leg , 3, 1) -> shape(batch, leg , 3, F_param)
+            # delta_F_lw = delta_F_lw.expand_as(self.F_best) # shape(batch, leg , 3, 1) -> shape(batch, leg , 3, F_param)
+            delta_F_lw = delta_F_lw.expand(self.number_of_policy, self.num_legs, 3, self.F_param) # shape(batch, leg , 3, 1) -> shape(batch, leg , 3, F_param)
         
         if self.cfg.parametrization_p == 'from_single_expand_discrete':
-            p_lw = p_lw.expand_as(self.p_best) # shape(batch, leg , 3, 1) -> shape(batch, leg , 3, p_param)
+            # p_lw = p_lw.expand_as(self.p_best) # shape(batch, leg , 3, 1) -> shape(batch, leg , 3, p_param)
+            p_lw = p_lw.expand(self.number_of_policy, self.num_legs, 3, self.p_param) # shape(batch, leg , 3, 1) -> shape(batch, leg , 3, p_param)
 
         if self.cfg.parametrization_F == 'cubic_spline':
             # Since the cubic spline fitting has been normalised with first and last coefficient 10 times smaller than what they should be
@@ -1155,11 +1160,23 @@ class SamplingOptimizer():
         p_lw_samples_best       = self.sampling_law(num_samples=num_samples_previous_best, mean=self.p_best[0], std=self.std_p, clip=self.clip_sample)
         delta_F_lw_samples_best = self.sampling_law(num_samples=num_samples_previous_best, mean=self.F_best[0], std=std_F, clip=self.clip_sample)
 
-        # Samples from the provided guess
-        f_samples_rl          = self.sampling_law(num_samples=num_samples_RL, mean=f[0],    std=self.std_f, clip=self.clip_sample)
-        d_samples_rl          = self.sampling_law(num_samples=num_samples_RL, mean=d[0],    std=self.std_d, clip=self.clip_sample)
-        p_lw_samples_rl       = self.sampling_law(num_samples=num_samples_RL, mean=p_lw[0], std=self.std_p, clip=self.clip_sample)
-        delta_F_lw_samples_rl = self.sampling_law(num_samples=num_samples_RL, mean=delta_F_lw[0], std=std_F, clip=self.clip_sample)
+        f_samples_rl_list, d_samples_rl_list, p_lw_samples_rl_list, delta_F_lw_samples_rl_list = [], [], [], []
+        for i in range(self.number_of_policy):
+            f_samples_rl_list.append(          self.sampling_law(num_samples=num_samples_RL//self.number_of_policy, mean=f[i],          std=self.std_f, clip=self.clip_sample) )
+            d_samples_rl_list.append(          self.sampling_law(num_samples=num_samples_RL//self.number_of_policy, mean=d[i],          std=self.std_d, clip=self.clip_sample) )
+            p_lw_samples_rl_list.append(       self.sampling_law(num_samples=num_samples_RL//self.number_of_policy, mean=p_lw[i],       std=self.std_p, clip=self.clip_sample) )
+            delta_F_lw_samples_rl_list.append( self.sampling_law(num_samples=num_samples_RL//self.number_of_policy, mean=delta_F_lw[i], std=std_F,      clip=self.clip_sample) )
+
+        f_samples_rl          = torch.cat(f_samples_rl_list, dim=0)
+        d_samples_rl          = torch.cat(d_samples_rl_list, dim=0)
+        p_lw_samples_rl       = torch.cat(p_lw_samples_rl_list, dim=0)
+        delta_F_lw_samples_rl = torch.cat(delta_F_lw_samples_rl_list, dim=0)
+
+        # # Samples from the provided guess
+        # f_samples_rl          = self.sampling_law(num_samples=num_samples_RL, mean=f[0],    std=self.std_f, clip=self.clip_sample)
+        # d_samples_rl          = self.sampling_law(num_samples=num_samples_RL, mean=d[0],    std=self.std_d, clip=self.clip_sample)
+        # p_lw_samples_rl       = self.sampling_law(num_samples=num_samples_RL, mean=p_lw[0], std=self.std_p, clip=self.clip_sample)
+        # delta_F_lw_samples_rl = self.sampling_law(num_samples=num_samples_RL, mean=delta_F_lw[0], std=std_F, clip=self.clip_sample)
 
         # Concatenate the samples
         f_samples          = torch.cat((f_samples_rl,          f_samples_best),          dim=0)
@@ -1187,10 +1204,10 @@ class SamplingOptimizer():
             delta_F_lw_samples[0,:,:,:] = delta_F_lw[0,:,:,:]
 
         # If optimization is set to false, samples are feed with initial guess
-        if not self.optimize_f : f_samples[:,:]              = f.clone().detach()
-        if not self.optimize_d : d_samples[:,:]              = d.clone().detach()
-        if not self.optimize_p : p_lw_samples[:,:,:,:]       = p_lw.clone().detach()
-        if not self.optimize_F : delta_F_lw_samples[:,:,:,:] = delta_F_lw.clone().detach()
+        if not self.optimize_f : f_samples[:,:]              = f[self.wining_policy].clone().detach()
+        if not self.optimize_d : d_samples[:,:]              = d[self.wining_policy].clone().detach()
+        if not self.optimize_p : p_lw_samples[:,:,:,:]       = p_lw[self.wining_policy].clone().detach()
+        if not self.optimize_F : delta_F_lw_samples[:,:,:,:] = delta_F_lw[self.wining_policy].clone().detach()
 
         return f_samples, d_samples, p_lw_samples, delta_F_lw_samples
 
