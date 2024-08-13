@@ -17,7 +17,7 @@ parser.add_argument("--disable_fabric", action="store_true", default=False,  hel
 parser.add_argument("--num_envs",     type=int,   default=256,               help="Number of environments to simulate.")
 parser.add_argument("--task",         type=str,   default=None,              help="Name of the task.")
 parser.add_argument("--seed",         type=int,   default=None,              help="Seed used for the environment")
-parser.add_argument('--epochs',       type=int,   default=60,  metavar='N',  help='number of epochs to train (default: 14)')
+parser.add_argument('--epochs',       type=int,   default=30,  metavar='N',  help='number of epochs to train (default: 14)')
 parser.add_argument('--batch-size',   type=int,   default=2048,  metavar='N',  help='input batch size for training (default: 64)')
 parser.add_argument('--lr',           type=float, default=1.0, metavar='LR', help='learning rate (default: 1.0)')
 parser.add_argument('--gamma',        type=float, default=0.7, metavar='M',  help='Learning rate step gamma (default: 0.7)')
@@ -220,19 +220,19 @@ class DatasetFromFile(Dataset):
 
 
 """ --- Decay Function --- """
-def alpha(epoch, type='indicator'):
+def alpha(epoch, type='indicator', param=[0,1,2]):
     """ Decay function for the dagger Alogirthm"""
 
     # Indicator Function
     if type == 'indicator':
-        if epoch in [0,1,2]:
+        if epoch in param:
             alpha = 1
         else :
             alpha = 0
 
     # eponential decay
     if type == 'exp':
-        alpha = 0.6**(epoch)
+        alpha = param**(epoch)
 
     return alpha 
 
@@ -441,7 +441,7 @@ def get_touchdowns(c, p):
 
 """ --- DAgger Trainer --- """
 def DAgger_Train(env, expert_policy, student_policy, scheduler, optimizer, train_criterion, device, tot_epoch, logging_directory, experiment_directory, datapoints_generated_per_iter, buffer_size, max_buffer_size,  frequency_reduction,
-                 p_typeAction, F_typeAction, p_param, F_param, p_shape, F_shape, dataset_max_size, train_kwargs, modelDict, test_iter):
+                 p_typeAction, F_typeAction, p_param, F_param, p_shape, F_shape, dataset_max_size, modelDict, test_iter, activation_fuction, mini_batch_size):
 
     observations_data = torch.empty(0,device=device)
     actions_data = torch.empty(0, device=device)
@@ -465,7 +465,7 @@ def DAgger_Train(env, expert_policy, student_policy, scheduler, optimizer, train
         last_time_outloop = time.time()
 
         # --- Step 1 : Get ID for student actions
-        n = min(int(alpha(epoch)*args_cli.num_envs), args_cli.num_envs)
+        n = min(int(alpha(epoch, type=activation_fuction['type'], param=activation_fuction['param'])*args_cli.num_envs), args_cli.num_envs)
         expert_idx = torch.randperm(args_cli.num_envs)[:n]
 
         # If we want to plot splines
@@ -620,6 +620,9 @@ def DAgger_Train(env, expert_policy, student_policy, scheduler, optimizer, train
 
 
         # --- Step 5 : Train the student policy on the new dataset, for one iteration
+        # Set training and testing arguments
+        train_kwargs = {'batch_size': mini_batch_size}
+
         # Dataset has been updated -> reload it
         train_dataset = ObservationActionDataset(observations_data, actions_data)
         train_loader = DataLoader(train_dataset,**train_kwargs)
@@ -659,7 +662,8 @@ def DAgger_Train(env, expert_policy, student_policy, scheduler, optimizer, train
     json_data['num_datapoints'] = observations_data.shape[0]
     json_data['Input_size'] = observations_data.shape[-1]
     json_data['Output_size'] = actions_data.shape[-1]
-    json_data['buffer_size'] = buffer_size
+    json_data['prediction_horizon_step'] = buffer_size
+    json_data['prediction_horizon_time'] = f"{env.unwrapped.step_dt*frequency_reduction}[s]"
     json_data['num_envs'] = env.num_envs
     # json_data['trajectory_length_s'] = trajectory_length_s
     json_data['datapoints_generated_per_iter'] = datapoints_generated_per_iter
@@ -975,13 +979,20 @@ def main():
 
 
     # --- Step 2 : Define training Variables
+    # Mini batch size for the gradient descent step 
+    mini_batch_size_list = [64, 128, 256, 512, 1024]
+
+    # Activation function for Dagger
+    activation_function_list = [{'type':'indicator', 'param':[0]}, {'type':'indicator', 'param':[0,1,2]}, {'type':'exp', 'param':0.6}, {'type':'exp', 'param':0.9}, {'type':'exp', 'param':0.4}]
+
+
     # Buffer size : number of prediction horizon for the student policy
-    buffer_size_list = [5, 10, 15]
-    # buffer_size_list = [12]
+    # buffer_size_list = [5, 10, 15]
+    buffer_size_list = [5]
 
     # Factor of the simulation frequency at which the dataset will be recorded
-    frequency_reduction_list = [1, 2]
-    # frequency_reduction_list = [1]
+    # frequency_reduction_list = [1, 2]
+    frequency_reduction_list = [1]
 
     # The encoding of the actions
     action_encoding_list = [('discrete', 'discrete'), ('discrete', 'spline'), ('spline', 'discrete'), ('spline', 'spline'), ('first', 'discrete'), ('first', 'spline')] 
@@ -996,7 +1007,7 @@ def main():
     tot_epoch = args_cli.epochs
 
     # Dataset maximum size before clipping
-    dataset_max_size =  600000 # 300000 # [datapoints] 800000 too much for GPU and horizon=15
+    dataset_max_size =  800000 # 300000 # [datapoints] 800000 too much for GPU and horizon=15
 
     datapoints_generated_per_iter = int(0.10 * dataset_max_size)
     # datapoints_generated_per_iter = 4*args_cli.num_envs
@@ -1017,9 +1028,6 @@ def main():
     use_cuda = not args_cli.cpu and torch.cuda.is_available()
     if use_cuda:  device = torch.device("cuda")
     else:         device = torch.device("cpu")
-
-    # Set training and testing arguments
-    train_kwargs = {'batch_size': args_cli.batch_size}
 
     # Create logging directory if necessary
     logging_directory = f'model/{args_cli.task}/{args_cli.folder_name}'
@@ -1048,102 +1056,104 @@ def main():
 
     # --- Step 5 : Create the config for the Experiment
     experiment_idx = 0
+    for mini_batch_size in mini_batch_size_list : 
+        for activation_fuction in activation_function_list :
+            for frequency_reduction in frequency_reduction_list :
+                for buffer_size in buffer_size_list :
+                    for p_typeAction, F_typeAction in action_encoding_list : 
 
-    for frequency_reduction in frequency_reduction_list :
-        for buffer_size in buffer_size_list :
-            for p_typeAction, F_typeAction in action_encoding_list : 
+                        experiment_idx += 1
 
-                experiment_idx += 1
+                        # Type of action recorded
+                        if F_typeAction == 'spline':
+                            F_param = 4
+                        if F_typeAction == 'discrete':
+                            F_param = buffer_size
+                        if p_typeAction == 'spline':
+                            p_param = 4
+                        if p_typeAction == 'discrete':
+                            p_param = buffer_size
+                        if p_typeAction == 'double':
+                            p_param = 2
+                        if p_typeAction == 'first':
+                            p_param = 1
+                        p_shape = (env.num_envs, 4, 2, p_param)
+                        F_shape = (env.num_envs, 4, 3, F_param)
 
-                # Type of action recorded
-                if F_typeAction == 'spline':
-                    F_param = 4
-                if F_typeAction == 'discrete':
-                    F_param = buffer_size
-                if p_typeAction == 'spline':
-                    p_param = 4
-                if p_typeAction == 'discrete':
-                    p_param = buffer_size
-                if p_typeAction == 'double':
-                    p_param = 2
-                if p_typeAction == 'first':
-                    p_param = 1
-                p_shape = (env.num_envs, 4, 2, p_param)
-                F_shape = (env.num_envs, 4, 3, F_param)
+                        experiment_directory = f'model/{args_cli.task}/{args_cli.folder_name}/experiment{experiment_idx}'
+                        if not os.path.exists(experiment_directory):
+                            os.makedirs(experiment_directory)
 
-                experiment_directory = f'model/{args_cli.task}/{args_cli.folder_name}/experiment{experiment_idx}'
-                if not os.path.exists(experiment_directory):
-                    os.makedirs(experiment_directory)
-
-                # Get New Observations and reset the Environment
-                with torch.inference_mode():
-                    obs, _ = env.reset()
-
-
-                #  Define Model criteria : model, optimizer and loss criterion and scheduler
-                input_size = obs.shape[-1]
-                output_size = 8 + (p_param*p_len) + (F_param*F_len)
-
-                student_policy  = Model(input_size, output_size).to(device) #Model(input_size, output_size).to(device)
-                modelDict = model_to_dict(student_policy)
-
-                optimizer       = optim.Adadelta(student_policy.parameters(), lr=args_cli.lr)
-                train_criterion = nn.MSELoss() 
-                scheduler       = StepLR(optimizer, step_size=1, gamma=args_cli.gamma) # for adadelta
-
-                    # Printing
-                if True : 
-                    print('\n---------------------------------------------------------------------')
-                    print('\n----- Datalogger Configuration -----\n')
-
-                    print(f"\nSimulation runs with time step {env.unwrapped.physics_dt} [s], at frequency {1/env.unwrapped.physics_dt} [Hz]")
-                    print(f"Policy runs with time step {env.unwrapped.step_dt} [s], at frequency {1/env.unwrapped.step_dt} [Hz]")
-                    print(f"Dataset will be recorded with time step {env.unwrapped.step_dt*frequency_reduction} [s], at frequency {1/(frequency_reduction*env.unwrapped.step_dt)} [Hz]")
-                    print(f"Which will correspond in a prediction horizon of {buffer_size*env.unwrapped.step_dt*frequency_reduction} [s]")
-
-                    print(f"\nType of p action recorded: {p_typeAction}")
-                    print(f"Type of F action recorded: {F_typeAction}")
-                    print(f"with N = {buffer_size} prediction horizon")
-
-                    print('\nModel Input  size :', obs.shape[-1])
-                    print('Model Output size :', output_size,'\n')
-
-                    print('\n----- Simulation -----')
-
-                    experiment_dict = {}
-                    experiment_dict['buffer_size'] = buffer_size
-                    experiment_dict['frequency'] = f'{50/frequency_reduction} [Hz]'
-                    experiment_dict['p_typeAction'] = p_typeAction
-                    experiment_dict['F_typeAction'] = F_typeAction
-                    json_data[f'experiment{experiment_idx}'] = experiment_dict
-                    with open(f'{logging_directory}/info.json', 'w') as file:
-                        json.dump(json_data, file, indent=4)
+                        # Get New Observations and reset the Environment
+                        with torch.inference_mode():
+                            obs, _ = env.reset()
 
 
-                # --- Step 6 : Run the experiment
-                # Train a policy
-                DAgger_Train(env,
-                             expert_policy,
-                             student_policy, 
-                             scheduler, 
-                             optimizer, 
-                             train_criterion,
-                             device, 
-                             tot_epoch, 
-                             logging_directory,
-                             experiment_directory, 
-                            #  trajectory_length_s, 
-                             datapoints_generated_per_iter, 
-                             buffer_size,
-                             max_buffer_size, 
-                             frequency_reduction,
-                             p_typeAction, F_typeAction, 
-                             p_param, F_param, 
-                             p_shape, F_shape, 
-                             dataset_max_size, 
-                             train_kwargs, 
-                             modelDict,
-                             test_iter)
+                        #  Define Model criteria : model, optimizer and loss criterion and scheduler
+                        input_size = obs.shape[-1]
+                        output_size = 8 + (p_param*p_len) + (F_param*F_len)
+
+                        student_policy  = Model(input_size, output_size).to(device) #Model(input_size, output_size).to(device)
+                        modelDict = model_to_dict(student_policy)
+
+                        optimizer       = optim.Adadelta(student_policy.parameters(), lr=args_cli.lr)
+                        train_criterion = nn.MSELoss() 
+                        scheduler       = StepLR(optimizer, step_size=1, gamma=args_cli.gamma) # for adadelta
+
+                            # Printing
+                        if True : 
+                            print('\n---------------------------------------------------------------------')
+                            print('\n----- Datalogger Configuration -----\n')
+
+                            print(f"\nSimulation runs with time step {env.unwrapped.physics_dt} [s], at frequency {1/env.unwrapped.physics_dt} [Hz]")
+                            print(f"Policy runs with time step {env.unwrapped.step_dt} [s], at frequency {1/env.unwrapped.step_dt} [Hz]")
+                            print(f"Dataset will be recorded with time step {env.unwrapped.step_dt*frequency_reduction} [s], at frequency {1/(frequency_reduction*env.unwrapped.step_dt)} [Hz]")
+                            print(f"Which will correspond in a prediction horizon of {buffer_size*env.unwrapped.step_dt*frequency_reduction} [s]")
+
+                            print(f"\nType of p action recorded: {p_typeAction}")
+                            print(f"Type of F action recorded: {F_typeAction}")
+                            print(f"with N = {buffer_size} prediction horizon")
+
+                            print('\nModel Input  size :', obs.shape[-1])
+                            print('Model Output size :', output_size,'\n')
+
+                            print('\n----- Simulation -----')
+
+                            experiment_dict = {}
+                            experiment_dict['buffer_size'] = buffer_size
+                            experiment_dict['frequency'] = f'{50/frequency_reduction} [Hz]'
+                            experiment_dict['p_typeAction'] = p_typeAction
+                            experiment_dict['F_typeAction'] = F_typeAction
+                            json_data[f'experiment{experiment_idx}'] = experiment_dict
+                            with open(f'{logging_directory}/info.json', 'w') as file:
+                                json.dump(json_data, file, indent=4)
+
+
+                        # --- Step 6 : Run the experiment
+                        # Train a policy
+                        DAgger_Train(env,
+                                    expert_policy,
+                                    student_policy, 
+                                    scheduler, 
+                                    optimizer, 
+                                    train_criterion,
+                                    device, 
+                                    tot_epoch, 
+                                    logging_directory,
+                                    experiment_directory, 
+                                    #  trajectory_length_s, 
+                                    datapoints_generated_per_iter, 
+                                    buffer_size,
+                                    max_buffer_size, 
+                                    frequency_reduction,
+                                    p_typeAction, F_typeAction, 
+                                    p_param, F_param, 
+                                    p_shape, F_shape, 
+                                    dataset_max_size,  
+                                    modelDict,
+                                    test_iter,
+                                    activation_fuction,
+                                    mini_batch_size)
     
 
     # close the simulator
