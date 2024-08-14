@@ -29,8 +29,8 @@ class ActionsCfg:
             multipolicy=2,
             prevision_horizon=5,
             discretization_time=0.02,
-            parametrization_p='from_single_expand_discrete',
-            parametrization_F='from_single_expand_discrete'
+            parametrization_p='from_discrete_fit_spline',
+            parametrization_F='from_discrete_fit_spline'
             ),
         )
     
@@ -141,21 +141,7 @@ class UnitreeAliengoTestEnvCfg(LocomotionModelBasedEnvCfg):
         # post init of parent
         super().__post_init__()
 
+        self.decimation = 2 #2
 
 
-
-@configclass
-class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
-    def __post_init__(self):
-
-
-
-
-    
-
-
-        """ ----- terminations ----- """
-
-        # post init of parent
-        super().__post_init__()
  
