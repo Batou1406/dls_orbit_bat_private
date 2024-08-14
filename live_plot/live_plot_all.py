@@ -9,6 +9,7 @@ import matplotlib.animation as animation
 from matplotlib.collections import LineCollection
 import os
 
+
 # File paths
 file_paths_GRF = {
     'FL': 'live_variable/F_best_FL.csv',
@@ -133,6 +134,7 @@ for label in file_paths_foot_x.keys():
         colors_foot_x[label] = line.get_color()
     lines_foot_x[label] = line
 
+
 # Set up the plot labels and limits
 axFootX.set_xlabel('Iteration')
 axFootX.set_ylabel('Foot x pos [m]')
@@ -186,12 +188,27 @@ axFootZ.set_xlim(-0.1, 100.1)
 axFootZ.set_ylim(-0.0, 0.10)
 
 count=0
+already_init = False
 
 lines_list = [lines_grf, lines_foot_z,lines_height, lines_foot_x, lines_foot_y]
 def init():
     for lines in lines_list:
         for line in lines.values():
             line.set_data([], [])
+
+
+    c = np.loadtxt(winning_policy_path, delimiter=',')
+    unique_values = np.unique(c)
+
+    global already_init
+    if not already_init :
+        already_init = True
+
+        for val in unique_values:
+            axCost.scatter([], [], color=plt.cm.viridis(val / float(max(c))), label=f'Value {val}')
+            axCost.legend(loc='best')
+
+
     return [line for lines in lines_list for line in lines.values()]
 
 
@@ -243,7 +260,13 @@ def update(frame):
         segments = [[(x[i], y[i]), (x[i+1], y[i+1])] for i in range(len(x)-1)]
         
         # Create an array of colors based on the `c` variable
-        colors = plt.cm.jet(c[:-1] / float(max(c)))
+        colors = plt.cm.viridis(c[:-1] / float(max(c)))
+
+        # # Create a custom legend
+        # unique_values = np.unique(c)
+        # for val in unique_values:
+        #     axCost.scatter([], [], color=plt.cm.viridis(val / float(max(c))), label=f'Value {val}')
+        # axCost.legend(loc='best')
         
         # Update the LineCollection
         lines_cost.set_segments(segments)
