@@ -11,12 +11,17 @@ args_dict = {
     '--experiment': 'alo',
 }
 
-# Convert the dictionary to a list of arguments
-args_list = []
-for key, value in args_dict.items():
-    args_list.append(key)
-    if value is not None:
-        args_list.append(str(value))
+list_of_experiment = ['one', 'two']
 
-# Run the second script with the arguments
-subprocess.run(['python3', 'play_eval.py'] + args_list)
+for experiment in list_of_experiment:
+    args_dict['--experiment'] = experiment
+
+    # Convert the dictionary to a list of arguments
+    args_list = []
+    for key, value in args_dict.items():
+        args_list.append(key)
+        if value is not None:
+            args_list.append(str(value))
+
+    # Run the experiment
+    subprocess.run(['python3', './source/standalone/workflows/supervised_learning/play_eval.py'] + args_list)
