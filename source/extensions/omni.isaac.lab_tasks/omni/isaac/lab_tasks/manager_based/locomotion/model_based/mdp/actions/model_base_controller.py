@@ -1165,7 +1165,7 @@ class SamplingOptimizer():
         # Fix to have to different range for F splines
         std_F = self.std_F
         if self.cfg.parametrization_F == 'cubic_spline' or self.cfg.parametrization_F == 'from_discrete_fit_spline' : 
-            std_F = self.std_F.repeat(delta_F_lw.shape).clone().detach() #shape (1, batch_size, num_leg, 3, F_param)
+            std_F = self.std_F.repeat((1, self.num_legs,3, self.F_param)).clone().detach() #shape (1, num_leg, 3, F_param)
             std_F[:,:,:,(0,3)] = self.spline_std_F * std_F[:,:,:,(0,3)]
 
         # Samples from the previous best solution
