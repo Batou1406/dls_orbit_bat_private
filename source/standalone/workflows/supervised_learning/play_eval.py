@@ -126,6 +126,7 @@ def main():
     multipolicy_folder_path = f"model/{args_cli.multipolicies_folder}"
     policy_path_list = [os.path.join(multipolicy_folder_path, file) for file in os.listdir(multipolicy_folder_path) if os.path.isfile(os.path.join(multipolicy_folder_path, file))]
 
+    info_dict = {}
     policies = []
     for policy_path in policy_path_list : 
         print('Policy : ',policy_path)
@@ -140,6 +141,8 @@ def main():
             model_as_state_dict = torch.load(policy_path)
             input_size, output_size = infer_input_output_sizes(model_as_state_dict)
 
+            info_dict['Action size'] = input_size
+
             # Load the model
             policy = Model(input_size, output_size)
             policy.load_state_dict(torch.load(policy_path))
@@ -152,8 +155,8 @@ def main():
         # Append the loaded policy to the list of policies.
         policies.append(policy)
 
-    rewards = torch.empty((args_cli.num_env,args_cli.num_steps), device=env.device)
-    sampling_cost = torch.empty((args_cli.num_env,args_cli.num_steps), device=env.device)
+    rewards = torch.empty((args_cli.num_envs,args_cli.num_steps), device=env.device)
+    sampling_cost = torch.empty((args_cli.num_envs,args_cli.num_steps), device=env.device)
 
     # reset environment
     obs, _ = env.get_observations()
@@ -190,6 +193,11 @@ def main():
         json.dump(rewards_metrics, json_file, indent=4)
     with open(f'{logging_directory}/sampling_metrics.json', 'w') as json_file:
         json.dump(sampling_metrics, json_file, indent=4)
+
+    info_dict['rewards_median_all'] = rewards.median().item()
+    info_dict['sampling_cost_median_all'] = sampling_cost.median().item()
+    with open(f'{logging_directory}/info.json', 'w') as json_file:
+        json.dump(info_dict, json_file, indent=4)
 
 
 
