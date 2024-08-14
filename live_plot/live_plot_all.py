@@ -89,13 +89,13 @@ axGRF.set_xlim(-1.2, 2.2)
 axGRF.set_ylim(-70, 70)
 
 # ---------------- Cost --------------
-# lines_cost = {}
-# for label in file_paths_cost.keys():
-#     line, = axCost.plot([], [], lw=2, label=label)
-#     lines_cost[label] = line
+lines_cost = {}
+for label in file_paths_cost.keys():
+    line, = axCost.plot([], [], lw=2, label=label)
+    lines_cost[label] = line
 
-lines_cost = LineCollection([], linewidths=2)
-axCost.add_collection(lines_cost)
+# lines_cost = LineCollection([], linewidths=2)
+# axCost.add_collection(lines_cost)
 
 # Set up the plot labels and limits
 axCost.set_xlabel('Iteration')
@@ -190,23 +190,23 @@ axFootZ.set_ylim(-0.0, 0.10)
 count=0
 already_init = False
 
-lines_list = [lines_grf, lines_foot_z,lines_height, lines_foot_x, lines_foot_y]
+lines_list = [lines_grf, lines_foot_z,lines_cost,lines_height, lines_foot_x, lines_foot_y]
 def init():
     for lines in lines_list:
         for line in lines.values():
             line.set_data([], [])
 
 
-    c = np.loadtxt(winning_policy_path, delimiter=',')
-    unique_values = np.unique(c)
+    # c = np.loadtxt(winning_policy_path, delimiter=',')
+    # unique_values = np.unique(c)
 
-    global already_init
-    if not already_init :
-        already_init = True
+    # global already_init
+    # if not already_init :
+    #     already_init = True
 
-        for val in unique_values:
-            axCost.scatter([], [], color=plt.cm.viridis(val / float(max(c))), label=f'Value {val}')
-            axCost.legend(loc='best')
+    #     for val in unique_values:
+    #         axCost.scatter([], [], color=plt.cm.viridis(val / float(max(c))), label=f'Value {val}')
+    #         axCost.legend(loc='best')
 
 
     return [line for lines in lines_list for line in lines.values()]
@@ -248,36 +248,36 @@ def update(frame):
                 data_to_plot = data
                 x = np.arange(len(data_to_plot))
                 y = data_to_plot
-                # lines_cost[label].set_data(x, y)
+                lines_cost[label].set_data(x, y)
 
             else:
                 print(f"File {file_path} does not exist.")
 
 
-        c = np.loadtxt(winning_policy_path, delimiter=',')
+        # c = np.loadtxt(winning_policy_path, delimiter=',')
 
-        # Split the line into segments
-        segments = [[(x[i], y[i]), (x[i+1], y[i+1])] for i in range(len(x)-1)]
+        # # Split the line into segments
+        # segments = [[(x[i], y[i]), (x[i+1], y[i+1])] for i in range(len(x)-1)]
         
-        # Create an array of colors based on the `c` variable
-        colors = plt.cm.viridis(c[:-1] / float(max(c)))
+        # # Create an array of colors based on the `c` variable
+        # colors = plt.cm.viridis(c[:-1] / float(max(c)))
         
-        # Update the LineCollection
-        lines_cost.set_segments(segments)
-        lines_cost.set_color(colors)
+        # # Update the LineCollection
+        # lines_cost.set_segments(segments)
+        # lines_cost.set_color(colors)
         
-        # Adjust x and y limits based on the data
-        y_min = min(0.0,np.min(y) - 20.0 )
-        y_max = max(200,np.max(y) + 20.0 )
-        axCost.set_xlim(0, len(data_to_plot) + 5.0)
-        axCost.set_ylim(y_min, y_max)
-        # all_y_data = [lines_cost[label].get_ydata() for label in file_paths_cost.keys()]
-        # if all_y_data:
-        #     y_min = min(0.0,min(np.min(y) - 20.0 for y in all_y_data))
-        #     y_max = max(200,max(np.max(y) + 20.0 for y in all_y_data))
-        #     # print(y_max)
-        #     axCost.set_xlim(0, len(data_to_plot) + 5.0)
-        #     axCost.set_ylim(y_min, y_max)
+        # # Adjust x and y limits based on the data
+        # y_min = min(0.0,np.min(y) - 20.0 )
+        # y_max = max(200,np.max(y) + 20.0 )
+        # axCost.set_xlim(0, len(data_to_plot) + 5.0)
+        # axCost.set_ylim(y_min, y_max)
+        all_y_data = [lines_cost[label].get_ydata() for label in file_paths_cost.keys()]
+        if all_y_data:
+            y_min = min(0.0,min(np.min(y) - 20.0 for y in all_y_data))
+            y_max = max(200,max(np.max(y) + 20.0 for y in all_y_data))
+            # print(y_max)
+            axCost.set_xlim(0, len(data_to_plot) + 5.0)
+            axCost.set_ylim(y_min, y_max)
     except Exception as e: print(f"Error reading or processing the file: {e}")
 
 

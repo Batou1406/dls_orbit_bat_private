@@ -29,7 +29,7 @@ class ActionsCfg:
             multipolicy=2,
             prevision_horizon=5,
             discretization_time=0.02,
-            parametrization_p='from_discrete_fit_spline',
+            parametrization_p='discrete',
             parametrization_F='from_discrete_fit_spline'
             ),
         )

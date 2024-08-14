@@ -53,7 +53,7 @@ class ModelBaseActionCfg(ActionTermCfg):
         optimizerType:str = 'sampling'
         """ Different type of optimizer. For now, only 'sampling' is implemented """
 
-        multipolicy:int = 2
+        multipolicy:int = 1
         """ Number of different policy provied to warm start the sampling controller."""
 
         prevision_horizon: int = 5 #5 #15 # 15
@@ -65,10 +65,10 @@ class ModelBaseActionCfg(ActionTermCfg):
         num_samples: int = 5000
         """ Number of samples used if the optimizerType is 'sampling' """
 
-        parametrization_p: Literal['discrete', 'cubic_spline', 'from_discrete_fit_spline', 'from_single_expand_discrete', 'first'] = 'from_single_expand_discrete'
+        parametrization_p: Literal['discrete', 'cubic_spline', 'from_discrete_fit_spline', 'from_single_expand_discrete', 'first'] = 'discrete'
         """ Define how p, foot touch down position, are encoded : can be 'discrete', 'cubic_spline' or from_discrete_fit_spline, this modify p_param  """
 
-        parametrization_F: Literal['discrete', 'cubic_spline', 'from_discrete_fit_spline', 'from_single_expand_discrete'] = 'from_single_expand_discrete'
+        parametrization_F: Literal['discrete', 'cubic_spline', 'from_discrete_fit_spline', 'from_single_expand_discrete'] = 'discrete'
         """ Define how F, Ground Reaction Forces, are encoded : can be 'discrete', 'cubic_spline' or 'from_discrete_fit_spline', this modify F_param """
 
         height_ref: float = 0.35 #0.35 #0.38
