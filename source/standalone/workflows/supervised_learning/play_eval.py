@@ -17,7 +17,7 @@ parser.add_argument("--task", type=str, default=None, help="Name of the task.")
 parser.add_argument("--seed", type=int, default=None, help="Seed used for the environment")
 parser.add_argument("--multipolicies_folder", type=str, default=None, help="Path to folder that contains the different policies in model/multipolicies_folder")
 parser.add_argument("--experiment_folder", type=str, default=None, help="Where to save the results in ./eval/experiment_folder")
-parser.add_argument("--experiment", type=str, default=None, help="Where to save the results in ./eval/experiment_folder/experiment_name")
+# parser.add_argument("--experiment", type=str, default=None, help="Where to save the results in ./eval/experiment_folder/experiment_name")
 parser.add_argument("--num_steps", type=int, default=None, help="Number of step to generate the data")
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
@@ -42,6 +42,76 @@ from omni.isaac.lab_tasks.utils.wrappers.rsl_rl import RslRlOnPolicyRunnerCfg, R
 from train import Model # Where to get the model architecture for MLP, may want to change that
 
 from rsl_rl.modules import ActorCritic
+
+from omni.isaac.lab_tasks.manager_based.locomotion.model_based.config.unitree_aliengo import agents
+from omni.isaac.lab.utils import configclass
+from omni.isaac.lab_tasks.manager_based.locomotion.model_based.model_based_env_cfg import LocomotionModelBasedEnvCfg
+from omni.isaac.lab_assets.unitree import UNITREE_ALIENGO_SELF_COLLISION_TORQUE_CONTROL_CFG  # isort: skip
+from omni.isaac.lab.terrains.config.niceFlat import COBBLESTONE_ROAD_CFG, COBBLESTONE_FLAT_CFG
+from omni.isaac.lab.terrains.config.climb import STAIRS_TERRAINS_CFG
+from omni.isaac.lab.terrains.config.speed import SPEED_TERRAINS_CFG
+from omni.isaac.lab.terrains.config.rough import ROUGH_TERRAINS_CFG
+from omni.isaac.lab_tasks.manager_based.locomotion.model_based.mdp import modify_reward_weight
+from omni.isaac.lab.managers import CurriculumTermCfg as CurrTerm
+from omni.isaac.lab.terrains import randomTerrainImporter
+import omni.isaac.lab_tasks.manager_based.locomotion.model_based.mdp as mdp
+
+
+json_info_path = f"./model/{args_cli.multipolicies_folder}/info.son"
+if os.path.isfile(json_info_path):
+    with open(json_info_path, 'r') as json_file:
+        info_dict = json.load(json_file)  # Load JSON data into a Python dictionary
+task_name = f"{info_dict['p_typeAction']}-{info_dict['F_typeAction']}-H{info_dict['prediction_horizon_step']}"
+
+@configclass
+class ActionsCfg:
+    """Action specifications for the MDP.
+    - Robot joint position - dim=12
+    """
+    model_base_variable = mdp.ModelBaseActionCfg(
+        asset_name="robot",
+        joint_names=[".*"], 
+        controller=mdp.samplingController,
+        optimizerCfg=mdp.ModelBaseActionCfg.OptimizerCfg(
+            multipolicy=1,
+            prevision_horizon=info_dict['prediction_horizon_step'],
+            discretization_time=float(info_dict['prediction_horizon_time'].split()[0]),
+            parametrization_p=info_dict['p_typeAction'],
+            parametrization_F=info_dict['F_typeAction']
+            ),
+        )
+
+@configclass
+class env_cfg(LocomotionModelBasedEnvCfg):
+    actions = ActionsCfg()
+    
+    def __post_init__(self):
+
+        """ ----- Scene Settings ----- """
+        self.scene.robot = UNITREE_ALIENGO_SELF_COLLISION_TORQUE_CONTROL_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+        self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/base"  
+
+        self.scene.terrain.terrain_generator = COBBLESTONE_FLAT_CFG # very Flat
+        # self.scene.terrain.terrain_generator = COBBLESTONE_ROAD_CFG # Flat
+        # self.scene.terrain.terrain_generator = STAIRS_TERRAINS_CFG
+        # self.scene.terrain.terrain_generator = SPEED_TERRAINS_CFG
+        # self.scene.terrain.terrain_generator = ROUGH_TERRAINS_CFG    
+        self.scene.terrain.class_type = randomTerrainImporter      
+
+        # post init of parent
+        super().__post_init__()
+
+gym.register(
+    id=task_name,
+    entry_point="omni.isaac.lab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True, #True
+    kwargs={
+        "env_cfg_entry_point": env_cfg,
+        "rsl_rl_cfg_entry_point": agents.rsl_rl_cfg.UnitreeAliengoBasePPORunnerCfg,
+    },
+)
+
+
 
 def infer_input_output_sizes(state_dict):
     # Find the first layer's weight (input size)
@@ -107,15 +177,17 @@ def main():
 
     """Play with RSL-RL agent."""
     # parse configuration
-    env_cfg = parse_env_cfg(args_cli.task, use_gpu=not args_cli.cpu, num_envs=args_cli.num_envs, use_fabric=not args_cli.disable_fabric)
-    agent_cfg: RslRlOnPolicyRunnerCfg = cli_args.parse_rsl_rl_cfg(args_cli.task, args_cli)
+    env_cfg = parse_env_cfg(task_name, use_gpu=not args_cli.cpu, num_envs=args_cli.num_envs, use_fabric=not args_cli.disable_fabric)
+    agent_cfg: RslRlOnPolicyRunnerCfg = cli_args.parse_rsl_rl_cfg(task_name, args_cli)
 
     # create isaac environment and wrap around environment for rsl-rl
-    env = gym.make(args_cli.task, cfg=env_cfg)
+    env = gym.make(task_name, cfg=env_cfg)
     env = RslRlVecEnvWrapper(env)
 
     # Create logging directory if necessary
-    logging_directory = f'eval/{args_cli.experiment_folder}/{args_cli.experiment}'
+    # logging_directory = f'eval/{args_cli.experiment_folder}/{args_cli.experiment}'
+    logging_directory = f'eval/{args_cli.experiment_folder}/{task_name}'
+
     if not os.path.exists(logging_directory):
         os.makedirs(logging_directory)
     else :
@@ -150,7 +222,17 @@ def main():
 
         # Invalid policy name
         else :
-            raise NameError(F"Invalid policy name or network type ('actor_critic' or 'MLP') for {policy_path}")
+            # raise NameError(F"Invalid policy name or network type ('actor_critic' or 'MLP') for {policy_path}")
+            # Load the state dictionary and retrieve input and output size from the network
+            model_as_state_dict = torch.load(policy_path)
+            input_size, output_size = infer_input_output_sizes(model_as_state_dict)
+
+            info_dict['Action size'] = input_size
+
+            # Load the model
+            policy = Model(input_size, output_size)
+            policy.load_state_dict(torch.load(policy_path))
+            policy = policy.to(env.device)
         
         # Append the loaded policy to the list of policies.
         policies.append(policy)
