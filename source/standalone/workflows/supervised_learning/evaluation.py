@@ -29,6 +29,7 @@ args_dict = {
 
 list_of_experiment = ['one', 'two']
 list_of_encoding = ['discrete', 'cubic_spline']
+list_of_policy_folder = ['eval_1', 'eval_2']
 
 
 
@@ -39,6 +40,7 @@ list_of_encoding = ['discrete', 'cubic_spline']
 
 for i in range(len(list_of_experiment)):
     args_dict['--experiment'] = list_of_experiment[i]
+    args_dict['--multipolicies_folder'] = list_of_policy_folder[i]
 
     @configclass
     class ActionsCfg:
