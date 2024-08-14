@@ -17,7 +17,7 @@ parser.add_argument("--task", type=str, default=None, help="Name of the task.")
 parser.add_argument("--seed", type=int, default=None, help="Seed used for the environment")
 parser.add_argument("--multipolicies_folder", type=str, default=None, help="Path to folder that contains the different policies in model/multipolicies_folder")
 parser.add_argument("--experiment_folder", type=str, default=None, help="Where to save the results in ./eval/experiment_folder")
-parser.add_argument("--experiment_name", type=str, default=None, help="Where to save the results in ./eval/experiment_folder/experiment_name")
+parser.add_argument("--experiment", type=str, default=None, help="Where to save the results in ./eval/experiment_folder/experiment_name")
 parser.add_argument("--num_steps", type=int, default=None, help="Number of step to generate the data")
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
@@ -33,6 +33,8 @@ simulation_app = app_launcher.app
 import gymnasium as gym
 import os
 import torch
+import json
+import numpy as np
 from rsl_rl.runners import OnPolicyRunner
 import omni.isaac.lab_tasks  # noqa: F401
 from omni.isaac.lab_tasks.utils import get_checkpoint_path, parse_env_cfg
@@ -75,6 +77,32 @@ def load_rsl_rl_policy(path, device="cpu", num_actions=108):
     return policy
 
 
+def compute_metrics(tensor):
+    metrics = {
+        'mean_dim0': tensor.mean(dim=0).tolist(),
+        'mean_dim1': tensor.mean(dim=1).tolist(),
+        'mean_all': tensor.mean().item(),
+
+        'median_dim0': tensor.median(dim=0).values.tolist(),
+        'median_dim1': tensor.median(dim=1).values.tolist(),
+        'median_all': tensor.median().item(),
+
+        'std_dim0': tensor.std(dim=0).tolist(),
+        'std_dim1': tensor.std(dim=1).tolist(),
+        'std_all': tensor.std().item(),
+
+        'var_dim0': tensor.var(dim=0).tolist(),
+        'var_dim1': tensor.var(dim=1).tolist(),
+        'var_all': tensor.var().item(),
+
+        'max_dim0': tensor.max(dim=0).values.tolist(),
+        'min_dim0': tensor.min(dim=0).values.tolist(),
+        'max_all': tensor.max().item(),
+        'min_all': tensor.min().item()
+    }
+
+    return metrics
+
 def main():
 
     """Play with RSL-RL agent."""
@@ -85,6 +113,13 @@ def main():
     # create isaac environment and wrap around environment for rsl-rl
     env = gym.make(args_cli.task, cfg=env_cfg)
     env = RslRlVecEnvWrapper(env)
+
+    # Create logging directory if necessary
+    logging_directory = f'eval/{args_cli.experiment_folder}/{args_cli.experiment}'
+    if not os.path.exists(logging_directory):
+        os.makedirs(logging_directory)
+    else :
+        raise KeyError('There is already an experiment setup in this directory, Please provide another folder_name')
 
 
     # Load the policies 
@@ -117,7 +152,8 @@ def main():
         # Append the loaded policy to the list of policies.
         policies.append(policy)
 
-
+    rewards = torch.empty((args_cli.num_env,args_cli.num_steps), device=env.device)
+    sampling_cost = torch.empty((args_cli.num_env,args_cli.num_steps), device=env.device)
 
     # reset environment
     obs, _ = env.get_observations()
@@ -137,8 +173,23 @@ def main():
             # env stepping
             obs, rew, dones, extras = env.step(actions) 
 
+            rewards[:,i] = rew  #shape(num_envs, num_steps)->(num_envs)
+            sampling_cost[:,i] = env.unwrapped.action_manager.get_term('model_base_variable').controller.batched_cost
+
     # close the simulator
     env.close()
+
+    # Save the Results
+    np.savetxt(f'{logging_directory}/rewards.csv', rewards.cpu().numpy(), delimiter=',', fmt='%.6f')
+    np.savetxt(f'{logging_directory}/sampling_cost.csv', sampling_cost.cpu().numpy(), delimiter=',', fmt='%.6f')
+
+    rewards_metrics = compute_metrics(rewards)
+    sampling_metrics = compute_metrics(sampling_cost)
+
+    with open(f'{logging_directory}/rewards_metrics.json', 'w') as json_file:
+        json.dump(rewards_metrics, json_file, indent=4)
+    with open(f'{logging_directory}/sampling_metrics.json', 'w') as json_file:
+        json.dump(sampling_metrics, json_file, indent=4)
 
 
 
