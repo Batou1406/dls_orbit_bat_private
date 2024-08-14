@@ -5,9 +5,9 @@ args_dict = {
     # '--task': 'Isaac-Model-Based-Base-Aliengo-v0',
     '--num_envs': '32',
     '--headless': None,  # For flags or options without values
-    '--num_steps': '1000',
+    '--num_steps': '500',
     '--multipolicies_folder': 'test_eval',
-    '--experiment_folder': 'eval_3',
+    '--experiment_folder': 'eval_9',
     # '--experiment': 'alo',
 }
 
@@ -30,3 +30,7 @@ for i in range(len(list_of_policy_folder)):
 
     # Run the experiment
     subprocess.run(['python3', './source/standalone/workflows/supervised_learning/play_eval.py'] + args_list)
+
+
+
+

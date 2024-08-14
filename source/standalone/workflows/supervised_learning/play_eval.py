@@ -57,11 +57,17 @@ from omni.isaac.lab.terrains import randomTerrainImporter
 import omni.isaac.lab_tasks.manager_based.locomotion.model_based.mdp as mdp
 
 
-json_info_path = f"./model/{args_cli.multipolicies_folder}/info.son"
+json_info_path = f"./model/{args_cli.multipolicies_folder}/info.json"
 if os.path.isfile(json_info_path):
     with open(json_info_path, 'r') as json_file:
         info_dict = json.load(json_file)  # Load JSON data into a Python dictionary
-task_name = f"{info_dict['p_typeAction']}-{info_dict['F_typeAction']}-H{info_dict['prediction_horizon_step']}"
+task_name = f"{info_dict['p_typeAction']}-{info_dict['F_typeAction']}-H{info_dict['prediction_horizon_step']}-dt{info_dict['prediction_horizon_time'][2:4]}"
+
+if info_dict['F_typeAction'] == 'spline' :
+    info_dict['F_typeAction'] = 'cubic_spline' 
+
+if info_dict['p_typeAction'] == 'spline' :
+    info_dict['p_typeAction'] = 'cubic_spline' 
 
 @configclass
 class ActionsCfg:
@@ -71,11 +77,11 @@ class ActionsCfg:
     model_base_variable = mdp.ModelBaseActionCfg(
         asset_name="robot",
         joint_names=[".*"], 
-        controller=mdp.samplingController,
+        controller=mdp.samplingTrainer,
         optimizerCfg=mdp.ModelBaseActionCfg.OptimizerCfg(
             multipolicy=1,
             prevision_horizon=info_dict['prediction_horizon_step'],
-            discretization_time=float(info_dict['prediction_horizon_time'].split()[0]),
+            discretization_time=float(info_dict['prediction_horizon_time'][0:4]),
             parametrization_p=info_dict['p_typeAction'],
             parametrization_F=info_dict['F_typeAction']
             ),
@@ -96,7 +102,48 @@ class env_cfg(LocomotionModelBasedEnvCfg):
         # self.scene.terrain.terrain_generator = STAIRS_TERRAINS_CFG
         # self.scene.terrain.terrain_generator = SPEED_TERRAINS_CFG
         # self.scene.terrain.terrain_generator = ROUGH_TERRAINS_CFG    
-        self.scene.terrain.class_type = randomTerrainImporter      
+        self.scene.terrain.class_type = randomTerrainImporter   
+
+        self.rewards.track_lin_vel_xy_exp.weight         = 1.5
+        self.rewards.track_soft_vel_xy_exp               = None
+        self.rewards.track_ang_vel_z_exp.weight          = 0.75
+        self.rewards.track_robot_height_exp.weight       = 0.2
+
+        # -- Additionnal penalties : Need a negative weight
+        self.rewards.penalty_lin_vel_z_l2.weight         = -2.0
+        self.rewards.penalty_ang_vel_xy_l2.weight        = -0.05
+        self.rewards.penalty_dof_torques_l2              = None
+        self.rewards.penalty_dof_acc_l2                  = None
+        self.rewards.penalty_action_rate_l2              = None
+        self.rewards.undesired_contacts                  = None
+        self.rewards.flat_orientation_l2                 = None
+        self.rewards.dof_pos_limits.weight               = -3.0
+        self.rewards.penalty_friction                    = None
+        self.rewards.penalty_stance_foot_vel             = None
+        self.rewards.penalty_CoT.weight                  = -0.04
+        self.rewards.penalty_close_feet                  = None
+        self.rewards.penalize_foot_trac_err              = None
+        self.rewards.penalty_constraint_violation        = None
+
+        # -- Model based penalty : Positive weight -> penalty is already negative
+        self.rewards.penalty_leg_frequency               = None
+        self.rewards.penalty_leg_duty_cycle              = None
+        self.rewards.penalty_large_force                 = None
+        self.rewards.penalty_large_step                  = None
+        self.rewards.penalty_frequency_variation.weight  = 0.5 #1.0
+        self.rewards.penatly_duty_cycle_variation.weight = 1.0 #2.5
+        self.rewards.penalty_step_variation.weight       = 0.2 #2.5
+        self.rewards.penatly_force_variation.weight      = 1e-5 #1e-4
+
+        self.rewards.penalty_sampling_rollout            = None
+
+        # -- Additionnal Reward : Need a positive weight
+        self.rewards.reward_is_alive                     = None #0.25
+        self.rewards.penalty_failed                      = None
+
+
+
+
 
         # post init of parent
         super().__post_init__()
@@ -198,47 +245,52 @@ def main():
     multipolicy_folder_path = f"model/{args_cli.multipolicies_folder}"
     policy_path_list = [os.path.join(multipolicy_folder_path, file) for file in os.listdir(multipolicy_folder_path) if os.path.isfile(os.path.join(multipolicy_folder_path, file))]
 
-    info_dict = {}
+
     policies = []
     for policy_path in policy_path_list : 
         print('Policy : ',policy_path)
 
-        # Is a RSL RL policy with a Actor-Critic architecture
-        if 'actor_critic' in os.path.basename(policy_path):
-            policy = load_rsl_rl_policy(path=policy_path, device=agent_cfg.device)
+        if '.pt' in os.path.basename(policy_path):
 
-        # Is a Imitation Learning Policy with a simple MLP architecture
-        elif 'MLP' in os.path.basename(policy_path):
-            # Load the state dictionary and retrieve input and output size from the network
-            model_as_state_dict = torch.load(policy_path)
-            input_size, output_size = infer_input_output_sizes(model_as_state_dict)
+            # Is a RSL RL policy with a Actor-Critic architecture
+            if 'actor_critic' in os.path.basename(policy_path):
+                policy = load_rsl_rl_policy(path=policy_path, device=agent_cfg.device)
 
-            info_dict['Action size'] = input_size
+            # Is a Imitation Learning Policy with a simple MLP architecture
+            elif 'MLP' in os.path.basename(policy_path):
+                # Load the state dictionary and retrieve input and output size from the network
+                model_as_state_dict = torch.load(policy_path)
+                input_size, output_size = infer_input_output_sizes(model_as_state_dict)
 
-            # Load the model
-            policy = Model(input_size, output_size)
-            policy.load_state_dict(torch.load(policy_path))
-            policy = policy.to(env.device)
+                info_dict['Action size'] = output_size
 
-        # Invalid policy name
-        else :
-            # raise NameError(F"Invalid policy name or network type ('actor_critic' or 'MLP') for {policy_path}")
-            # Load the state dictionary and retrieve input and output size from the network
-            model_as_state_dict = torch.load(policy_path)
-            input_size, output_size = infer_input_output_sizes(model_as_state_dict)
+                # Load the model
+                policy = Model(input_size, output_size)
+                policy.load_state_dict(torch.load(policy_path))
+                policy = policy.to(env.device)
 
-            info_dict['Action size'] = input_size
+            # Invalid policy name
+            else :
+                # raise NameError(F"Invalid policy name or network type ('actor_critic' or 'MLP') for {policy_path}")
+                # Load the state dictionary and retrieve input and output size from the network
+                model_as_state_dict = torch.load(policy_path)
+                input_size, output_size = infer_input_output_sizes(model_as_state_dict)
 
-            # Load the model
-            policy = Model(input_size, output_size)
-            policy.load_state_dict(torch.load(policy_path))
-            policy = policy.to(env.device)
-        
-        # Append the loaded policy to the list of policies.
-        policies.append(policy)
+                info_dict['Action size'] = output_size
+
+                # Load the model
+                policy = Model(input_size, output_size)
+                policy.load_state_dict(torch.load(policy_path))
+                policy = policy.to(env.device)
+            
+            # Append the loaded policy to the list of policies.
+            policies.append(policy)
 
     rewards = torch.empty((args_cli.num_envs,args_cli.num_steps), device=env.device)
     sampling_cost = torch.empty((args_cli.num_envs,args_cli.num_steps), device=env.device)
+
+    info_dict['eval_name'] = task_name
+    info_dict['number_eval_steps'] = args_cli.num_steps
 
     # reset environment
     obs, _ = env.get_observations()
@@ -280,6 +332,25 @@ def main():
     info_dict['sampling_cost_median_all'] = sampling_cost.median().item()
     with open(f'{logging_directory}/info.json', 'w') as json_file:
         json.dump(info_dict, json_file, indent=4)
+
+
+    result_log_dir = f'eval/{args_cli.experiment_folder}'
+    json_info_res_path = f"{result_log_dir}/info.json"
+    if os.path.isfile(json_info_res_path):
+        with open(json_info_res_path, 'r') as json_file:
+            info_res_dict = json.load(json_file)  # Load JSON data into a Python dictionary
+    else :
+        info_res_dict = {}
+
+    res_dict = {}
+    res_dict['rewards_median_all'] = rewards.median().item()
+    res_dict['sampling_cost_median_all'] = sampling_cost.median().item()
+    info_res_dict[task_name] = res_dict
+
+    with open(f'{result_log_dir}/info.json', 'w') as json_file:
+        json.dump(info_res_dict, json_file, indent=4)
+
+
 
 
 

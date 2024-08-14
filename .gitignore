@@ -67,3 +67,5 @@ model/*
 **/quadrupedpympc/*
 
 live_variable/
+
+eval/
