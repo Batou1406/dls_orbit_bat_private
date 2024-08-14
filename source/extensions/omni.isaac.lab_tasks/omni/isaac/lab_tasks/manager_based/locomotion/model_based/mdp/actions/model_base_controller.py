@@ -1720,6 +1720,7 @@ class SamplingBatchedTrainer():
 
         # --- Step 1 : Given f and d samples -> generate the contact sequence for the samples
         batched_c, next_phase = gait_generator(f=f, d=d, phase=phase, horizon=max(2,self.sampling_horizon), dt=self.mpc_dt)
+        batched_c = batched_c[:self.sampling_horizon] # in case horizon == 1, batched_c will have horizon 2
 
         # --- Step 2 : prepare the variables 
         batched_initial_state, batched_reference_seq_state, batched_reference_seq_input, batched_action_param = self.prepare_variable_for_compute_rollout(batched_c=batched_c, batched_p_lw=p_lw, batched_delta_F_lw=delta_F_lw, feet_in_contact=self.c_actual)
