@@ -26,11 +26,11 @@ class ActionsCfg:
         joint_names=[".*"], 
         controller=mdp.samplingController,
         optimizerCfg=mdp.ModelBaseActionCfg.OptimizerCfg(
-            multipolicy=2,
-            prevision_horizon=5,
+            multipolicy=1,
+            prevision_horizon=15,
             discretization_time=0.02,
-            parametrization_p='discrete',
-            parametrization_F='from_discrete_fit_spline'
+            parametrization_p='first',
+            parametrization_F='cubic_spline'
             ),
         )
     

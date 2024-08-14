@@ -786,6 +786,8 @@ class SamplingOptimizer():
         self.RL_foot_list = [np.array([0.0, 0.0, 0.0])]
         self.RR_foot_list = [np.array([0.0, 0.0, 0.0])]
 
+        self.previous_best_cost = torch.tensor(0.0, device=device)
+
 
     def reset(self):
         # Reset the best solution
@@ -1220,16 +1222,21 @@ class SamplingOptimizer():
         # If optimization is set to false, samples are feed with initial guess
         if not self.optimize_f :
             for i in range(self.number_of_policy):
-                f_samples[i*(num_samples_RL//self.number_of_policy):(i+1)*(num_samples_RL//self.number_of_policy),:]              = f[i].clone().detach()
+                f_samples[i*(num_samples_RL//self.number_of_policy):(i+1)*(num_samples_RL//self.number_of_policy),:] = f[i].clone().detach()
+            f_samples[self.num_samples-num_samples_previous_best:,:] = f[0].clone().detach()
+
         if not self.optimize_d :
             for i in range(self.number_of_policy):
-                d_samples[i*(num_samples_RL//self.number_of_policy):(i+1)*(num_samples_RL//self.number_of_policy),:]              = d[i].clone().detach()
+                d_samples[i*(num_samples_RL//self.number_of_policy):(i+1)*(num_samples_RL//self.number_of_policy),:] = d[i].clone().detach()
+            d_samples[self.num_samples-num_samples_previous_best:,:] = d[0].clone().detach()
         if not self.optimize_p :
             for i in range(self.number_of_policy): 
-                p_lw_samples[i*(num_samples_RL//self.number_of_policy):(i+1)*(num_samples_RL//self.number_of_policy),:,:,:]       = p_lw[i].clone().detach()
+                p_lw_samples[i*(num_samples_RL//self.number_of_policy):(i+1)*(num_samples_RL//self.number_of_policy),:,:,:] = p_lw[i].clone().detach()
+            p_lw_samples[self.num_samples-num_samples_previous_best:,:] = p_lw[0].clone().detach()
         if not self.optimize_F : 
             for i in range(self.number_of_policy): 
                 delta_F_lw_samples[i*(num_samples_RL//self.number_of_policy):(i+1)*(num_samples_RL//self.number_of_policy),:,:,:] = delta_F_lw[i].clone().detach()
+            delta_F_lw_samples[self.num_samples-num_samples_previous_best:,:] = delta_F_lw[0].clone().detach()
 
         return f_samples, d_samples, p_lw_samples, delta_F_lw_samples
 
@@ -1365,6 +1372,22 @@ class SamplingOptimizer():
 
             # Update the trajectory cost
             cost_samples += step_cost                                                                                           # shape(num_samples)
+
+            # Saturate the cost in case of NaN or inf
+            cost_samples[torch.isnan(cost_samples) | torch.isinf(cost_samples)] = 1e10
+
+            # Take the best found control parameters
+            best_index = torch.argmin(cost_samples)
+            best_cost = cost_samples[best_index] # cost_samples.take(best_index)
+
+            if best_cost > 2000 :
+                print('oulalala')
+
+
+            if best_cost > 10*self.previous_best_cost:
+                print('Oh no')
+
+            self.previous_best_cost = best_cost
 
         return cost_samples
      
