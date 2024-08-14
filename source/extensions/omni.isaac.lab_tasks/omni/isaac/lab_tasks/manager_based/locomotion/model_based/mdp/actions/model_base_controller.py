@@ -1720,7 +1720,7 @@ class SamplingBatchedTrainer():
 
         # --- Step 1 : Given f and d samples -> generate the contact sequence for the samples
         batched_c, next_phase = gait_generator(f=f, d=d, phase=phase, horizon=max(2,self.sampling_horizon), dt=self.mpc_dt)
-        batched_c = batched_c[...,:self.sampling_horizon] # in case horizon == 1, batched_c will have horizon 2
+        # batched_c = batched_c[...,:self.sampling_horizon] # in case horizon == 1, batched_c will have horizon 2
 
         # --- Step 2 : prepare the variables 
         batched_initial_state, batched_reference_seq_state, batched_reference_seq_input, batched_action_param = self.prepare_variable_for_compute_rollout(batched_c=batched_c, batched_p_lw=p_lw, batched_delta_F_lw=delta_F_lw, feet_in_contact=self.c_actual)
@@ -1875,9 +1875,9 @@ class SamplingBatchedTrainer():
         p_ref_seq_lw = torch.zeros((self._env.num_envs, self.num_legs, 3, self.sampling_horizon), device=self.device) # shape(batch, num_legs, 3, sampling_horizon) TODO Define this !
 
         # Compute the gravity compensation GRF along the horizon : of shape (batch, num_legs, 3, sampling_horizon)
-        num_leg_contact_seq_samples = (torch.sum(batched_c, dim=1)).clamp(min=1) # Compute the number of leg in contact, clamp by minimum 1 to avoid division by zero. shape(batch, sampling_horizon)
+        num_leg_contact_seq_samples = (torch.sum(batched_c[...,:self.sampling_horizon], dim=1)).clamp(min=1) # Compute the number of leg in contact, clamp by minimum 1 to avoid division by zero. shape(batch, sampling_horizon)
         gravity_compensation_F_samples = torch.zeros((self._env.num_envs, self.num_legs, 3, self.sampling_horizon), device=self.device) # shape (batch, num_legs, 3, sampling_horizon)
-        gravity_compensation_F_samples[:,:,2,:] =  batched_c * ((self.robot_mass * 9.81)/num_leg_contact_seq_samples).unsqueeze(1)    # shape (batch, num_legs, sampling_horizon)
+        gravity_compensation_F_samples[:,:,2,:] =  batched_c[...,:self.sampling_horizon] * ((self.robot_mass * 9.81)/num_leg_contact_seq_samples).unsqueeze(1)    # shape (batch, num_legs, sampling_horizon)
         
         # Prepare the reference sequence (at time t, t+dt, etc.)
         batched_reference_seq_state['pos_com_lw']      = com_pos_ref_seq_lw      # shape(batch, 3, sampling_horizon)           # CoM position reference in local world frame
