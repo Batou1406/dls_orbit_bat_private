@@ -261,12 +261,6 @@ def update(frame):
         
         # Create an array of colors based on the `c` variable
         colors = plt.cm.viridis(c[:-1] / float(max(c)))
-
-        # # Create a custom legend
-        # unique_values = np.unique(c)
-        # for val in unique_values:
-        #     axCost.scatter([], [], color=plt.cm.viridis(val / float(max(c))), label=f'Value {val}')
-        # axCost.legend(loc='best')
         
         # Update the LineCollection
         lines_cost.set_segments(segments)
