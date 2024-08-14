@@ -1043,8 +1043,8 @@ def main():
     # buffer_size_list = [5]
 
     # Factor of the simulation frequency at which the dataset will be recorded
-    frequency_reduction_list = [1, 2]
-    # frequency_reduction_list = [1]
+    # frequency_reduction_list = [1, 2]
+    frequency_reduction_list = [2]
 
     # The encoding of the actions
     action_encoding_list = [('discrete', 'discrete'), ('discrete', 'spline'), ('spline', 'discrete'), ('spline', 'spline'), ('first', 'discrete'), ('first', 'spline')] 
