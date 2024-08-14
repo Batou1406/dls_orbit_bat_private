@@ -56,7 +56,7 @@ class ModelBaseActionCfg(ActionTermCfg):
         multipolicy:int = 1
         """ Number of different policy provied to warm start the sampling controller."""
 
-        prevision_horizon: int = 5 #5 #15 # 15
+        prevision_horizon: int = 1 #5 #15 # 15
         """ Prevision horizon for predictive optimization (in number of time steps) """
 
         discretization_time: float = 0.02 #0.02 # 0.04
