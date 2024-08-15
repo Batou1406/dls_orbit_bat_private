@@ -370,8 +370,6 @@ def main():
     with open(f'{result_log_dir}/info.json', 'w') as json_file:
         json.dump(info_res_dict, json_file, indent=4)
 
-    breakpoint()
-
 
 
 
