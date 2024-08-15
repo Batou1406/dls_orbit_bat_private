@@ -1171,15 +1171,19 @@ class SamplingOptimizer():
             std_F[:,:,:,(0,3)] = self.spline_std_F * std_F[:,:,:,(0,3)]
 
         # Samples from the previous best solution
-        f_samples_best          = self.sampling_law(num_samples=num_samples_previous_best, mean=self.f_best[0], std=self.std_f, clip=self.clip_sample)
-        d_samples_best          = self.sampling_law(num_samples=num_samples_previous_best, mean=self.d_best[0], std=self.std_d, clip=self.clip_sample)
+        f_samples_best = self.f_best + self.sampling_law(num_samples=num_samples_previous_best, mean=torch.zeros(1, device=self.device), std=self.std_f, clip=self.clip_sample)
+        d_samples_best = self.d_best + self.sampling_law(num_samples=num_samples_previous_best, mean=torch.zeros(1, device=self.device), std=self.std_d, clip=self.clip_sample)
+        # f_samples_best          = self.sampling_law(num_samples=num_samples_previous_best, mean=self.f_best[0], std=self.std_f, clip=self.clip_sample)
+        # d_samples_best          = self.sampling_law(num_samples=num_samples_previous_best, mean=self.d_best[0], std=self.std_d, clip=self.clip_sample)
         p_lw_samples_best       = self.sampling_law(num_samples=num_samples_previous_best, mean=self.p_best[0], std=self.std_p, clip=self.clip_sample)
         delta_F_lw_samples_best = self.sampling_law(num_samples=num_samples_previous_best, mean=self.F_best[0], std=std_F, clip=self.clip_sample)
 
         f_samples_rl_list, d_samples_rl_list, p_lw_samples_rl_list, delta_F_lw_samples_rl_list = [], [], [], []
         for i in range(self.number_of_policy):
-            f_samples_rl_list.append(          self.sampling_law(num_samples=num_samples_RL//self.number_of_policy, mean=f[i],          std=self.std_f, clip=self.clip_sample) )
-            d_samples_rl_list.append(          self.sampling_law(num_samples=num_samples_RL//self.number_of_policy, mean=d[i],          std=self.std_d, clip=self.clip_sample) )
+            f_samples_rl_list.append(f + self.sampling_law(num_samples=num_samples_RL//self.number_of_policy, mean=torch.zeros(1, device=self.device), std=self.std_f, clip=self.clip_sample))
+            d_samples_rl_list.append(d + self.sampling_law(num_samples=num_samples_RL//self.number_of_policy, mean=torch.zeros(1, device=self.device), std=self.std_d, clip=self.clip_sample))
+            # f_samples_rl_list.append(          self.sampling_law(num_samples=num_samples_RL//self.number_of_policy, mean=f[i],          std=self.std_f, clip=self.clip_sample) )
+            # d_samples_rl_list.append(          self.sampling_law(num_samples=num_samples_RL//self.number_of_policy, mean=d[i],          std=self.std_d, clip=self.clip_sample) )
             p_lw_samples_rl_list.append(       self.sampling_law(num_samples=num_samples_RL//self.number_of_policy, mean=p_lw[i],       std=self.std_p, clip=self.clip_sample) )
             delta_F_lw_samples_rl_list.append( self.sampling_law(num_samples=num_samples_RL//self.number_of_policy, mean=delta_F_lw[i], std=std_F,      clip=self.clip_sample) )
 
@@ -1438,57 +1442,6 @@ class SamplingOptimizer():
 
         return f_samples, d_samples, p_lw_samples, delta_F_lw_samples
 
-
-    # def enforce_friction_cone_constraints_torch(self, F:torch.Tensor, mu:float) -> torch.Tensor:
-        """ Enforce the friction cone constraints
-        ||F_xy|| < F_z*mu
-        Args :
-            F (torch.Tensor): The GRF                                    of shape(num_samples, num_legs, 3,(optinally F_param))
-
-        Returns :
-            F (torch.Tensor): The GRF with enforced friction constraints of shape(num_samples, num_legs, 3,(optinally F_param))
-        """
-
-        F_x = F[:,:,0].unsqueeze(2)
-        F_y = F[:,:,1].unsqueeze(2)
-        F_z = F[:,:,2].unsqueeze(2).clamp(min=self.F_z_min, max=self.F_z_max)
-
-        # Angle between vec_x and vec_F_xy
-        alpha = torch.atan2(F[:,:,1], F[:,:,0]).unsqueeze(2) # atan2(y,x) = arctan(y/x)
-
-        # Compute the maximal Force in the xy plane
-        F_xy_max = mu*F_z
-
-        # Clipped the violation for the x and y component (unsqueeze to avoid to loose that dimension) : To use clamp_max -> need to remove the sign...
-        F_x_clipped =  F_x.sign()*(torch.abs(F_x).clamp_max(torch.abs(torch.cos(alpha)*F_xy_max)))
-        F_y_clipped =  F_y.sign()*(torch.abs(F_y).clamp_max(torch.abs(torch.sin(alpha)*F_xy_max)))
-
-        # Reconstruct the vector
-        F = torch.cat((F_x_clipped, F_y_clipped, F_z), dim=2)
-
-        return F
-
-
-    # def from_zero_twopi_to_minuspi_pluspi(self, roll, pitch, yaw):
-        """ Change the function space from [0, 2pi[ to ]-pi, pi] 
-        
-        Args :
-            roll  (Tensor): roll in [0, 2pi[    shape(x)
-            pitch (Tensor): roll in [0, 2pi[    shape(x)
-            yaw   (Tensor): roll in [0, 2pi[    shape(x)
-        
-        Returns :   
-            roll  (Tensor): roll in ]-pi, pi]   shape(x)
-            pitch (Tensor): roll in ]-pi, pi]   shape(x)
-            yaw   (Tensor): roll in ]-pi, pi]   shape(x)    
-        """
-
-        # Apply the transformation
-        roll  = ((roll  - torch.pi) % (2*torch.pi)) - torch.pi
-        pitch = ((pitch - torch.pi) % (2*torch.pi)) - torch.pi 
-        yaw   = ((yaw   - torch.pi) % (2*torch.pi)) - torch.pi
-
-        return roll, pitch, yaw
     
 
     def centroidal_model_step(self, state, input, contact):

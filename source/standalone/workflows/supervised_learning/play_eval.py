@@ -61,7 +61,7 @@ json_info_path = f"./model/{args_cli.multipolicies_folder}/info.json"
 if os.path.isfile(json_info_path):
     with open(json_info_path, 'r') as json_file:
         info_dict = json.load(json_file)  # Load JSON data into a Python dictionary
-task_name = f"{info_dict['p_typeAction']}-{info_dict['F_typeAction']}-H{info_dict['prediction_horizon_step']}-dt{info_dict['prediction_horizon_time'][2:4]}"
+task_name = f"{info_dict['p_typeAction']}-{info_dict['F_typeAction']}-H{info_dict['prediction_horizon_step']}-dt{info_dict['prediction_horizon_time'][2:4]}-{info_dict['tot_epoch']}"
 
 if info_dict['F_typeAction'] == 'spline' :
     info_dict['F_typeAction'] = 'cubic_spline' 
@@ -140,9 +140,6 @@ class env_cfg(LocomotionModelBasedEnvCfg):
         # -- Additionnal Reward : Need a positive weight
         self.rewards.reward_is_alive                     = None #0.25
         self.rewards.penalty_failed                      = None
-
-
-
 
 
         # post init of parent
