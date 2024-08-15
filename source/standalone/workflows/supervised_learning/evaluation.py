@@ -1,6 +1,19 @@
 import subprocess
 import os
 
+import argparse
+
+# Set up argument parser
+parser = argparse.ArgumentParser(description="Process some folder paths.")
+parser.add_argument('--eval_folder', type=str, required=True, help='Path to the evaluation folder')
+
+# Parse arguments
+args = parser.parse_args()
+
+# Use the eval_folder argument
+eval_folder = args.eval_folder
+
+
 # Define your arguments as a dictionary
 args_dict = {
     # '--task': 'Isaac-Model-Based-Base-Aliengo-v0',
@@ -14,7 +27,8 @@ args_dict = {
 
 
 # Where the subfolder with the policy are located
-eval_folder = 'Isaac-Model-Based-Base-Aliengo-v0/dagger_eval_contact_aligned_full_eval'
+# eval_folder = 'Isaac-Model-Based-Base-Aliengo-v0/dagger_eval_contact_aligned_full_eval2'
+
 
 list_of_policy_folder = [f"{eval_folder}/{name}" for name in os.listdir(f"model/{eval_folder}") if os.path.isdir(f"model/{eval_folder}/{name}")]
 
