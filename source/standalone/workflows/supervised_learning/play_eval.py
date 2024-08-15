@@ -329,12 +329,16 @@ def main():
     step_cost_mean_values = sampling_step_cost.mean(dim=(0, 1))
     step_cost_median_values = sampling_step_cost.flatten(0,1).median(dim=0).values
     step_cost_std_values = sampling_step_cost.std(dim=(0, 1))
+    step_costq1_values = torch.quantile(sampling_step_cost.flatten(0, 1), 0.25, dim=0)
+    step_costq3_values = torch.quantile(sampling_step_cost.flatten(0, 1), 0.75, dim=0)
 
     # Store the results in a dictionary
     step_cost_results = {
-        'step_cost_mean': step_cost_mean_values,
-        'step_cost_median': step_cost_median_values,
-        'step_coststd': step_cost_std_values
+        'step_cost_mean': step_cost_mean_values.cpu().numpy().tolist(),
+        'step_cost_median': step_cost_median_values.cpu().numpy().tolist(),
+        'step_coststd': step_cost_std_values.cpu().numpy().tolist(),
+        'step_costq1_values': step_costq1_values.cpu().numpy().tolist(),
+        'step_costq3_values': step_costq3_values.cpu().numpy().tolist()
     }
 
     with open(f'{logging_directory}/rewards_metrics.json', 'w') as json_file:
@@ -365,6 +369,8 @@ def main():
 
     with open(f'{result_log_dir}/info.json', 'w') as json_file:
         json.dump(info_res_dict, json_file, indent=4)
+
+    breakpoint()
 
 
 

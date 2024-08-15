@@ -14,6 +14,7 @@ args = parser.parse_args()
 # Use the eval_folder argument
 model_folder = args.model_folder
 result_folder = args.result_folder
+# result_folder='debug_step_cost3'
 
 
 # Define your arguments as a dictionary
@@ -29,7 +30,8 @@ args_dict = {
 
 
 # Where the subfolder with the policy are located
-# eval_folder = 'Isaac-Model-Based-Base-Aliengo-v0/dagger_eval_contact_aligned_full_eval2'
+# model_folder = 'Isaac-Model-Based-Base-Aliengo-v0/dagger_eval_contact_aligned_full_eval2'
+# model_folder = 'Isaac-Model-Based-Base-Aliengo-v0/test_debug_step_cost'
 
 
 list_of_policy_folder = [f"{model_folder}/{name}" for name in os.listdir(f"model/{model_folder}") if os.path.isdir(f"model/{model_folder}/{name}")]
