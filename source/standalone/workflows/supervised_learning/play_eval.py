@@ -326,11 +326,14 @@ def main():
     rewards_metrics = compute_metrics(rewards)
     sampling_metrics = compute_metrics(sampling_cost)
 
-    step_cost_mean_values = sampling_step_cost.mean(dim=(0, 1))
-    step_cost_median_values = sampling_step_cost.flatten(0,1).median(dim=0).values
-    step_cost_std_values = sampling_step_cost.std(dim=(0, 1))
-    step_costq1_values = torch.quantile(sampling_step_cost.flatten(0, 1), 0.25, dim=0)
-    step_costq3_values = torch.quantile(sampling_step_cost.flatten(0, 1), 0.75, dim=0)
+    # Filter NaN
+    filtered_sampling_step_cost = (sampling_step_cost.flatten(0, 1))[~(torch.any(sampling_step_cost.flatten(0, 1).isnan(),dim=1))] #shape (num_envs, num_steps, horizon) -> (num_envs*num_iter, horizon)
+
+    step_cost_mean_values = filtered_sampling_step_cost.mean(dim=0)
+    step_cost_median_values = filtered_sampling_step_cost.median(dim=0).values
+    step_cost_std_values = filtered_sampling_step_cost.std(dim=0)
+    step_costq1_values = torch.quantile(filtered_sampling_step_cost, 0.25, dim=0)
+    step_costq3_values = torch.quantile(filtered_sampling_step_cost, 0.75, dim=0)
 
     # Store the results in a dictionary
     step_cost_results = {
