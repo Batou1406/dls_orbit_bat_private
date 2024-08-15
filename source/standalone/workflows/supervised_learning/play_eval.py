@@ -288,6 +288,7 @@ def main():
 
     rewards = torch.empty((args_cli.num_envs,args_cli.num_steps), device=env.device)
     sampling_cost = torch.empty((args_cli.num_envs,args_cli.num_steps), device=env.device)
+    sampling_step_cost = torch.empty((args_cli.num_envs,args_cli.num_steps, info_dict['prediction_horizon_step']), device=env.device)
 
     info_dict['eval_name'] = task_name
     info_dict['number_eval_steps'] = args_cli.num_steps
@@ -312,6 +313,7 @@ def main():
 
             rewards[:,i] = rew  #shape(num_envs, num_steps)->(num_envs)
             sampling_cost[:,i] = env.unwrapped.action_manager.get_term('model_base_variable').controller.batched_cost
+            sampling_step_cost[:,i,:] = env.unwrapped.action_manager.get_term('model_base_variable').controller.samplingOptimizer.step_cost
 
     # close the simulator
     env.close()
@@ -319,9 +321,21 @@ def main():
     # Save the Results
     np.savetxt(f'{logging_directory}/rewards.csv', rewards.cpu().numpy(), delimiter=',', fmt='%.6f')
     np.savetxt(f'{logging_directory}/sampling_cost.csv', sampling_cost.cpu().numpy(), delimiter=',', fmt='%.6f')
+    # np.savetxt(f'{logging_directory}/sampling_step_cost.csv', sampling_step_cost.cpu().numpy(), delimiter=',', fmt='%.6f')
 
     rewards_metrics = compute_metrics(rewards)
     sampling_metrics = compute_metrics(sampling_cost)
+
+    step_cost_mean_values = sampling_step_cost.mean(dim=(0, 1))
+    step_cost_median_values = sampling_step_cost.flatten(0,1).median(dim=0).values
+    step_cost_std_values = sampling_step_cost.std(dim=(0, 1))
+
+    # Store the results in a dictionary
+    step_cost_results = {
+        'step_cost_mean': step_cost_mean_values,
+        'step_cost_median': step_cost_median_values,
+        'step_coststd': step_cost_std_values
+    }
 
     with open(f'{logging_directory}/rewards_metrics.json', 'w') as json_file:
         json.dump(rewards_metrics, json_file, indent=4)
@@ -330,6 +344,7 @@ def main():
 
     info_dict['rewards_median_all'] = rewards.median().item()
     info_dict['sampling_cost_median_all'] = sampling_cost.median().item()
+    info_dict['step_cost_results'] = step_cost_results
     with open(f'{logging_directory}/info.json', 'w') as json_file:
         json.dump(info_dict, json_file, indent=4)
 
@@ -345,6 +360,7 @@ def main():
     res_dict = {}
     res_dict['rewards_median_all'] = rewards.median().item()
     res_dict['sampling_cost_median_all'] = sampling_cost.median().item()
+    res_dict['step_cost_results'] = step_cost_results
     info_res_dict[task_name] = res_dict
 
     with open(f'{result_log_dir}/info.json', 'w') as json_file:

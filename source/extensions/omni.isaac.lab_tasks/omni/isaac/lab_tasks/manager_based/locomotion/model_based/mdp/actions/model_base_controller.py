@@ -1689,6 +1689,8 @@ class SamplingBatchedTrainer():
         self.RL_foot_list = [np.array([0.0, 0.0, 0.0])]
         self.RR_foot_list = [np.array([0.0, 0.0, 0.0])]
 
+        self.step_cost = torch.zeros((self._env.num_envs, self.sampling_horizon), device=device)
+
 
     def compute_batched_rollout_cost(self, f:torch.Tensor, d:torch.Tensor, p_lw:torch.Tensor, delta_F_lw:torch.Tensor, phase:torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """ Given latent variable f,d,F,p, returns f*,d*,F*,p*, optimized with a sampling optimization 
@@ -1963,6 +1965,8 @@ class SamplingBatchedTrainer():
         state['p_lw']            = batched_initial_state['p_lw']
         input = {}
 
+        self.step_cost = self.step_cost*0.0
+
         for i in range(self.sampling_horizon):
             # --- Step 1 : prepare the inputs
             # Find the current action given the actions parameters
@@ -1995,6 +1999,8 @@ class SamplingBatchedTrainer():
             input_cost  = torch.sum(self.R_vec.unsqueeze(0) * (input_error ** 2), dim=1)                                        # Shape (num_samples)
 
             step_cost = state_cost #+ input_cost                                                                                # shape(num_samples)
+
+            self.step_cost[:,i] = step_cost.clone().detach()
 
             # Update the trajectory cost
             bacthed_cost += step_cost                                                                                           # shape(num_samples)
