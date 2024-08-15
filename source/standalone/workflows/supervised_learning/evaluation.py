@@ -5,13 +5,15 @@ import argparse
 
 # Set up argument parser
 parser = argparse.ArgumentParser(description="Process some folder paths.")
-parser.add_argument('--eval_folder', type=str, required=True, help='Path to the evaluation folder')
+parser.add_argument('--model_folder', type=str, required=True, help='Path to the evaluation folder')
+parser.add_argument('--result_folder', type=str, required=True, help='Path to the evaluation folder')
 
 # Parse arguments
 args = parser.parse_args()
 
 # Use the eval_folder argument
-eval_folder = args.eval_folder
+model_folder = args.model_folder
+result_folder = args.result_folder
 
 
 # Define your arguments as a dictionary
@@ -21,7 +23,7 @@ args_dict = {
     '--headless': None,  # For flags or options without values
     '--num_steps': '1500',
     '--multipolicies_folder': 'test_eval',
-    '--experiment_folder': 'dagger_eval_contact_aligned_full_eval',
+    '--experiment_folder': result_folder,
     # '--experiment': 'alo',
 }
 
@@ -30,7 +32,7 @@ args_dict = {
 # eval_folder = 'Isaac-Model-Based-Base-Aliengo-v0/dagger_eval_contact_aligned_full_eval2'
 
 
-list_of_policy_folder = [f"{eval_folder}/{name}" for name in os.listdir(f"model/{eval_folder}") if os.path.isdir(f"model/{eval_folder}/{name}")]
+list_of_policy_folder = [f"{model_folder}/{name}" for name in os.listdir(f"model/{model_folder}") if os.path.isdir(f"model/{model_folder}/{name}")]
 
 print('alo :', list_of_policy_folder)
 
