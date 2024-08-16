@@ -145,7 +145,7 @@ class UnitreeAliengoRoughEnvCfg(LocomotionModelBasedEnvCfg):
         self.rewards.penalty_frequency_variation.weight  = 0.5    #1.0
         self.rewards.penatly_duty_cycle_variation.weight = 1.0    #2.5
         self.rewards.penalty_step_variation.weight       = 1.0    #2.5
-        self.rewards.penatly_force_variation.weight      = 2.5e-5 #1e-4
+        self.rewards.penatly_force_variation.weight      = 1.7e-4 #1e-4 #modified from 2.5e-5 to 1.7e-4 after changed from F_lw variation to F_raw
 
         # -- Additionnal Reward : Need a positive weight
         self.rewards.reward_is_alive.weight              = 0.25 #None

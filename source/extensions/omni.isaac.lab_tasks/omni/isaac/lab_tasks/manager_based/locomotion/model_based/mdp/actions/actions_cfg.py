@@ -62,7 +62,7 @@ class ModelBaseActionCfg(ActionTermCfg):
         discretization_time: float = 0.02 #0.02 # 0.04
         """ Duration of a time step in seconds for the predicitve optimization """
 
-        num_samples: int = 5000
+        num_samples: int = 10000
         """ Number of samples used if the optimizerType is 'sampling' """
 
         parametrization_p: Literal['discrete', 'cubic_spline', 'from_discrete_fit_spline', 'from_single_expand_discrete', 'first'] = 'discrete'
@@ -89,7 +89,7 @@ class ModelBaseActionCfg(ActionTermCfg):
         optimize_F: bool = True
         """ If enabled, Ground Reaction Forces will be optimized"""
 
-        propotion_previous_solution: float = 1.0
+        propotion_previous_solution: float = 0.0
         """ Proportion of the previous solution that will be used to generate samples"""
 
         num_optimizer_iterations: int = 1

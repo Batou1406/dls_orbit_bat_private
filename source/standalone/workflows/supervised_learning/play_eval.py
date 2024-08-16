@@ -62,6 +62,7 @@ if os.path.isfile(json_info_path):
     with open(json_info_path, 'r') as json_file:
         info_dict = json.load(json_file)  # Load JSON data into a Python dictionary
 task_name = f"{info_dict['p_typeAction']}-{info_dict['F_typeAction']}-H{info_dict['prediction_horizon_step']}-dt{info_dict['prediction_horizon_time'][2:4]}-{info_dict['tot_epoch']}"
+# task_name = f"{info_dict['p_typeAction']}-{info_dict['F_typeAction']}-H{info_dict['prediction_horizon_step']}-dt{info_dict['prediction_horizon_time'][2:4]}"
 
 if info_dict['F_typeAction'] == 'spline' :
     info_dict['F_typeAction'] = 'cubic_spline' 
@@ -77,7 +78,8 @@ class ActionsCfg:
     model_base_variable = mdp.ModelBaseActionCfg(
         asset_name="robot",
         joint_names=[".*"], 
-        controller=mdp.samplingTrainer,
+        controller=mdp.samplingController,
+        # controller=mdp.samplingTrainer,
         optimizerCfg=mdp.ModelBaseActionCfg.OptimizerCfg(
             multipolicy=1,
             prevision_horizon=info_dict['prediction_horizon_step'],
@@ -103,6 +105,66 @@ class env_cfg(LocomotionModelBasedEnvCfg):
         # self.scene.terrain.terrain_generator = SPEED_TERRAINS_CFG
         # self.scene.terrain.terrain_generator = ROUGH_TERRAINS_CFG    
         self.scene.terrain.class_type = randomTerrainImporter   
+
+        """ ----- Commands ----- """
+        self.commands.base_velocity.ranges.for_vel_b = (-1.0, 1.0)
+        self.commands.base_velocity.ranges.lat_vel_b = (-1.0, 1.0)
+        self.commands.base_velocity.ranges.ang_vel_b = (-1.0, 1.0)
+        self.commands.base_velocity.ranges.initial_heading_err = (-1.0, 1.0)    
+        self.commands.base_velocity.resampling_time_range = (7.5, 7.5)
+
+        """ ----- Observation ----- """
+        # To add or not noise on the observations
+        self.observations.policy.enable_corruption = False
+
+        """ ----- Curriculum ----- """
+        Terrain_curriculum = False
+        Speed_curriculum = False
+
+        if not Terrain_curriculum : 
+            self.curriculum.terrain_levels = None                                                                  
+
+        if not Speed_curriculum :
+            self.curriculum.speed_levels = None
+
+        """ ----- Event randomization ----- """
+        Event = {'Base Mass'        : False, 
+                 'External Torque'  : False,
+                 'External Force'   : False,
+                 'Random joint pos' : False,
+                 'Push Robot'       : False}
+
+        # --- startup
+        if Event['Base Mass'] : 
+            self.events.add_base_mass.params["mass_distribution_params"] = (-3.0, 3.0) #(0.0, 0.0)                                    # Default was 0
+
+        # --- Reset
+        if Event['External Force'] :
+            self.events.base_external_force_torque.params["force_range"]  = (-10.0, 10.0) # (0.0, 0.0)                  # Default was 0
+        if Event['External Torque'] :
+            self.events.base_external_force_torque.params["torque_range"] = (-1.0, 1.0) # (0.0, 0.0)                    # Default was 0
+
+        self.events.reset_base.params = {
+            "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},                                   # Some randomization improve training speed
+            # "pose_range": {"x": (-0.0, 0.0), "y": (-0.0, 0.0), "yaw": (-0.0, 0.0)}, 
+            "velocity_range": {                                                                                         # Default was ±0.5
+                "x": (0.0, 0.0),
+                "y": (0.0, 0.0),
+                "z": (0.0, 0.0),
+                "roll": (0.0, 0.0),
+                "pitch": (0.0, 0.0),
+                "yaw": (0.0, 0.0),
+            },
+        }
+
+        if Event["Random joint pos"] :
+            self.events.reset_robot_joints.params["position_range"] = (0.8, 1.2)                                        # default was (1.0, 1.0)
+        
+        # --- Interval
+        if not Event['Push Robot'] :
+            self.events.push_robot = None                                                                               # Default was activated
+
+        """ ----- rewards ----- """
 
         self.rewards.track_lin_vel_xy_exp.weight         = 1.5
         self.rewards.track_soft_vel_xy_exp               = None
@@ -144,6 +206,8 @@ class env_cfg(LocomotionModelBasedEnvCfg):
 
         # post init of parent
         super().__post_init__()
+
+        self.decimation = 2 #2
 
 gym.register(
     id=task_name,

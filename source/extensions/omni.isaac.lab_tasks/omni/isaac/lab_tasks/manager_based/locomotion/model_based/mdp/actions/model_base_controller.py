@@ -515,6 +515,8 @@ class samplingController(modelBaseController):
         # To enable or not the optimizer at run time
         self.optimizer_active = True
 
+        self.batched_cost = torch.zeros((env.num_envs), device=device) # For some metrics only
+
 
     def reset(self, env_ids: Sequence[int] | None,  p_default_lw: torch.Tensor) -> None:
         """ Reset the sampling optimizer internal values"""
@@ -570,6 +572,9 @@ class samplingController(modelBaseController):
 
         # update the phase variable
         self.phase = next_phase
+
+        # For some metrics
+        self.batched_cost = self.samplingOptimizer.batched_cost
 
         return f_star, d_star, c0_star, p0_star_lw, F0_star_lw, pt_star_lw, full_pt_lw 
 
@@ -765,6 +770,20 @@ class SamplingOptimizer():
         self.Q_vec[10] = 20         #base_angle_rates_y
         self.Q_vec[11] = 600        #base_angle_rates_z
 
+        self.R2_vec = torch.zeros(12, device=self.device)
+        self.R2_vec[0]  = 1000        #FL_foot_pos_x
+        self.R2_vec[1]  = 1000        #FL_foot_pos_y
+        self.R2_vec[2]  = 0000        #FL_foot_pos_z
+        self.R2_vec[3]  = 1000        #FR_foot_pos_x
+        self.R2_vec[4]  = 1000        #FR_foot_pos_y
+        self.R2_vec[5]  = 0000        #FR_foot_pos_z
+        self.R2_vec[6]  = 1000        #RL_foot_pos_x
+        self.R2_vec[7]  = 1000        #RL_foot_pos_y
+        self.R2_vec[8]  = 0000        #RL_foot_pos_z
+        self.R2_vec[9]  = 1000        #RR_foot_pos_x
+        self.R2_vec[10] = 1000        #RR_foot_pos_y
+        self.R2_vec[11] = 0000        #RR_foot_pos_z
+
         # Input weight - shape(input_dim)
         self.R_vec = torch.zeros(self.input_dim, device=self.device)
 
@@ -787,6 +806,11 @@ class SamplingOptimizer():
         self.RR_foot_list = [np.array([0.0, 0.0, 0.0])]
 
         self.previous_best_cost = torch.tensor(0.0, device=device)
+
+        # For some metrics
+        self.step_cost = torch.zeros((self._env.num_envs, self.sampling_horizon), device=device)
+        self.samples_step_cost = torch.zeros((self.num_samples, self.sampling_horizon), device=device)
+        self.batched_cost = torch.zeros((env.num_envs), device=device)
 
 
     def reset(self):
@@ -961,6 +985,9 @@ class SamplingOptimizer():
 
         # Defining the foot position sequence is tricky.. Since we only have number of predicted step < sampling_horizon
         p_ref_seq_lw = torch.zeros((self.num_legs, 3, self.sampling_horizon), device=self.device) # shape(num_legs, 3, sampling_horizon) TODO Define this !
+        for i in range(self.sampling_horizon): # shape(1, num_leg, 3, p_param)
+            p_ref_seq_lw[...,i] = self.interpolation_p(self.p_best, step=i, horizon=self.sampling_horizon).squeeze(0) # shape(1, num_leg, 3, p_param) -> shape(num_legs, 3)
+
 
         # Compute the gravity compensation GRF along the horizon : of shape (num_samples, num_legs, 3, sampling_horizon)
         num_leg_contact_seq_samples = (torch.sum(c_samples, dim=1)).clamp(min=1) # Compute the number of leg in contact, clamp by minimum 1 to avoid division by zero. shape(num_samples, sampling_horizon)
@@ -975,6 +1002,7 @@ class SamplingOptimizer():
         reference_seq_state['p_lw']            = p_ref_seq_lw            # shape(num_legs, 3, sampling_horizon) # Foot position in local world frame
 
         # Prepare the input sequence reference for the samples
+        reference_seq_input_samples['p_lw'] = p_ref_seq_lw.unsqueeze(0).clone().detach()
         reference_seq_input_samples['F_lw'] = gravity_compensation_F_samples # shape(num_samples, num_legs, 3, sampling_horizon) # gravity compensation per samples along the horizon
 
 
@@ -1040,6 +1068,10 @@ class SamplingOptimizer():
 
         print('cost sample ',cost_samples)
         print('Best cost :', best_cost, ', best index :', best_index)
+
+        # save step cost for metrics
+        self.step_cost[0,:] = self.samples_step_cost[best_index,:]
+        self.batched_cost[0] = best_cost
 
         # Retrieve from wich law it has been sampled
         num_samples_previous_best = int(self.num_samples * self.propotion_previous_solution)
@@ -1340,6 +1372,8 @@ class SamplingOptimizer():
         state['p_lw']            = initial_state['p_lw'].unsqueeze(0).expand(self.num_samples, self.num_legs, 3)
         input = {}
 
+        self.samples_step_cost = self.samples_step_cost*0.0
+
         for i in range(self.sampling_horizon):
             # --- Step 1 : prepare the inputs
             # Find the current action given the actions parameters
@@ -1372,7 +1406,11 @@ class SamplingOptimizer():
             input_error = (input['F_lw'] - reference_seq_input_samples['F_lw'][:,:,:,i]).flatten(1,2)                           # shape (num_samples, action_dim)
             input_cost  = torch.sum(self.R_vec.unsqueeze(0) * (input_error ** 2), dim=1)                                        # Shape (num_samples)
 
-            step_cost = state_cost #+ input_cost                                                                                # shape(num_samples)
+            # Compute the input cost
+            # input_error2 = (input['p_lw'] - reference_seq_input_samples['p_lw'][:,:,:,i]).flatten(1,2)                           # shape (num_samples, action_dim)
+            # input_cost2  = torch.sum(self.R2_vec.unsqueeze(0) * (input_error2 ** 2), dim=1)                                        # Shape (num_samples)
+
+            step_cost = state_cost #+ input_cost2 #+ input_cost                                                                                # shape(num_samples)
 
             # Update the trajectory cost
             cost_samples += step_cost                                                                                           # shape(num_samples)
@@ -1383,15 +1421,12 @@ class SamplingOptimizer():
             # Take the best found control parameters
             best_index = torch.argmin(cost_samples)
             best_cost = cost_samples[best_index] # cost_samples.take(best_index)
-
             if best_cost > 2000 :
                 print('oulalala')
-
-
             if best_cost > 10*self.previous_best_cost:
                 print('Oh no')
-
-            self.previous_best_cost = best_cost
+            self.previous_best_cost = best_cost   # to compute cost rest
+            self.samples_step_cost[:,i]=step_cost # to save some metric
 
         return cost_samples
      
@@ -1443,7 +1478,6 @@ class SamplingOptimizer():
         return f_samples, d_samples, p_lw_samples, delta_F_lw_samples
 
     
-
     def centroidal_model_step(self, state, input, contact):
         """
         Simulate one step of the forward dynamics, using the controidal model. 
