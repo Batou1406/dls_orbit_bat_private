@@ -102,6 +102,8 @@ class ActionsCfg:
             propotion_previous_solution= propotion_previous_solution,
             debug_apply_action = debug_apply_action,
             num_samples=num_samples,
+
+            optimize_f=True
             ),
         )
 
