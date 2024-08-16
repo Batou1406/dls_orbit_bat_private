@@ -27,7 +27,7 @@ class ActionsCfg:
         controller=mdp.samplingController,
         optimizerCfg=mdp.ModelBaseActionCfg.OptimizerCfg(
             multipolicy=1,
-            prevision_horizon=15,
+            prevision_horizon=5,
             discretization_time=0.02,
             parametrization_p='first',
             parametrization_F='cubic_spline'

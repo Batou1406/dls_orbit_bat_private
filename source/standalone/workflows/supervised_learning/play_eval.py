@@ -107,10 +107,14 @@ class env_cfg(LocomotionModelBasedEnvCfg):
         self.scene.terrain.class_type = randomTerrainImporter   
 
         """ ----- Commands ----- """
-        self.commands.base_velocity.ranges.for_vel_b = (-1.0, 1.0)
-        self.commands.base_velocity.ranges.lat_vel_b = (-1.0, 1.0)
-        self.commands.base_velocity.ranges.ang_vel_b = (-1.0, 1.0)
-        self.commands.base_velocity.ranges.initial_heading_err = (-1.0, 1.0)    
+        self.commands.base_velocity.ranges.for_vel_b = (0.3, 0.6)
+        self.commands.base_velocity.ranges.lat_vel_b = (-0.2, 0.2)
+        self.commands.base_velocity.ranges.ang_vel_b = (-0.5, 0.5)
+        self.commands.base_velocity.ranges.initial_heading_err = (-0.0, 0.0)  
+        # self.commands.base_velocity.ranges.for_vel_b = (0.0, 0.0)
+        # self.commands.base_velocity.ranges.lat_vel_b = (-0.0, -0.0)
+        # self.commands.base_velocity.ranges.ang_vel_b = (-0., 0.)
+        # self.commands.base_velocity.ranges.initial_heading_err = (-0.0, 0.0)    
         self.commands.base_velocity.resampling_time_range = (7.5, 7.5)
 
         """ ----- Observation ----- """
@@ -350,6 +354,7 @@ def main():
     rewards = torch.empty((args_cli.num_envs,args_cli.num_steps), device=env.device)
     sampling_cost = torch.empty((args_cli.num_envs,args_cli.num_steps), device=env.device)
     sampling_step_cost = torch.empty((args_cli.num_envs,args_cli.num_steps, info_dict['prediction_horizon_step']), device=env.device)
+    initial_cost = torch.empty((args_cli.num_envs,args_cli.num_steps), device=env.device)
 
     info_dict['eval_name'] = task_name
     info_dict['number_eval_steps'] = args_cli.num_steps
@@ -375,6 +380,7 @@ def main():
             rewards[:,i] = rew  #shape(num_envs, num_steps)->(num_envs)
             sampling_cost[:,i] = env.unwrapped.action_manager.get_term('model_base_variable').controller.batched_cost
             sampling_step_cost[:,i,:] = env.unwrapped.action_manager.get_term('model_base_variable').controller.samplingOptimizer.step_cost
+            initial_cost[:,i] = env.unwrapped.action_manager.get_term('model_base_variable').controller.samplingOptimizer.initial_cost
 
     # close the simulator
     env.close()
@@ -389,6 +395,7 @@ def main():
 
     # Filter NaN
     filtered_sampling_step_cost = (sampling_step_cost.flatten(0, 1))[~(torch.any(sampling_step_cost.flatten(0, 1).isnan(),dim=1))] #shape (num_envs, num_steps, horizon) -> (num_envs*num_iter, horizon)
+    filtered_initial_cost =  (initial_cost)[~(torch.any(initial_cost.isnan()))]
 
     step_cost_mean_values = filtered_sampling_step_cost.mean(dim=0)
     step_cost_median_values = filtered_sampling_step_cost.median(dim=0).values
@@ -396,13 +403,22 @@ def main():
     step_costq1_values = torch.quantile(filtered_sampling_step_cost, 0.25, dim=0)
     step_costq3_values = torch.quantile(filtered_sampling_step_cost, 0.75, dim=0)
 
+
+    initial_cost_median_values = filtered_initial_cost.median(dim=0).values
+    initial_costq1_values = torch.quantile(filtered_initial_cost, 0.25)
+    initial_costq3_values = torch.quantile(filtered_initial_cost, 0.75)
+
     # Store the results in a dictionary
     step_cost_results = {
         'step_cost_mean': step_cost_mean_values.cpu().numpy().tolist(),
         'step_cost_median': step_cost_median_values.cpu().numpy().tolist(),
         'step_coststd': step_cost_std_values.cpu().numpy().tolist(),
         'step_costq1_values': step_costq1_values.cpu().numpy().tolist(),
-        'step_costq3_values': step_costq3_values.cpu().numpy().tolist()
+        'step_costq3_values': step_costq3_values.cpu().numpy().tolist(),
+
+        'initial_cost_median': initial_cost_median_values.cpu().numpy().tolist(),
+        'initial_costq1_values': initial_costq1_values.cpu().numpy().tolist(),
+        'initial_costq3_values': initial_costq3_values.cpu().numpy().tolist()
     }
 
     with open(f'{logging_directory}/rewards_metrics.json', 'w') as json_file:

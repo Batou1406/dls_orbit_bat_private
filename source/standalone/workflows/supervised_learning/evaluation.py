@@ -20,9 +20,9 @@ result_folder = args.result_folder
 # Define your arguments as a dictionary
 args_dict = {
     # '--task': 'Isaac-Model-Based-Base-Aliengo-v0',
-    '--num_envs': '512',
+    '--num_envs': '1',
     '--headless': None,  # For flags or options without values
-    '--num_steps': '1500',
+    '--num_steps': '50000',
     '--multipolicies_folder': 'test_eval',
     '--experiment_folder': result_folder,
     # '--experiment': 'alo',

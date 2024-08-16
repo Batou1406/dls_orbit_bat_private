@@ -750,7 +750,7 @@ class SamplingOptimizer():
         self.std_d = torch.tensor((0.05), device=device)
         self.std_p = torch.tensor((0.02), device=device)
         self.std_F = torch.tensor((5.00), device=device)
-        self.spline_std_F = 10.0
+        self.spline_std_F = 3#10.0
 
         # Current contact sequence : used to reset solution when switch to swing shape (batch_size, num_leg)
         self.c_actual = torch.ones((1, self.num_legs), device=device)
@@ -811,6 +811,7 @@ class SamplingOptimizer():
         self.step_cost = torch.zeros((self._env.num_envs, self.sampling_horizon), device=device)
         self.samples_step_cost = torch.zeros((self.num_samples, self.sampling_horizon), device=device)
         self.batched_cost = torch.zeros((env.num_envs), device=device)
+        self.initial_cost = torch.zeros((env.num_envs), device=device)
 
 
     def reset(self):
@@ -1371,6 +1372,21 @@ class SamplingOptimizer():
         state['ang_vel_com_b']   = initial_state['ang_vel_com_b'].unsqueeze(0).expand(self.num_samples, 3)
         state['p_lw']            = initial_state['p_lw'].unsqueeze(0).expand(self.num_samples, self.num_legs, 3)
         input = {}
+
+
+        # Compute Initial cost
+        state_vector     = torch.cat([vector.view(self.num_samples, -1) for vector in state.values()], dim=1)               # Shape: (num_samples, state_dim)
+        ref_state_vector = torch.cat([vector.select(-1, 0).view(-1) for vector in reference_seq_state.values()], dim=0)     # Shape: (state_dim)
+        
+        # Compute the state cost
+        state_error = state_vector - ref_state_vector.unsqueeze(0)                                                          # shape (num_samples, state_dim)
+        state_cost  = torch.sum(self.Q_vec.unsqueeze(0) * (state_error ** 2), dim=1)                                        # Shape (num_samples)
+
+        self.initial_cost = state_cost[0]
+
+        if not (state_cost[0] == state_cost[1]):
+            breakpoint()
+
 
         self.samples_step_cost = self.samples_step_cost*0.0
 
