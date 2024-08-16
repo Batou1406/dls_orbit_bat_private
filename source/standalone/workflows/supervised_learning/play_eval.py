@@ -87,6 +87,9 @@ class ActionsCfg:
             parametrization_p=info_dict['p_typeAction'],
             parametrization_F=info_dict['F_typeAction']
             ),
+        
+        propotion_previous_solution= 1.0,
+        debug_apply_action = 'trot'
         )
 
 @configclass
