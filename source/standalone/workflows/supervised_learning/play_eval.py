@@ -85,11 +85,11 @@ class ActionsCfg:
             prevision_horizon=info_dict['prediction_horizon_step'],
             discretization_time=float(info_dict['prediction_horizon_time'][0:4]),
             parametrization_p=info_dict['p_typeAction'],
-            parametrization_F=info_dict['F_typeAction']
+            parametrization_F=info_dict['F_typeAction'],
+
+            propotion_previous_solution= 1.0,
+            debug_apply_action = 'trot',
             ),
-        
-        propotion_previous_solution= 1.0,
-        debug_apply_action = 'trot'
         )
 
 @configclass
