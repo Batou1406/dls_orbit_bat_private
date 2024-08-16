@@ -68,7 +68,7 @@ if controller_name == 'samplingController':
     propotion_previous_solution = 0.0
     debug_apply_action = None
     warm_start='-'
-elif controller_name == '-samplingController_no_warm_start':
+elif controller_name == 'samplingController_no_warm_start':
     propotion_previous_solution = 1.0
     debug_apply_action = 'trot'
     warm_start = 'no_warm_start'
