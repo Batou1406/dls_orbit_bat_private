@@ -16,6 +16,7 @@ parser.add_argument("--num_envs", type=int, default=1, help="Number of environme
 parser.add_argument("--multipolicies_folder", type=str, default=None, help="Path to folder that contains the different policies in model/multipolicies_folder")
 parser.add_argument("--experiment_folder", type=str, default=None, help="Where to save the results in ./eval/experiment_folder")
 parser.add_argument("--num_steps", type=int, default=None, help="Number of step to generate the data")
+parser.add_argument("--seed", type=int, default=None, help="Seed used for the environment")
 parser.add_argument("--num_samples", type=int, default=None, help="Number of samples for the sampling controller")
 parser.add_argument("--controller", type=str, default=None, help="Type of controller to use")
 
