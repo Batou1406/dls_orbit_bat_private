@@ -11,48 +11,46 @@ parser.add_argument('--result_folder', type=str, required=True, help='Path to th
 # Parse arguments
 args = parser.parse_args()
 
-# Use the eval_folder argument
 model_folder = args.model_folder
 result_folder = args.result_folder
-# result_folder='debug_step_cost3'
 
 
-# Define your arguments as a dictionary
 args_dict = {
-    # '--task': 'Isaac-Model-Based-Base-Aliengo-v0',
     '--num_envs': '1',
     '--headless': None,  # For flags or options without values
     '--num_steps': '50000',
     '--multipolicies_folder': 'test_eval',
     '--experiment_folder': result_folder,
-    # '--experiment': 'alo',
+    '--num_samples': 0,
+    '--controller': 'samplingController'
 }
 
-
-# Where the subfolder with the policy are located
-# model_folder = 'Isaac-Model-Based-Base-Aliengo-v0/dagger_eval_contact_aligned_full_eval2'
-# model_folder = 'Isaac-Model-Based-Base-Aliengo-v0/test_debug_step_cost'
-
-
+controller_list = ['samplingController', 'samplingController_no_warm_start']
+num_samples_list = [4000, 10000, 25000]
 list_of_policy_folder = [f"{model_folder}/{name}" for name in os.listdir(f"model/{model_folder}") if os.path.isdir(f"model/{model_folder}/{name}")]
 
 print('Path to policy : ', f"model/{model_folder}")
-print('alo :', list_of_policy_folder)
+print('Different policy :', list_of_policy_folder)
 
 
+for k in range(len(controller_list)):
+    for j in range(len(num_samples_list)):
+        for i in range(len(list_of_policy_folder)):
+            print(f"\nEvaluation {i} / {len(list_of_policy_folder)*len(num_samples_list)*len(controller_list)} - Policy {list_of_policy_folder[i]}")
 
-for i in range(len(list_of_policy_folder)):
-    args_dict['--multipolicies_folder'] = list_of_policy_folder[i]
+            args_dict['--multipolicies_folder'] = list_of_policy_folder[i]
+            args_dict['--num_samples'] = num_samples_list[j]
+            args_dict['--controller'] = controller_list[k]
 
-    # Convert the dictionary to a list of arguments
-    args_list = []
-    for key, value in args_dict.items():
-        args_list.append(key)
-        if value is not None:
-            args_list.append(str(value))
+            # Convert the dictionary to a list of arguments
+            args_list = []
+            for key, value in args_dict.items():
+                args_list.append(key)
+                if value is not None:
+                    args_list.append(str(value))
 
-    # Run the experiment
-    subprocess.run(['python3', './source/standalone/workflows/supervised_learning/play_eval.py'] + args_list)
+            # Run the experiment
+            subprocess.run(['python3', './source/standalone/workflows/supervised_learning/play_eval.py'] + args_list)
 
 
 

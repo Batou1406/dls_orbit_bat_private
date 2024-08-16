@@ -839,10 +839,10 @@ class SamplingOptimizer():
             p_star_lw (Tensor): Foot touch down position     of shape(batch_size, num_leg, 3, p_param)
             F_star_lw (Tensor): ground Reaction Forces       of shape(batch_size, num_leg, 3, F_param)
         """
-        print()
+        # print()
 
         for i in range(self.num_optimizer_iterations):
-            print(f'\niteration {i}')
+            # print(f'\niteration {i}')
             # --- Step 1 : Generate the samples and bound them to valid input
             f_samples, d_samples, p_lw_samples, delta_F_lw_samples = self.generate_samples(iter=i, f=f, d=d, p_lw=p_lw, delta_F_lw=delta_F_lw)
 
@@ -1067,8 +1067,8 @@ class SamplingOptimizer():
         best_index = torch.argmin(cost_samples)
         best_cost = cost_samples[best_index] # cost_samples.take(best_index)
 
-        print('cost sample ',cost_samples)
-        print('Best cost :', best_cost, ', best index :', best_index)
+        # print('cost sample ',cost_samples)
+        # print('Best cost :', best_cost, ', best index :', best_index)
 
         # save step cost for metrics
         self.step_cost[0,:] = self.samples_step_cost[best_index,:]
@@ -1119,13 +1119,13 @@ class SamplingOptimizer():
         p0_star_lw = self.interpolation_p(parameters=p_star_lw,       step=0, horizon=self.sampling_horizon).clone().detach() # shape(1, num_legs, 3)
         F0_star_lw = self.interpolation_F(parameters=delta_F_star_lw, step=0, horizon=self.sampling_horizon).clone().detach() # shape(1, num_legs, 3)
 
-        # Print difference with RL warm start
-        if self.optimize_f : print('f - cum. diff. : %3.2f' % torch.sum(torch.abs(f_star - f_samples[0,...])))
-        if self.optimize_d : print('d - cum. diff. : %3.2f' % torch.sum(torch.abs(d_star - d_samples[0,...])))
-        if self.optimize_p : print('p - cum. diff. : %3.2f' % torch.sum(torch.abs(p_star_lw - p_lw_samples[0,...])))
-        if self.optimize_F : print('F - cum. diff. : %5.1f' % torch.sum(torch.abs(delta_F_star_lw - delta_F_lw_samples[0,...])))
+        # # Print difference with RL warm start
+        # if self.optimize_f : print('f - cum. diff. : %3.2f' % torch.sum(torch.abs(f_star - f_samples[0,...])))
+        # if self.optimize_d : print('d - cum. diff. : %3.2f' % torch.sum(torch.abs(d_star - d_samples[0,...])))
+        # if self.optimize_p : print('p - cum. diff. : %3.2f' % torch.sum(torch.abs(p_star_lw - p_lw_samples[0,...])))
+        # if self.optimize_F : print('F - cum. diff. : %5.1f' % torch.sum(torch.abs(delta_F_star_lw - delta_F_lw_samples[0,...])))
 
-        print(c_star)
+        # print(c_star)
 
         # Add gravity compensation
         F0_star_lw -= c_star[:,:,0].unsqueeze(-1) * self.gravity_lw.unsqueeze(0).unsqueeze(0) * self.robot_mass / (torch.sum(c_star[:,:,0]).clamp_min(min=1)).unsqueeze(0).unsqueeze(-1) # shape(1, num_legs, 3)

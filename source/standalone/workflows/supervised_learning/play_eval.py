@@ -13,18 +13,15 @@ parser = argparse.ArgumentParser(description="Train an RL agent with RSL-RL.")
 parser.add_argument("--cpu", action="store_true", default=False, help="Use CPU pipeline.")
 parser.add_argument("--disable_fabric", action="store_true", default=False, help="Disable fabric and use USD I/O operations.")
 parser.add_argument("--num_envs", type=int, default=1, help="Number of environments to simulate.")
-parser.add_argument("--task", type=str, default=None, help="Name of the task.")
-parser.add_argument("--seed", type=int, default=None, help="Seed used for the environment")
 parser.add_argument("--multipolicies_folder", type=str, default=None, help="Path to folder that contains the different policies in model/multipolicies_folder")
 parser.add_argument("--experiment_folder", type=str, default=None, help="Where to save the results in ./eval/experiment_folder")
-# parser.add_argument("--experiment", type=str, default=None, help="Where to save the results in ./eval/experiment_folder/experiment_name")
 parser.add_argument("--num_steps", type=int, default=None, help="Number of step to generate the data")
-# append RSL-RL cli arguments
+parser.add_argument("--num_samples", type=int, default=None, help="Number of samples for the sampling controller")
+parser.add_argument("--controller", type=str, default=None, help="Type of controller to use")
+
 cli_args.add_rsl_rl_args(parser)
-# append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
-# launch omniverse app
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
 
@@ -61,12 +58,26 @@ json_info_path = f"./model/{args_cli.multipolicies_folder}/info.json"
 if os.path.isfile(json_info_path):
     with open(json_info_path, 'r') as json_file:
         info_dict = json.load(json_file)  # Load JSON data into a Python dictionary
-task_name = f"{info_dict['p_typeAction']}-{info_dict['F_typeAction']}-H{info_dict['prediction_horizon_step']}-dt{info_dict['prediction_horizon_time'][2:4]}-{info_dict['tot_epoch']}"
+
+
+num_samples = args_cli.num_samples
+controller_name = args_cli.controller
+
+if controller_name == 'samplingController':
+    propotion_previous_solution = 0.0
+    debug_apply_action = None
+    warm_start='-'
+elif controller_name == '-samplingController_no_warm_start':
+    propotion_previous_solution = 1.0
+    debug_apply_action = 'trot'
+    warm_start = 'no_warm_start'
+
+# task_name = f"{info_dict['p_typeAction']}-{info_dict['F_typeAction']}-H{info_dict['prediction_horizon_step']}-dt{info_dict['prediction_horizon_time'][2:4]}-{info_dict['tot_epoch']}"
 # task_name = f"{info_dict['p_typeAction']}-{info_dict['F_typeAction']}-H{info_dict['prediction_horizon_step']}-dt{info_dict['prediction_horizon_time'][2:4]}"
+task_name = f"{info_dict['p_typeAction']}-{info_dict['F_typeAction']}-H{info_dict['prediction_horizon_step']}-dt{info_dict['prediction_horizon_time'][2:4]}-samples{num_samples}-{warm_start}"
 
 if info_dict['F_typeAction'] == 'spline' :
     info_dict['F_typeAction'] = 'cubic_spline' 
-
 if info_dict['p_typeAction'] == 'spline' :
     info_dict['p_typeAction'] = 'cubic_spline' 
 
@@ -87,8 +98,9 @@ class ActionsCfg:
             parametrization_p=info_dict['p_typeAction'],
             parametrization_F=info_dict['F_typeAction'],
 
-            propotion_previous_solution= 1.0,
-            debug_apply_action = 'trot',
+            propotion_previous_solution= propotion_previous_solution,
+            debug_apply_action = debug_apply_action,
+            num_samples=num_samples,
             ),
         )
 
@@ -368,6 +380,10 @@ def main():
     # simulate environment
     for i in range(args_cli.num_steps) :
         # run everything in inference mode
+
+        if i % 200 == 0:
+            print(f"Iteration : {100*i/args_cli.num_steps} %")
+
         with torch.inference_mode():
             # agent stepping
             action_list = []
