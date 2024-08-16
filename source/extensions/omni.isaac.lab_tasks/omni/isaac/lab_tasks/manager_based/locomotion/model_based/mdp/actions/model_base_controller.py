@@ -1437,10 +1437,10 @@ class SamplingOptimizer():
             # Take the best found control parameters
             best_index = torch.argmin(cost_samples)
             best_cost = cost_samples[best_index] # cost_samples.take(best_index)
-            if best_cost > 2000 :
-                print('oulalala')
-            if best_cost > 10*self.previous_best_cost:
-                print('Oh no')
+            # if best_cost > 2000 :
+            #     print('oulalala')
+            # if best_cost > 10*self.previous_best_cost:
+            #     print('Oh no')
             self.previous_best_cost = best_cost   # to compute cost rest
             self.samples_step_cost[:,i]=step_cost # to save some metric
 
