@@ -398,7 +398,7 @@ def main():
 
     # Filter NaN
     filtered_sampling_step_cost = (sampling_step_cost.flatten(0, 1))[~(torch.any(sampling_step_cost.flatten(0, 1).isnan(),dim=1))] #shape (num_envs, num_steps, horizon) -> (num_envs*num_iter, horizon)
-    filtered_initial_cost =  (initial_cost)[~(torch.any(initial_cost.isnan()))]
+    filtered_initial_cost =  (initial_cost)[~(torch.any(initial_cost.isnan(),dim=1))]
 
     step_cost_mean_values = filtered_sampling_step_cost.mean(dim=0)
     step_cost_median_values = filtered_sampling_step_cost.median(dim=0).values
@@ -407,7 +407,7 @@ def main():
     step_costq3_values = torch.quantile(filtered_sampling_step_cost, 0.75, dim=0)
 
 
-    initial_cost_median_values = filtered_initial_cost.median(dim=0).values
+    initial_cost_median_values = filtered_initial_cost.median(dim=1).values
     initial_costq1_values = torch.quantile(filtered_initial_cost, 0.25)
     initial_costq3_values = torch.quantile(filtered_initial_cost, 0.75)
 

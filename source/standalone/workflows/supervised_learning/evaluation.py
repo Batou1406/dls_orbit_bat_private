@@ -36,6 +36,7 @@ args_dict = {
 
 list_of_policy_folder = [f"{model_folder}/{name}" for name in os.listdir(f"model/{model_folder}") if os.path.isdir(f"model/{model_folder}/{name}")]
 
+print('Path to policy : ', f"model/{model_folder}")
 print('alo :', list_of_policy_folder)
 
 
