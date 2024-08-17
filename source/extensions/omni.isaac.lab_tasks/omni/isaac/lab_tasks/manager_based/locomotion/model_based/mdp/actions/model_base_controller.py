@@ -1977,8 +1977,7 @@ class SamplingBatchedTrainer():
         state_error = state_vector - ref_state_vector                                                                       # shape (num_samples, state_dim)
         state_cost  = torch.sum(self.Q_vec.unsqueeze(0) * (state_error ** 2), dim=1)                                        # Shape (num_samples)
         self.initial_cost = state_cost[0]
-        if not (state_cost[0] == state_cost[1]):
-            breakpoint()
+
 
         self.step_cost = self.step_cost*0.0
 
