@@ -37,6 +37,10 @@ f_list = ['frequency_optimization', 'no_opt']
 d_list = ['duty_cycle_optimization', 'no_opt']
 speed_list = ['fast', 'medium', 'slow']
 
+f_list = ['no_opt']
+d_list = ['no_opt']
+speed_list = ['fast']
+
 list_of_policy_folder = [f"{model_folder}/{name}" for name in os.listdir(f"model/{model_folder}") if os.path.isdir(f"model/{model_folder}/{name}")]
 
 print('Path to policy : ', f"model/{model_folder}")

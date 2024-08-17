@@ -97,8 +97,10 @@ elif args_cli.speed == 'slow':
 
 # task_name = f"{info_dict['p_typeAction']}-{info_dict['F_typeAction']}-H{info_dict['prediction_horizon_step']}-dt{info_dict['prediction_horizon_time'][2:4]}-{info_dict['tot_epoch']}"
 # task_name = f"{info_dict['p_typeAction']}-{info_dict['F_typeAction']}-H{info_dict['prediction_horizon_step']}-dt{info_dict['prediction_horizon_time'][2:4]}"
-task_name = f"{info_dict['p_typeAction']}-{info_dict['F_typeAction']}-H{info_dict['prediction_horizon_step']}-dt{info_dict['prediction_horizon_time'][2:4]}-samples{num_samples}-{warm_start}-f{f_opt}-d{d_opt}-{args_cli.speed}"
+# task_name = f"{info_dict['p_typeAction']}-{info_dict['F_typeAction']}-H{info_dict['prediction_horizon_step']}-dt{info_dict['prediction_horizon_time'][2:4]}-samples{num_samples}-{warm_start}-f{f_opt}-d{d_opt}-{args_cli.speed}"
 # task_name = "base-RL"
+task_name = f"{info_dict['model']}-{info_dict['p_typeAction']}-{info_dict['F_typeAction']}-H{info_dict['prediction_horizon_step']}-dt{info_dict['prediction_horizon_time'][2:4]}}"
+
 
 
 if info_dict['F_typeAction'] == 'spline' :
@@ -120,7 +122,8 @@ class ActionsCfg:
         controller=mdp.samplingController,
         # controller=mdp.samplingTrainer,
         optimizerCfg=mdp.ModelBaseActionCfg.OptimizerCfg(
-            multipolicy=1,
+            # multipolicy=1,
+            multipolicy=info_dict['multipolicy'],
             prevision_horizon=info_dict['prediction_horizon_step'],
             discretization_time=float(info_dict['prediction_horizon_time'][0:4]),
             parametrization_p=info_dict['p_typeAction'],
@@ -160,14 +163,14 @@ class env_cfg(LocomotionModelBasedEnvCfg):
         self.scene.terrain.class_type = randomTerrainImporter   
 
         """ ----- Commands ----- """
-        # self.commands.base_velocity.ranges.for_vel_b = (0.3, 0.6)
-        # self.commands.base_velocity.ranges.lat_vel_b = (-0.2, 0.2)
-        # self.commands.base_velocity.ranges.ang_vel_b = (-0.5, 0.5)
-        # self.commands.base_velocity.ranges.initial_heading_err = (-0.0, 0.0)  
-        self.commands.base_velocity.ranges.for_vel_b = (speed, speed)
-        self.commands.base_velocity.ranges.lat_vel_b = (-0.1, 0.1)
+        self.commands.base_velocity.ranges.for_vel_b = (0.3, 0.6)
+        self.commands.base_velocity.ranges.lat_vel_b = (-0.2, 0.2)
         self.commands.base_velocity.ranges.ang_vel_b = (-0.5, 0.5)
         self.commands.base_velocity.ranges.initial_heading_err = (-0.0, 0.0)  
+        # self.commands.base_velocity.ranges.for_vel_b = (speed, speed)
+        # self.commands.base_velocity.ranges.lat_vel_b = (-0.1, 0.1)
+        # self.commands.base_velocity.ranges.ang_vel_b = (-0.5, 0.5)
+        # self.commands.base_velocity.ranges.initial_heading_err = (-0.0, 0.0)  
         # self.commands.base_velocity.ranges.for_vel_b = (0.0, 0.0)
         # self.commands.base_velocity.ranges.lat_vel_b = (-0.0, -0.0)
         # self.commands.base_velocity.ranges.ang_vel_b = (-0., 0.)
