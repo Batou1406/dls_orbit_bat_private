@@ -76,7 +76,7 @@ controller_name = args_cli.controller
 # task_name = f"{info_dict['p_typeAction']}-{info_dict['F_typeAction']}-H{info_dict['prediction_horizon_step']}-dt{info_dict['prediction_horizon_time'][2:4]}-{info_dict['tot_epoch']}"
 # task_name = f"{info_dict['p_typeAction']}-{info_dict['F_typeAction']}-H{info_dict['prediction_horizon_step']}-dt{info_dict['prediction_horizon_time'][2:4]}"
 # task_name = f"{info_dict['p_typeAction']}-{info_dict['F_typeAction']}-H{info_dict['prediction_horizon_step']}-dt{info_dict['prediction_horizon_time'][2:4]}-samples{num_samples}-{warm_start}"
-task_name = f"base - RL"
+task_name = "base-RL"
 
 
 # if info_dict['F_typeAction'] == 'spline' :
