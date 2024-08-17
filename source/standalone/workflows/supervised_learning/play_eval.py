@@ -103,7 +103,7 @@ class ActionsCfg:
             debug_apply_action = debug_apply_action,
             num_samples=num_samples,
 
-            optimize_f=True
+            optimize_f=False
             ),
         )
 
