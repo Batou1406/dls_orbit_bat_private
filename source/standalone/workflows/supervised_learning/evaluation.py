@@ -57,7 +57,7 @@ for s in range(len(speed_list)) :
                         args_dict['--controller'] = controller_list[k]
 
                         args_dict['--leg_freq'] = f_list[f]
-                        args_dict['--duty_cylce'] = d_list[d]
+                        args_dict['--duty_cycle'] = d_list[d]
                         args_dict['--speed'] = speed_list[s]
 
                         # Convert the dictionary to a list of arguments

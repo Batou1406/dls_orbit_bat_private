@@ -67,7 +67,7 @@ if os.path.isfile(json_info_path):
 num_samples = args_cli.num_samples
 controller_name = args_cli.controller
 leg_freq = args_cli.leg_freq
-duty_cylce = args_cli.duty_cylce
+duty_cylce = args_cli.duty_cycle
 
 if controller_name == 'samplingController':
     propotion_previous_solution = 0.0
