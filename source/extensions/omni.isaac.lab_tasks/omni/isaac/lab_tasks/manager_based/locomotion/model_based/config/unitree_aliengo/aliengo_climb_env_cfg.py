@@ -32,7 +32,8 @@ class UnitreeAliengoClimbEnvCfg(LocomotionModelBasedEnvCfg):
 
 
         """ ----- Reward and Event Curriculum ----- """
-        frequency_variation_curriculum = True
+        # frequency_variation_curriculum = True
+        frequency_variation_curriculum = False # -> for Dagger
 
         if frequency_variation_curriculum :
             num_iter_activate = 800
@@ -71,7 +72,8 @@ class UnitreeAliengoClimbEnvCfg(LocomotionModelBasedEnvCfg):
 
 
         """ ----- Curriculum ----- """
-        Terrain_curriculum = True
+        # Terrain_curriculum = True
+        Terrain_curriculum = False #-> for Dagger
         Speed_curriculum = False
 
         if Terrain_curriculum : 

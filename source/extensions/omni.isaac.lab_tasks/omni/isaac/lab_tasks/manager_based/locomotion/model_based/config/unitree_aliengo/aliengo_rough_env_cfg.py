@@ -51,8 +51,14 @@ class UnitreeAliengoRoughEnvCfg(LocomotionModelBasedEnvCfg):
 
 
         """ ----- Curriculum ----- """
-        Terrain_curriculum = True
+        # Terrain_curriculum = True
+        Terrain_curriculum = False #-> For Dagger
         Speed_curriculum = False
+
+        # For Dagger
+        self.scene.terrain.terrain_generator.sub_terrains["boxes"].grid_height_range = (0.025, 0.1)
+        self.scene.terrain.terrain_generator.sub_terrains["random_rough"].noise_range = (0.01, 0.06)
+        self.scene.terrain.terrain_generator.sub_terrains["random_rough"].noise_step = 0.01
 
         if Terrain_curriculum : 
             # --- scale down the terrains because the robot is small

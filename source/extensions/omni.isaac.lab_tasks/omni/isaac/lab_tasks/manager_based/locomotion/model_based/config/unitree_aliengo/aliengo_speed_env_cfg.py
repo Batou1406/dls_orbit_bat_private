@@ -64,7 +64,8 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
 
         """ ----- Curriculum ----- """
         Terrain_curriculum = False
-        Speed_curriculum = True
+        # Speed_curriculum = True
+        Speed_curriculum = False # -> For Dagger
         # Large_step_curriculum = True : 'Must be declared before post init'
 
         if Terrain_curriculum : 
@@ -128,7 +129,7 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
 
 
         """ ----- rewards ----- """
-        training = 'with_sampling_and_normal' # 'normal' or 'with_sampling' or 'with_sampling_and_normal
+        training = 'normal' # 'normal' or 'with_sampling' or 'with_sampling_and_normal
 
         if training == 'normal' :
             # -- task
@@ -170,11 +171,12 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
             self.rewards.reward_is_alive                     = None
             self.rewards.penalty_failed                      = None
 
-            num_iter_activate = 800
-            self.curriculum.penalty_frequency_variation_curr    = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_frequency_variation",  "weight": 0.2,  "num_steps": (num_iter_activate*24)})
-            self.curriculum.penatly_duty_cycle_variation_curr   = CurrTerm(func=modify_reward_weight, params={"term_name": "penatly_duty_cycle_variation", "weight": 1.0,  "num_steps": (num_iter_activate*24)})
-            self.curriculum.penalty_step_variation_curr         = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_step_variation",       "weight": 1.0,  "num_steps": (num_iter_activate*24)})
-            self.curriculum.penatly_force_variation_curr        = CurrTerm(func=modify_reward_weight, params={"term_name": "penatly_force_variation",      "weight": 2e-5, "num_steps": (num_iter_activate*24)})
+            # Deactivated for DAgger
+            # num_iter_activate = 800
+            # self.curriculum.penalty_frequency_variation_curr    = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_frequency_variation",  "weight": 0.2,  "num_steps": (num_iter_activate*24)})
+            # self.curriculum.penatly_duty_cycle_variation_curr   = CurrTerm(func=modify_reward_weight, params={"term_name": "penatly_duty_cycle_variation", "weight": 1.0,  "num_steps": (num_iter_activate*24)})
+            # self.curriculum.penalty_step_variation_curr         = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_step_variation",       "weight": 1.0,  "num_steps": (num_iter_activate*24)})
+            # self.curriculum.penatly_force_variation_curr        = CurrTerm(func=modify_reward_weight, params={"term_name": "penatly_force_variation",      "weight": 2e-5, "num_steps": (num_iter_activate*24)})
 
 
         if training == 'with_sampling' :
