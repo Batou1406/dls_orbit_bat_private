@@ -25,8 +25,8 @@ args_dict = {
     '--controller': 'samplingController'
 }
 
-controller_list = ['samplingController', 'samplingController_no_warm_start']
-# controller_list = ['samplingController_no_warm_start']
+# controller_list = ['samplingController', 'samplingController_no_warm_start']
+controller_list = ['samplingController_no_warm_start']
 # num_samples_list = [4000, 10000, 25000]
 num_samples_list = [10000]
 list_of_policy_folder = [f"{model_folder}/{name}" for name in os.listdir(f"model/{model_folder}") if os.path.isdir(f"model/{model_folder}/{name}")]

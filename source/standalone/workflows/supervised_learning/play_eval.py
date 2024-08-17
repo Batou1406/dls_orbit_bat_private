@@ -55,32 +55,36 @@ from omni.isaac.lab.terrains import randomTerrainImporter
 import omni.isaac.lab_tasks.manager_based.locomotion.model_based.mdp as mdp
 
 
-json_info_path = f"./model/{args_cli.multipolicies_folder}/info.json"
-if os.path.isfile(json_info_path):
-    with open(json_info_path, 'r') as json_file:
-        info_dict = json.load(json_file)  # Load JSON data into a Python dictionary
+# json_info_path = f"./model/{args_cli.multipolicies_folder}/info.json"
+# if os.path.isfile(json_info_path):
+#     with open(json_info_path, 'r') as json_file:
+#         info_dict = json.load(json_file)  # Load JSON data into a Python dictionary
 
 
 num_samples = args_cli.num_samples
 controller_name = args_cli.controller
 
-if controller_name == 'samplingController':
-    propotion_previous_solution = 0.0
-    debug_apply_action = None
-    warm_start='-'
-elif controller_name == 'samplingController_no_warm_start':
-    propotion_previous_solution = 1.0
-    debug_apply_action = 'trot'
-    warm_start = 'no_warm_start'
+# if controller_name == 'samplingController':
+#     propotion_previous_solution = 0.0
+#     debug_apply_action = None
+#     warm_start='-'
+# elif controller_name == 'samplingController_no_warm_start':
+#     propotion_previous_solution = 1.0
+#     debug_apply_action = 'trot'
+#     warm_start = 'no_warm_start'
 
 # task_name = f"{info_dict['p_typeAction']}-{info_dict['F_typeAction']}-H{info_dict['prediction_horizon_step']}-dt{info_dict['prediction_horizon_time'][2:4]}-{info_dict['tot_epoch']}"
 # task_name = f"{info_dict['p_typeAction']}-{info_dict['F_typeAction']}-H{info_dict['prediction_horizon_step']}-dt{info_dict['prediction_horizon_time'][2:4]}"
-task_name = f"{info_dict['p_typeAction']}-{info_dict['F_typeAction']}-H{info_dict['prediction_horizon_step']}-dt{info_dict['prediction_horizon_time'][2:4]}-samples{num_samples}-{warm_start}"
+# task_name = f"{info_dict['p_typeAction']}-{info_dict['F_typeAction']}-H{info_dict['prediction_horizon_step']}-dt{info_dict['prediction_horizon_time'][2:4]}-samples{num_samples}-{warm_start}"
+task_name = f"base - RL"
 
-if info_dict['F_typeAction'] == 'spline' :
-    info_dict['F_typeAction'] = 'cubic_spline' 
-if info_dict['p_typeAction'] == 'spline' :
-    info_dict['p_typeAction'] = 'cubic_spline' 
+
+# if info_dict['F_typeAction'] == 'spline' :
+#     info_dict['F_typeAction'] = 'cubic_spline' 
+# if info_dict['p_typeAction'] == 'spline' :
+#     info_dict['p_typeAction'] = 'cubic_spline' 
+
+info_dict = {}
 
 @configclass
 class ActionsCfg:
@@ -90,20 +94,27 @@ class ActionsCfg:
     model_base_variable = mdp.ModelBaseActionCfg(
         asset_name="robot",
         joint_names=[".*"], 
-        controller=mdp.samplingController,
-        # controller=mdp.samplingTrainer,
+        # controller=mdp.samplingController,
+        controller=mdp.samplingTrainer,
+        # optimizerCfg=mdp.ModelBaseActionCfg.OptimizerCfg(
+        #     multipolicy=1,
+        #     prevision_horizon=info_dict['prediction_horizon_step'],
+        #     discretization_time=float(info_dict['prediction_horizon_time'][0:4]),
+        #     parametrization_p=info_dict['p_typeAction'],
+        #     parametrization_F=info_dict['F_typeAction'],
+
+        #     propotion_previous_solution= propotion_previous_solution,
+        #     debug_apply_action = debug_apply_action,
+        #     num_samples=num_samples,
+
+        #     optimize_f=False
+        #     ),
         optimizerCfg=mdp.ModelBaseActionCfg.OptimizerCfg(
             multipolicy=1,
-            prevision_horizon=info_dict['prediction_horizon_step'],
-            discretization_time=float(info_dict['prediction_horizon_time'][0:4]),
-            parametrization_p=info_dict['p_typeAction'],
-            parametrization_F=info_dict['F_typeAction'],
-
-            propotion_previous_solution= propotion_previous_solution,
-            debug_apply_action = debug_apply_action,
-            num_samples=num_samples,
-
-            optimize_f=False
+            prevision_horizon=1,
+            discretization_time=0.02,
+            parametrization_p='discrete',
+            parametrization_F='discrete',
             ),
         )
 

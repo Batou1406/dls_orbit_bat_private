@@ -1693,6 +1693,8 @@ class SamplingBatchedTrainer():
         self.RR_foot_list = [np.array([0.0, 0.0, 0.0])]
 
         self.step_cost = torch.zeros((self._env.num_envs, self.sampling_horizon), device=device)
+        self.initial_cost = torch.zeros((env.num_envs), device=device)
+        
 
 
     def compute_batched_rollout_cost(self, f:torch.Tensor, d:torch.Tensor, p_lw:torch.Tensor, delta_F_lw:torch.Tensor, phase:torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -1725,7 +1727,7 @@ class SamplingBatchedTrainer():
 
         # --- Step 1 : Given f and d samples -> generate the contact sequence for the samples
         batched_c, next_phase = gait_generator(f=f, d=d, phase=phase, horizon=max(2,self.sampling_horizon), dt=self.mpc_dt)
-        # batched_c = batched_c[...,:self.sampling_horizon] # in case horizon == 1, batched_c will have horizon 2
+        batched_c = batched_c[...,:self.sampling_horizon] # in case horizon == 1, batched_c will have horizon 2
 
         # --- Step 2 : prepare the variables 
         batched_initial_state, batched_reference_seq_state, batched_reference_seq_input, batched_action_param = self.prepare_variable_for_compute_rollout(batched_c=batched_c, batched_p_lw=p_lw, batched_delta_F_lw=delta_F_lw, feet_in_contact=self.c_actual)
@@ -1967,6 +1969,16 @@ class SamplingBatchedTrainer():
         state['ang_vel_com_b']   = batched_initial_state['ang_vel_com_b']
         state['p_lw']            = batched_initial_state['p_lw']
         input = {}
+
+
+        # Compute initial cost for metrics
+        state_vector     = torch.cat([vector.view(self._env.num_envs, -1) for vector in state.values()], dim=1)             # Shape: (batch, state_dim)
+        ref_state_vector = torch.cat([vector[...,0].view(self._env.num_envs, -1) for vector in batched_reference_seq_state.values()], dim=1)            # Shape: (batch, state_dim)
+        state_error = state_vector - ref_state_vector                                                                       # shape (num_samples, state_dim)
+        state_cost  = torch.sum(self.Q_vec.unsqueeze(0) * (state_error ** 2), dim=1)                                        # Shape (num_samples)
+        self.initial_cost = state_cost[0]
+        if not (state_cost[0] == state_cost[1]):
+            breakpoint()
 
         self.step_cost = self.step_cost*0.0
 
