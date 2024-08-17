@@ -85,6 +85,7 @@ task_name = "base-RL"
 #     info_dict['p_typeAction'] = 'cubic_spline' 
 
 info_dict = {}
+info_dict['prediction_horizon_step'] = 1
 
 @configclass
 class ActionsCfg:
