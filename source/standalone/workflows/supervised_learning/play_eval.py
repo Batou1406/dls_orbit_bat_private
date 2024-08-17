@@ -266,7 +266,7 @@ def infer_input_output_sizes(state_dict):
     return input_size, output_size
 
 
-def load_rsl_rl_policy(path, device="cpu", num_actions=108):
+def load_rsl_rl_policy(path, device="cpu", num_actions=28):
 
     loaded_dict = torch.load(path)
 
