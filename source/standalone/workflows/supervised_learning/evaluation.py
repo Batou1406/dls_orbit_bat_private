@@ -18,7 +18,7 @@ result_folder = args.result_folder
 args_dict = {
     '--num_envs': '1',
     '--headless': None,  # For flags or options without values
-    '--num_steps': '20000',
+    '--num_steps': '30000',
     '--multipolicies_folder': 'test_eval',
     '--experiment_folder': result_folder,
     '--num_samples': 0,
