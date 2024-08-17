@@ -20,7 +20,7 @@ parser.add_argument("--seed", type=int, default=None, help="Seed used for the en
 parser.add_argument("--num_samples", type=int, default=None, help="Number of samples for the sampling controller")
 parser.add_argument("--controller", type=str, default=None, help="Type of controller to use")
 parser.add_argument("--leg_freq", type=str, default=None, help="if to opt leg freq")
-parser.add_argument("--duty_cylce", type=str, default=None, help="If to opt duty cycle")
+parser.add_argument("--duty_cycle", type=str, default=None, help="If to opt duty cycle")
 parser.add_argument("--speed", type=str, default=None)
 
 cli_args.add_rsl_rl_args(parser)
