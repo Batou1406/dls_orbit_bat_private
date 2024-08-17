@@ -19,6 +19,9 @@ parser.add_argument("--num_steps", type=int, default=None, help="Number of step 
 parser.add_argument("--seed", type=int, default=None, help="Seed used for the environment")
 parser.add_argument("--num_samples", type=int, default=None, help="Number of samples for the sampling controller")
 parser.add_argument("--controller", type=str, default=None, help="Type of controller to use")
+parser.add_argument("--leg_freq", type=str, default=None, help="if to opt leg freq")
+parser.add_argument("--duty_cylce", type=str, default=None, help="If to opt duty cycle")
+parser.add_argument("--speed", type=str, default=None)
 
 cli_args.add_rsl_rl_args(parser)
 AppLauncher.add_app_launcher_args(parser)
@@ -63,6 +66,8 @@ if os.path.isfile(json_info_path):
 
 num_samples = args_cli.num_samples
 controller_name = args_cli.controller
+leg_freq = args_cli.leg_freq
+duty_cylce = args_cli.duty_cylce
 
 if controller_name == 'samplingController':
     propotion_previous_solution = 0.0
@@ -73,9 +78,26 @@ elif controller_name == 'samplingController_no_warm_start':
     debug_apply_action = 'trot'
     warm_start = 'no_warm_start'
 
+if leg_freq == 'frequency_optimization':
+    f_opt = True
+else :
+    f_opt = False
+
+if duty_cylce == 'duty_cycle_optimization':
+    d_opt = True
+else :
+    d_opt = False
+
+if args_cli.speed == 'fast':
+    speed = 1.5
+elif args_cli.speed == 'medium':
+    speed = 0.5
+elif args_cli.speed == 'slow':
+    speed = 0.1
+
 # task_name = f"{info_dict['p_typeAction']}-{info_dict['F_typeAction']}-H{info_dict['prediction_horizon_step']}-dt{info_dict['prediction_horizon_time'][2:4]}-{info_dict['tot_epoch']}"
 # task_name = f"{info_dict['p_typeAction']}-{info_dict['F_typeAction']}-H{info_dict['prediction_horizon_step']}-dt{info_dict['prediction_horizon_time'][2:4]}"
-task_name = f"{info_dict['p_typeAction']}-{info_dict['F_typeAction']}-H{info_dict['prediction_horizon_step']}-dt{info_dict['prediction_horizon_time'][2:4]}-samples{num_samples}-{warm_start}"
+task_name = f"{info_dict['p_typeAction']}-{info_dict['F_typeAction']}-H{info_dict['prediction_horizon_step']}-dt{info_dict['prediction_horizon_time'][2:4]}-samples{num_samples}-{warm_start}-f{f_opt}-d{d_opt}"
 # task_name = "base-RL"
 
 
@@ -108,7 +130,8 @@ class ActionsCfg:
             debug_apply_action = debug_apply_action,
             num_samples=num_samples,
 
-            optimize_f=False
+            optimize_f=f_opt,
+            optimize_d=d_opt,
             ),
         # optimizerCfg=mdp.ModelBaseActionCfg.OptimizerCfg(
         #     multipolicy=1,
@@ -137,8 +160,12 @@ class env_cfg(LocomotionModelBasedEnvCfg):
         self.scene.terrain.class_type = randomTerrainImporter   
 
         """ ----- Commands ----- """
-        self.commands.base_velocity.ranges.for_vel_b = (0.3, 0.6)
-        self.commands.base_velocity.ranges.lat_vel_b = (-0.2, 0.2)
+        # self.commands.base_velocity.ranges.for_vel_b = (0.3, 0.6)
+        # self.commands.base_velocity.ranges.lat_vel_b = (-0.2, 0.2)
+        # self.commands.base_velocity.ranges.ang_vel_b = (-0.5, 0.5)
+        # self.commands.base_velocity.ranges.initial_heading_err = (-0.0, 0.0)  
+        self.commands.base_velocity.ranges.for_vel_b = (speed, speed)
+        self.commands.base_velocity.ranges.lat_vel_b = (-0.1, 0.1)
         self.commands.base_velocity.ranges.ang_vel_b = (-0.5, 0.5)
         self.commands.base_velocity.ranges.initial_heading_err = (-0.0, 0.0)  
         # self.commands.base_velocity.ranges.for_vel_b = (0.0, 0.0)
