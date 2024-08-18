@@ -48,7 +48,10 @@ from rsl_rl.modules import ActorCritic
 from omni.isaac.lab_tasks.manager_based.locomotion.model_based.config.unitree_aliengo import agents
 from omni.isaac.lab.utils import configclass
 from omni.isaac.lab_tasks.manager_based.locomotion.model_based.model_based_env_cfg import LocomotionModelBasedEnvCfg
-from omni.isaac.lab_tasks.manager_based.locomotion.model_based.config.unitree_aliengo import UnitreeAliengoSpeedEnvCfg, UnitreeAliengoRoughEnvCfg, UnitreeAliengoClimbEnvCfg, UnitreeAliengoBaseEnvCfg
+from omni.isaac.lab_tasks.manager_based.locomotion.model_based.config.unitree_aliengo.aliengo_speed_env_cfg import UnitreeAliengoSpeedEnvCfg
+from omni.isaac.lab_tasks.manager_based.locomotion.model_based.config.unitree_aliengo.aliengo_rough_env_cfg import UnitreeAliengoRoughEnvCfg
+from omni.isaac.lab_tasks.manager_based.locomotion.model_based.config.unitree_aliengo.aliengo_climb_env_cfg import UnitreeAliengoClimbEnvCfg
+from omni.isaac.lab_tasks.manager_based.locomotion.model_based.config.unitree_aliengo.aliengo_base_env_cfg import UnitreeAliengoBaseEnvCfg
 from omni.isaac.lab_assets.unitree import UNITREE_ALIENGO_SELF_COLLISION_TORQUE_CONTROL_CFG  # isort: skip
 from omni.isaac.lab.terrains.config.niceFlat import COBBLESTONE_ROAD_CFG, COBBLESTONE_FLAT_CFG
 from omni.isaac.lab.terrains.config.climb import STAIRS_TERRAINS_CFG
