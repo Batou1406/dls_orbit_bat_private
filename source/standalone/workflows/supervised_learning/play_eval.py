@@ -22,6 +22,7 @@ parser.add_argument("--controller", type=str, default=None, help="Type of contro
 parser.add_argument("--leg_freq", type=str, default=None, help="if to opt leg freq")
 parser.add_argument("--duty_cycle", type=str, default=None, help="If to opt duty cycle")
 parser.add_argument("--speed", type=str, default=None)
+parser.add_argument("--eval_task", type=str, default=None, help="Task to try the controller")
 
 cli_args.add_rsl_rl_args(parser)
 AppLauncher.add_app_launcher_args(parser)
@@ -47,6 +48,7 @@ from rsl_rl.modules import ActorCritic
 from omni.isaac.lab_tasks.manager_based.locomotion.model_based.config.unitree_aliengo import agents
 from omni.isaac.lab.utils import configclass
 from omni.isaac.lab_tasks.manager_based.locomotion.model_based.model_based_env_cfg import LocomotionModelBasedEnvCfg
+from omni.isaac.lab_tasks.manager_based.locomotion.model_based.config.unitree_aliengo import UnitreeAliengoSpeedEnvCfg, UnitreeAliengoRoughEnvCfg, UnitreeAliengoClimbEnvCfg, UnitreeAliengoBaseEnvCfg
 from omni.isaac.lab_assets.unitree import UNITREE_ALIENGO_SELF_COLLISION_TORQUE_CONTROL_CFG  # isort: skip
 from omni.isaac.lab.terrains.config.niceFlat import COBBLESTONE_ROAD_CFG, COBBLESTONE_FLAT_CFG
 from omni.isaac.lab.terrains.config.climb import STAIRS_TERRAINS_CFG
@@ -95,12 +97,27 @@ elif args_cli.speed == 'medium':
 elif args_cli.speed == 'slow':
     speed = 0.1
 
+
+eval_task = args_cli.eval_task
+
+if eval_task == 'test_task':
+    environment_cfg = LocomotionModelBasedEnvCfg
+elif eval_task == 'base_task':
+    environment_cfg = UnitreeAliengoBaseEnvCfg
+elif eval_task == 'speed_task':
+    environment_cfg = UnitreeAliengoSpeedEnvCfg
+elif eval_task == 'climb_task':
+    environment_cfg = UnitreeAliengoClimbEnvCfg
+elif eval_task == 'rough_task':
+    environment_cfg = UnitreeAliengoRoughEnvCfg
+
 # task_name = f"{info_dict['p_typeAction']}-{info_dict['F_typeAction']}-H{info_dict['prediction_horizon_step']}-dt{info_dict['prediction_horizon_time'][2:4]}-{info_dict['tot_epoch']}"
 # task_name = f"{info_dict['p_typeAction']}-{info_dict['F_typeAction']}-H{info_dict['prediction_horizon_step']}-dt{info_dict['prediction_horizon_time'][2:4]}"
 # task_name = f"{info_dict['p_typeAction']}-{info_dict['F_typeAction']}-H{info_dict['prediction_horizon_step']}-dt{info_dict['prediction_horizon_time'][2:4]}-samples{num_samples}-{warm_start}-f{f_opt}-d{d_opt}-{args_cli.speed}"
 # task_name = "base-RL"
-task_name = f"{info_dict['model_name']}-{info_dict['p_typeAction']}-{info_dict['F_typeAction']}-H{info_dict['prediction_horizon_step']}-dt{info_dict['prediction_horizon_time'][2:4]}-{warm_start}"
+# task_name = f"{info_dict['model_name']}-{info_dict['p_typeAction']}-{info_dict['F_typeAction']}-H{info_dict['prediction_horizon_step']}-dt{info_dict['prediction_horizon_time'][2:4]}-{warm_start}"
 # task_name = f"{info_dict['p_typeAction']}-{info_dict['F_typeAction']}-H{info_dict['prediction_horizon_step']}-dt{info_dict['prediction_horizon_time'][2:4]}-samples{num_samples}-{warm_start}"
+task_name = f"model-{info_dict['model_name']}-{eval_task}-{warm_start}"
 
 
 
@@ -148,87 +165,92 @@ class ActionsCfg:
         )
 
 @configclass
-class env_cfg(LocomotionModelBasedEnvCfg):
+class env_cfg(environment_cfg):
     actions = ActionsCfg()
     
     def __post_init__(self):
 
-        """ ----- Scene Settings ----- """
-        self.scene.robot = UNITREE_ALIENGO_SELF_COLLISION_TORQUE_CONTROL_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
-        self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/base"  
+        if eval_task == 'test_task' :
+            """ ----- Scene Settings ----- """
+            self.scene.robot = UNITREE_ALIENGO_SELF_COLLISION_TORQUE_CONTROL_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+            self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/base"  
 
-        self.scene.terrain.terrain_generator = COBBLESTONE_FLAT_CFG # very Flat
-        # self.scene.terrain.terrain_generator = COBBLESTONE_ROAD_CFG # Flat
-        # self.scene.terrain.terrain_generator = STAIRS_TERRAINS_CFG
-        # self.scene.terrain.terrain_generator = SPEED_TERRAINS_CFG
-        # self.scene.terrain.terrain_generator = ROUGH_TERRAINS_CFG    
-        self.scene.terrain.class_type = randomTerrainImporter   
+            self.scene.terrain.terrain_generator = COBBLESTONE_FLAT_CFG # very Flat
+            # self.scene.terrain.terrain_generator = COBBLESTONE_ROAD_CFG # Flat
+            # self.scene.terrain.terrain_generator = STAIRS_TERRAINS_CFG
+            # self.scene.terrain.terrain_generator = SPEED_TERRAINS_CFG
+            # self.scene.terrain.terrain_generator = ROUGH_TERRAINS_CFG    
+            self.scene.terrain.class_type = randomTerrainImporter   
 
-        """ ----- Commands ----- """
-        self.commands.base_velocity.ranges.for_vel_b = (0.3, 0.6)
-        self.commands.base_velocity.ranges.lat_vel_b = (-0.2, 0.2)
-        self.commands.base_velocity.ranges.ang_vel_b = (-0.5, 0.5)
-        self.commands.base_velocity.ranges.initial_heading_err = (-0.0, 0.0)  
-        # self.commands.base_velocity.ranges.for_vel_b = (speed, speed)
-        # self.commands.base_velocity.ranges.lat_vel_b = (-0.1, 0.1)
-        # self.commands.base_velocity.ranges.ang_vel_b = (-0.5, 0.5)
-        # self.commands.base_velocity.ranges.initial_heading_err = (-0.0, 0.0)  
-        # self.commands.base_velocity.ranges.for_vel_b = (0.0, 0.0)
-        # self.commands.base_velocity.ranges.lat_vel_b = (-0.0, -0.0)
-        # self.commands.base_velocity.ranges.ang_vel_b = (-0., 0.)
-        # self.commands.base_velocity.ranges.initial_heading_err = (-0.0, 0.0)    
-        self.commands.base_velocity.resampling_time_range = (7.5, 7.5)
+            """ ----- Commands ----- """
+            self.commands.base_velocity.ranges.for_vel_b = (0.3, 0.6)
+            self.commands.base_velocity.ranges.lat_vel_b = (-0.2, 0.2)
+            self.commands.base_velocity.ranges.ang_vel_b = (-0.5, 0.5)
+            self.commands.base_velocity.ranges.initial_heading_err = (-0.0, 0.0)  
+            # self.commands.base_velocity.ranges.for_vel_b = (speed, speed)
+            # self.commands.base_velocity.ranges.lat_vel_b = (-0.1, 0.1)
+            # self.commands.base_velocity.ranges.ang_vel_b = (-0.5, 0.5)
+            # self.commands.base_velocity.ranges.initial_heading_err = (-0.0, 0.0)  
+            # self.commands.base_velocity.ranges.for_vel_b = (0.0, 0.0)
+            # self.commands.base_velocity.ranges.lat_vel_b = (-0.0, -0.0)
+            # self.commands.base_velocity.ranges.ang_vel_b = (-0., 0.)
+            # self.commands.base_velocity.ranges.initial_heading_err = (-0.0, 0.0)    
+            self.commands.base_velocity.resampling_time_range = (7.5, 7.5)
 
-        """ ----- Observation ----- """
-        # To add or not noise on the observations
-        self.observations.policy.enable_corruption = False
+            """ ----- Observation ----- """
+            # To add or not noise on the observations
+            self.observations.policy.enable_corruption = False
 
-        """ ----- Curriculum ----- """
-        Terrain_curriculum = False
-        Speed_curriculum = False
+            """ ----- Curriculum ----- """
+            Terrain_curriculum = False
+            Speed_curriculum = False
 
-        if not Terrain_curriculum : 
-            self.curriculum.terrain_levels = None                                                                  
+            if not Terrain_curriculum : 
+                self.curriculum.terrain_levels = None                                                                  
 
-        if not Speed_curriculum :
-            self.curriculum.speed_levels = None
+            if not Speed_curriculum :
+                self.curriculum.speed_levels = None
 
-        """ ----- Event randomization ----- """
-        Event = {'Base Mass'        : False, 
-                 'External Torque'  : False,
-                 'External Force'   : False,
-                 'Random joint pos' : False,
-                 'Push Robot'       : False}
+            """ ----- Event randomization ----- """
+            Event = {'Base Mass'        : False, 
+                    'External Torque'  : False,
+                    'External Force'   : False,
+                    'Random joint pos' : False,
+                    'Push Robot'       : False}
 
-        # --- startup
-        if Event['Base Mass'] : 
-            self.events.add_base_mass.params["mass_distribution_params"] = (-3.0, 3.0) #(0.0, 0.0)                                    # Default was 0
+            # --- startup
+            if Event['Base Mass'] : 
+                self.events.add_base_mass.params["mass_distribution_params"] = (-3.0, 3.0) #(0.0, 0.0)                                    # Default was 0
 
-        # --- Reset
-        if Event['External Force'] :
-            self.events.base_external_force_torque.params["force_range"]  = (-10.0, 10.0) # (0.0, 0.0)                  # Default was 0
-        if Event['External Torque'] :
-            self.events.base_external_force_torque.params["torque_range"] = (-1.0, 1.0) # (0.0, 0.0)                    # Default was 0
+            # --- Reset
+            if Event['External Force'] :
+                self.events.base_external_force_torque.params["force_range"]  = (-10.0, 10.0) # (0.0, 0.0)                  # Default was 0
+            if Event['External Torque'] :
+                self.events.base_external_force_torque.params["torque_range"] = (-1.0, 1.0) # (0.0, 0.0)                    # Default was 0
 
-        self.events.reset_base.params = {
-            "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},                                   # Some randomization improve training speed
-            # "pose_range": {"x": (-0.0, 0.0), "y": (-0.0, 0.0), "yaw": (-0.0, 0.0)}, 
-            "velocity_range": {                                                                                         # Default was ±0.5
-                "x": (0.0, 0.0),
-                "y": (0.0, 0.0),
-                "z": (0.0, 0.0),
-                "roll": (0.0, 0.0),
-                "pitch": (0.0, 0.0),
-                "yaw": (0.0, 0.0),
-            },
-        }
+            self.events.reset_base.params = {
+                "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},                                   # Some randomization improve training speed
+                # "pose_range": {"x": (-0.0, 0.0), "y": (-0.0, 0.0), "yaw": (-0.0, 0.0)}, 
+                "velocity_range": {                                                                                         # Default was ±0.5
+                    "x": (0.0, 0.0),
+                    "y": (0.0, 0.0),
+                    "z": (0.0, 0.0),
+                    "roll": (0.0, 0.0),
+                    "pitch": (0.0, 0.0),
+                    "yaw": (0.0, 0.0),
+                },
+            }
 
-        if Event["Random joint pos"] :
-            self.events.reset_robot_joints.params["position_range"] = (0.8, 1.2)                                        # default was (1.0, 1.0)
-        
-        # --- Interval
-        if not Event['Push Robot'] :
-            self.events.push_robot = None                                                                               # Default was activated
+            if Event["Random joint pos"] :
+                self.events.reset_robot_joints.params["position_range"] = (0.8, 1.2)                                        # default was (1.0, 1.0)
+            
+            # --- Interval
+            if not Event['Push Robot'] :
+                self.events.push_robot = None                                                                               # Default was activated
+
+
+        # post init of parent
+        super().__post_init__()
 
         """ ----- rewards ----- """
 
@@ -269,9 +291,6 @@ class env_cfg(LocomotionModelBasedEnvCfg):
         self.rewards.reward_is_alive                     = None #0.25
         self.rewards.penalty_failed                      = None
 
-
-        # post init of parent
-        super().__post_init__()
 
         self.decimation = 2 #2
 
