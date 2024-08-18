@@ -127,6 +127,10 @@ def penalize_frequency_variation_L2(env: ManagerBasedRLEnv, action_name: str) ->
     f      = action.f.flatten(1,-1)
     f_prev = action.f_prev.flatten(1,-1)
 
+    if f.shape[0] > env.num_envs: 
+        f = f[:env.num_envs,...] 
+        f_prev = f_prev[:env.num_envs,...] 
+
     penalty = -torch.sum(torch.square(f-f_prev), dim=1)
 
     return penalty
@@ -142,6 +146,10 @@ def penalize_duty_cycle_variation_L2(env: ManagerBasedRLEnv, action_name: str) -
     d:     torch.Tensor = env.action_manager.get_term(action_name).d.flatten(1,-1)
     d_prev:torch.Tensor = env.action_manager.get_term(action_name).d_prev.flatten(1,-1)
 
+    if d.shape[0] > env.num_envs: 
+        d = d[:env.num_envs,...] 
+        d_prev = d_prev[:env.num_envs,...] 
+
     penalty = -torch.sum(torch.square(d-d_prev), dim=1)
 
     return penalty
@@ -156,6 +164,10 @@ def penalize_steps_variation_L2(env: ManagerBasedRLEnv, action_name: str) -> tor
     # Shape (batch_size, num_legs, 3, number_predict step) -> (batch_size, num_legs * 3 * number_predict_step)
     p:     torch.Tensor = env.action_manager.get_term(action_name).delta_p_h.flatten(1,-1)
     p_prev:torch.Tensor = env.action_manager.get_term(action_name).delta_p_h_prev.flatten(1,-1)
+
+    if p.shape[0] > env.num_envs: 
+        p = p[:env.num_envs,...] 
+        p_prev = p_prev[:env.num_envs,...] 
 
     penalty = -torch.sum(torch.square(p-p_prev), dim=1)
 
@@ -176,6 +188,10 @@ def penalize_Forces_variation_L2(env: ManagerBasedRLEnv, action_name: str) -> to
     # F_prev:torch.Tensor = action.delta_F_h_prev.flatten(1,-1)
     F:     torch.Tensor = action.F_raw.flatten(1,-1)
     F_prev:torch.Tensor = action.F_raw_prev.flatten(1,-1)
+
+    if F.shape[0] > env.num_envs: 
+        F = F[:env.num_envs,...] 
+        F_prev = F_prev[:env.num_envs,...] 
 
     penalty = -torch.sum(torch.square(F-F_prev), dim=1)
 
