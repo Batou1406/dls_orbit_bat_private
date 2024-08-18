@@ -18,7 +18,8 @@ result_folder = args.result_folder
 args_dict = {
     '--num_envs': '1',
     '--headless': None,  # For flags or options without values
-    '--num_steps': '30000',
+    # '--num_steps': '30000',
+    '--num_steps': '60000',
     '--multipolicies_folder': 'test_eval',
     '--experiment_folder': result_folder,
     '--num_samples': 0,
@@ -30,12 +31,12 @@ args_dict = {
 
 controller_list = ['samplingController', 'samplingController_no_warm_start']
 # controller_list = ['samplingController_no_warm_start']
-# num_samples_list = [4000, 10000, 25000]
-num_samples_list = [10000]
+num_samples_list = [4000, 10000, 25000]
+# num_samples_list = [10000]
 
-f_list = ['frequency_optimization', 'no_opt']
-d_list = ['duty_cycle_optimization', 'no_opt']
-speed_list = ['fast', 'medium', 'slow']
+# f_list = ['frequency_optimization', 'no_opt']
+# d_list = ['duty_cycle_optimization', 'no_opt']
+# speed_list = ['fast', 'medium', 'slow']
 
 f_list = ['no_opt']
 d_list = ['no_opt']
