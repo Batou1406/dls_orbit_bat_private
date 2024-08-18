@@ -19,7 +19,7 @@ args_dict = {
     '--num_envs': '1',
     '--headless': None,  # For flags or options without values
     # '--num_steps': '30000',
-    '--num_steps': '60000',
+    '--num_steps': '40000',
     '--multipolicies_folder': 'test_eval',
     '--experiment_folder': result_folder,
     '--num_samples': 0,
@@ -55,6 +55,7 @@ for s in range(len(speed_list)) :
                 for j in range(len(num_samples_list)):
                     for i in range(len(list_of_policy_folder)):
                         iter+=1
+                        if iter > 6 : continue
                         print(f"\nEvaluation {iter} / {len(list_of_policy_folder)*len(num_samples_list)*len(controller_list)*len(d_list)*len(f_list)*len(speed_list)} - Policy {list_of_policy_folder[i]}")
 
                         args_dict['--multipolicies_folder'] = list_of_policy_folder[i]

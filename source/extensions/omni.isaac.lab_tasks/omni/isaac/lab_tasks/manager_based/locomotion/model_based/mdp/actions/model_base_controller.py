@@ -1213,10 +1213,10 @@ class SamplingOptimizer():
 
         f_samples_rl_list, d_samples_rl_list, p_lw_samples_rl_list, delta_F_lw_samples_rl_list = [], [], [], []
         for i in range(self.number_of_policy):
-            f_samples_rl_list.append(f + self.sampling_law(num_samples=num_samples_RL//self.number_of_policy, mean=torch.zeros(1, device=self.device), std=self.std_f, clip=self.clip_sample))
-            d_samples_rl_list.append(d + self.sampling_law(num_samples=num_samples_RL//self.number_of_policy, mean=torch.zeros(1, device=self.device), std=self.std_d, clip=self.clip_sample))
-            # f_samples_rl_list.append(          self.sampling_law(num_samples=num_samples_RL//self.number_of_policy, mean=f[i],          std=self.std_f, clip=self.clip_sample) )
-            # d_samples_rl_list.append(          self.sampling_law(num_samples=num_samples_RL//self.number_of_policy, mean=d[i],          std=self.std_d, clip=self.clip_sample) )
+            # f_samples_rl_list.append(f + self.sampling_law(num_samples=num_samples_RL//self.number_of_policy, mean=torch.zeros(1, device=self.device), std=self.std_f, clip=self.clip_sample))
+            # d_samples_rl_list.append(d + self.sampling_law(num_samples=num_samples_RL//self.number_of_policy, mean=torch.zeros(1, device=self.device), std=self.std_d, clip=self.clip_sample))
+            f_samples_rl_list.append(          self.sampling_law(num_samples=num_samples_RL//self.number_of_policy, mean=f[i],          std=self.std_f, clip=self.clip_sample) )
+            d_samples_rl_list.append(          self.sampling_law(num_samples=num_samples_RL//self.number_of_policy, mean=d[i],          std=self.std_d, clip=self.clip_sample) )
             p_lw_samples_rl_list.append(       self.sampling_law(num_samples=num_samples_RL//self.number_of_policy, mean=p_lw[i],       std=self.std_p, clip=self.clip_sample) )
             delta_F_lw_samples_rl_list.append( self.sampling_law(num_samples=num_samples_RL//self.number_of_policy, mean=delta_F_lw[i], std=std_F,      clip=self.clip_sample) )
 
