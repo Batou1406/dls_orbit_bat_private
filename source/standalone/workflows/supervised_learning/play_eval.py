@@ -113,6 +113,8 @@ elif eval_task == 'climb_task':
     environment_cfg = UnitreeAliengoClimbEnvCfg
 elif eval_task == 'rough_task':
     environment_cfg = UnitreeAliengoRoughEnvCfg
+else :
+    print('Something went wrong with the task name...')
 
 # task_name = f"{info_dict['p_typeAction']}-{info_dict['F_typeAction']}-H{info_dict['prediction_horizon_step']}-dt{info_dict['prediction_horizon_time'][2:4]}-{info_dict['tot_epoch']}"
 # task_name = f"{info_dict['p_typeAction']}-{info_dict['F_typeAction']}-H{info_dict['prediction_horizon_step']}-dt{info_dict['prediction_horizon_time'][2:4]}"
