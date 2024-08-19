@@ -99,12 +99,12 @@ if True :
 
 """ Infer optimization type from folder name"""
 if True :
-    print(args_cli.multipolicies_folder)
-    if 'RL' in args_cli.multipolicies_folder :
+    print(args_cli.model_name)
+    if 'RL' in args_cli.model_name :
         controller = mdp.modelBaseController
         optimizerCfg=None
 
-    elif 'IL' in args_cli.multipolicies_folder:
+    elif 'IL' in args_cli.model_name:
         controller = mdp.samplingController
         optimizerCfg=mdp.ModelBaseActionCfg.OptimizerCfg(
             multipolicy=1,
@@ -114,7 +114,7 @@ if True :
             parametrization_F='cubic_spline'
             ),
 
-    elif 'NO_WS' in args_cli.multipolicies_folder:
+    elif 'NO_WS' in args_cli.model_name:
         controller = mdp.samplingController
         optimizerCfg=mdp.ModelBaseActionCfg.OptimizerCfg(
             multipolicy=1,
