@@ -661,8 +661,9 @@ def main():
                 velocity_commands_b = env.unwrapped.command_manager.get_term('base_velocity').vel_command_b.clone().detach()
                 robots_pos_lw       = env.unwrapped.scene['robot'].data.root_pos_w - env.unwrapped.scene.env_origins
                 terrains_difficulty = env.unwrapped.scene.terrain.difficulty.clone().detach()
-                
-                if iteration > 1 : cost_of_transports  = env.unwrapped.reward_manager._episode_sums['penalty_CoT']
+                cost_of_transports  = env.unwrapped.reward_manager._episode_sums['penalty_CoT']
+
+                # if iteration > 1 : cost_of_transports  = env.unwrapped.reward_manager._episode_sums['penalty_CoT']
 
         # close the simulator
         env.close()
