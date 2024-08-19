@@ -57,6 +57,7 @@ if True :
     from omni.isaac.lab.managers import CurriculumTermCfg as CurrTerm
     from omni.isaac.lab.terrains import randomTerrainImporter
     import omni.isaac.lab_tasks.manager_based.locomotion.model_based.mdp as mdp
+    from omni.isaac.lab.terrains import TerrainImporterUniformDifficulty
 
     import pandas as pd
     import time
