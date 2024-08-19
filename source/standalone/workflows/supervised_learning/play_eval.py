@@ -103,7 +103,7 @@ elif args_cli.speed == 'slow':
 
 eval_task = args_cli.eval_task
 
-if eval_task == 'test_task':
+if eval_task == 'eval_task':
     environment_cfg = LocomotionModelBasedEnvCfg
 elif eval_task == 'base_task':
     environment_cfg = UnitreeAliengoBaseEnvCfg
@@ -178,7 +178,7 @@ class env_cfg(environment_cfg):
     
     def __post_init__(self):
 
-        if eval_task == 'test_task' :
+        if eval_task == 'eval_task' :
             """ ----- Scene Settings ----- """
             self.scene.robot = UNITREE_ALIENGO_SELF_COLLISION_TORQUE_CONTROL_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
             self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/base"  

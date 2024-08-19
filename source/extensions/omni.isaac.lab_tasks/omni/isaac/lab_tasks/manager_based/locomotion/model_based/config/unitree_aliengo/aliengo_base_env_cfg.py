@@ -129,7 +129,7 @@ class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
 
 
         """ ----- rewards ----- """
-        training = 'normal' # 'normal' or 'with_sampling'
+        training = 'play_eval' # 'normal' or 'with_sampling' or 'play_eval'
 
         if training == 'normal' :
             # -- task
