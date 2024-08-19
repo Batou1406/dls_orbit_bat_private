@@ -588,15 +588,16 @@ def main():
 
     """ Run the Simulation and collect Data """
     if True :
-        cumulated_rewards   = torch.empty((args_cli.num_envs), device=env.device)
-        trajectories_length = torch.empty((args_cli.num_envs), device=env.device)
-        cumulated_distances = torch.empty((args_cli.num_envs), device=env.device)
-        terrains_difficulty = torch.empty((args_cli.num_envs), device=env.device)
-        velocity_commands_b = torch.empty((args_cli.num_envs, 3), device=env.device)
-        robots_pos_lw       = torch.empty((args_cli.num_envs, 3), device=env.device)
+        cumulated_rewards   = torch.zeros((args_cli.num_envs), device=env.device)
+        trajectories_length = torch.zeros((args_cli.num_envs), device=env.device)
+        cumulated_distances = torch.zeros((args_cli.num_envs), device=env.device)
+        terrains_difficulty = torch.zeros((args_cli.num_envs), device=env.device)
+        cost_of_transports  = torch.zeros((args_cli.num_envs), device=env.device) 
+        velocity_commands_b = torch.zeros((args_cli.num_envs, 3), device=env.device)
+        robots_pos_lw       = torch.zeros((args_cli.num_envs, 3), device=env.device)
         last_time = time.time()
 
-        result_df = pd.DataFrame(columns=['cumulated_reward', 'trajectory_length', 'survived', 'commanded_speed_for', 'commanded_speed_lat', 'commanded_speed_ang', 'average_speed', 'cumulated_distance', 'stairs_cleared', 'terrain_difficulty'])
+        result_df = pd.DataFrame(columns=['cumulated_reward', 'trajectory_length', 'survived', 'commanded_speed_for', 'commanded_speed_lat', 'commanded_speed_ang', 'average_speed', 'cumulated_distance', 'CoT', 'stairs_cleared', 'terrain_difficulty'])
 
         # reset environment
         obs, _ = env.get_observations()
@@ -621,8 +622,11 @@ def main():
                 # env stepping
                 obs, rew, dones, extras = env.step(actions) 
 
-                cumulated_rewards += rew
+                cumulated_rewards   += rew
                 trajectories_length += env.unwrapped.step_dt
+
+                # CoT_cfg = env.unwrapped.get_term_cfg('penalty_CoT')
+                # CoT = CoT_cfg.func(env.unwrapped, **CoT_cfg.params)
 
                 # One of the trajectory terminated
                 if dones.any():
@@ -636,11 +640,12 @@ def main():
                     commanded_speed_lat = velocity_commands_b[env_terminated_idx][..., 1].squeeze()
                     commanded_speed_ang = velocity_commands_b[env_terminated_idx][..., 2].squeeze()
                     average_speed       = cumulated_distance / trajectory_length
+                    cost_of_transport   = (cost_of_transports / trajectories_length)[env_terminated_idx].squeeze()
                     stairs_cleared      = (((torch.max(robots_pos_lw[env_terminated_idx][...,:2], dim=-1).values - platform_width )/ step_width).int()).squeeze()
                     terrain_difficulty  = terrains_difficulty[env_terminated_idx].squeeze()
 
                     # Append the new result to the existing DataFrame
-                    tensor_list = [cumulated_reward, trajectory_length, survived, commanded_speed_for, commanded_speed_lat, commanded_speed_ang, average_speed, cumulated_distance, stairs_cleared, terrain_difficulty]
+                    tensor_list = [cumulated_reward, trajectory_length, survived, commanded_speed_for, commanded_speed_lat, commanded_speed_ang, average_speed, cumulated_distance, cost_of_transport, stairs_cleared, terrain_difficulty]
                     new_result_df = pd.DataFrame([tensor.cpu().numpy() for tensor in tensor_list]).T
                     result_df = pd.concat([result_df, new_result_df.set_axis(result_df.columns, axis=1)], ignore_index=True)
 
@@ -653,6 +658,7 @@ def main():
                 velocity_commands_b = env.unwrapped.command_manager.get_term('base_velocity').vel_command_b.clone().detach()
                 robots_pos_lw       = env.unwrapped.scene['robot'].data.root_pos_w - env.unwrapped.scene.env_origins
                 terrains_difficulty = env.unwrapped.scene.terrain.difficulty.clone().detach()
+                cost_of_transports  = env.reward_manager._episode_sums['penalty_CoT']
 
         # close the simulator
         env.close()
