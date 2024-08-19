@@ -250,7 +250,7 @@ class env_cfg(LocomotionModelBasedEnvCfg):
             self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/base"  
 
             self.scene.terrain.terrain_generator = STAIRS_TERRAINS_CFG
-            # self.scene.terrain.class_type = randomTerrainImporter   
+            self.scene.terrain.class_type = TerrainImporterUniformDifficulty  
 
             """ ----- Commands ----- """
             self.commands.base_velocity.ranges.for_vel_b = ( 0.3, 0.5)
