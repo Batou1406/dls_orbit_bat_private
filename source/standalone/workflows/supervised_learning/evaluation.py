@@ -43,7 +43,7 @@ f_list = ['no_opt']
 d_list = ['no_opt']
 speed_list = ['fast']
 
-task_list = ['base_task','test_task', 'speed_task', 'climb_task', 'rough_task']
+task_list = ['climb_task', 'base_task','test_task', 'speed_task', 'rough_task']
 
 only_one_no_warm_start_per_task_list = ['no' for alo in range(len(task_list))]
 
