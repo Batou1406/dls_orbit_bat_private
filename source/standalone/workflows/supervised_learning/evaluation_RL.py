@@ -36,10 +36,10 @@ print('Different policy :', list_of_policy_folder)
 
 iter=0
 for t in range(len(eval_task_list)):
-                        for i in range(len(list_of_policy_folder)*len(eval_task_list)):
+                        for i in range(len(list_of_policy_folder)):
 
                             iter+=1
-                            print(f"\nEvaluation {iter} / {len(list_of_policy_folder)} - Policy {list_of_policy_folder[i]}")
+                            print(f"\nEvaluation {iter} / {len(list_of_policy_folder)*len(eval_task_list)} - Policy {list_of_policy_folder[i]}")
 
                             args_dict['--multipolicies_folder'] = list_of_policy_folder[i]         
                             args_dict['--eval_task'] = eval_task_list[t]
