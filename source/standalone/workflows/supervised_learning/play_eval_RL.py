@@ -99,6 +99,7 @@ if True :
 
 """ Infer optimization type from folder name"""
 if True :
+    print(args_cli.multipolicies_folder)
     if 'RL' in args_cli.multipolicies_folder :
         controller = mdp.modelBaseController
         optimizerCfg=None
@@ -641,7 +642,7 @@ def main():
                     commanded_speed_ang = velocity_commands_b[env_terminated_idx][..., 2].squeeze()
                     average_speed       = cumulated_distance / trajectory_length
                     cost_of_transport   = (cost_of_transports / trajectories_length)[env_terminated_idx].squeeze()
-                    stairs_cleared      = (((torch.max(robots_pos_lw[env_terminated_idx][...,:2], dim=-1).values - platform_width )/ step_width).int()).squeeze()
+                    stairs_cleared      = (((torch.max(torch.abs(robots_pos_lw[env_terminated_idx][...,:2]), dim=-1).values - (platform_width/2) )/ step_width).clamp_min(min=0).int()).squeeze()
                     terrain_difficulty  = terrains_difficulty[env_terminated_idx].squeeze()
 
                     # Append the new result to the existing DataFrame
