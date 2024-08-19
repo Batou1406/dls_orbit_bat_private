@@ -19,7 +19,7 @@ result_folder = args.result_folder
 args_dict = {
     '--num_envs': num_envs,
     '--headless': None,
-    '--num_trajectory': '10000',
+    '--num_trajectory': '20000',
     '--multipolicies_folder': 'test_eval',
     '--result_folder': result_folder,
     '--eval_task':'eval_task',

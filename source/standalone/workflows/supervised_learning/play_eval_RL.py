@@ -97,6 +97,36 @@ if True :
     else :
         result_dict = {}
 
+""" Infer optimization type from folder name"""
+if True :
+    if 'RL' in args_cli.multipolicies_folder :
+        controller = mdp.modelBaseController
+        optimizerCfg=None
+
+    elif 'IL' in args_cli.multipolicies_folder:
+        controller = mdp.samplingController
+        optimizerCfg=mdp.ModelBaseActionCfg.OptimizerCfg(
+            multipolicy=1,
+            prevision_horizon=10,
+            discretization_time=0.02,
+            parametrization_p='first',
+            parametrization_F='cubic_spline'
+            ),
+
+    elif 'NO_WS' in args_cli.multipolicies_folder:
+        controller = mdp.samplingController
+        optimizerCfg=mdp.ModelBaseActionCfg.OptimizerCfg(
+            multipolicy=1,
+            prevision_horizon=10,
+            discretization_time=0.02,
+            parametrization_p='first',
+            parametrization_F='cubic_spline'
+            ),
+    
+    else :
+        controller = mdp.modelBaseController
+        optimizerCfg=None
+        
 
 @configclass
 class ActionsCfg:
@@ -106,8 +136,8 @@ class ActionsCfg:
     model_base_variable = mdp.ModelBaseActionCfg(
         asset_name="robot",
         joint_names=[".*"], 
-        controller=mdp.modelBaseController,
-        optimizerCfg=None
+        controller=controller,
+        optimizerCfg=optimizerCfg
         )
 
 
