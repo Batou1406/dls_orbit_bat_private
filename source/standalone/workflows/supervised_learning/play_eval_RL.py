@@ -599,12 +599,15 @@ def main():
 
         result_df = pd.DataFrame(columns=['cumulated_reward', 'trajectory_length', 'survived', 'commanded_speed_for', 'commanded_speed_lat', 'commanded_speed_ang', 'average_speed', 'cumulated_distance', 'CoT', 'stairs_cleared', 'terrain_difficulty'])
 
+        iteration = 0 # Reward manager is accessible only after a first step
+
         # reset environment
         obs, _ = env.get_observations()
 
         # simulate environment
         while len(result_df) < num_trajectory:
             i = len(result_df)
+            iteration +=1
 
             if time.time() > last_time+5:
                 last_time = time.time()
@@ -658,7 +661,8 @@ def main():
                 velocity_commands_b = env.unwrapped.command_manager.get_term('base_velocity').vel_command_b.clone().detach()
                 robots_pos_lw       = env.unwrapped.scene['robot'].data.root_pos_w - env.unwrapped.scene.env_origins
                 terrains_difficulty = env.unwrapped.scene.terrain.difficulty.clone().detach()
-                cost_of_transports  = env.unwrapped.reward_manager._episode_sums['penalty_CoT']
+                
+                if iteration > 1 : cost_of_transports  = env.unwrapped.reward_manager._episode_sums['penalty_CoT']
 
         # close the simulator
         env.close()
