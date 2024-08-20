@@ -756,6 +756,8 @@ def main():
                 gait_params_f      += env.unwrapped.action_manager.get_term('model_base_variable').f_star
                 gait_params_d      += env.unwrapped.action_manager.get_term('model_base_variable').d_star
                 offset             = env.unwrapped.action_manager.get_term('model_base_variable').controller.phase
+
+                breakpoint()
                 gait_params_offset += (offset[:,1:] - offset[:,0:1]) % 1.0
 
 
