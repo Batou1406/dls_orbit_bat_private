@@ -121,7 +121,7 @@ class UnitreeAliengoRoughEnvCfg(LocomotionModelBasedEnvCfg):
 
 
         """ ----- rewards ----- """
-        training = 'play_eval' # 'normal' or 'play_eval'
+        training = 'normal' # 'normal' or 'play_eval'
 
         if training == 'normal' :
             # -- task
