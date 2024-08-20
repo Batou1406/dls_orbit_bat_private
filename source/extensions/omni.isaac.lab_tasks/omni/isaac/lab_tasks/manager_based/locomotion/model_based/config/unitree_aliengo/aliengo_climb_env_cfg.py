@@ -15,7 +15,7 @@ from omni.isaac.lab_assets.unitree import UNITREE_ALIENGO_CFG, UNITREE_GO2_CFG, 
 from omni.isaac.lab_assets.anymal import ANYMAL_C_CFG  # isort: skip
 
 from omni.isaac.lab.terrains.config.climb import STAIRS_TERRAINS_CFG
-from omni.isaac.lab.terrains import TerrainImporterUniformDifficulty
+from omni.isaac.lab.terrains import TerrainImporterUniformDifficulty, randomTerrainImporter
 
 from omni.isaac.lab.managers import CurriculumTermCfg as CurrTerm
 import omni.isaac.lab_tasks.manager_based.locomotion.model_based.mdp as mdp
@@ -26,7 +26,8 @@ class UnitreeAliengoClimbEnvCfg(LocomotionModelBasedEnvCfg):
 
         # --- Select the Climb terrain -> Must be done before super().__post_init__() otherwise it won't load the terrain properly
         self.scene.terrain.terrain_generator = STAIRS_TERRAINS_CFG
-        self.scene.terrain.class_type = TerrainImporterUniformDifficulty
+        # self.scene.terrain.class_type = TerrainImporterUniformDifficulty
+        self.scene.terrain.class_type = randomTerrainImporter  # -> for DAgger
 
         self.curriculum.terrain_levels = CurrTerm(func=mdp.climb_terrain_curriculum)
 
@@ -72,8 +73,7 @@ class UnitreeAliengoClimbEnvCfg(LocomotionModelBasedEnvCfg):
 
 
         """ ----- Curriculum ----- """
-        # Terrain_curriculum = True
-        Terrain_curriculum = False #-> for Dagger
+        Terrain_curriculum = True
         Speed_curriculum = False
 
         if Terrain_curriculum : 

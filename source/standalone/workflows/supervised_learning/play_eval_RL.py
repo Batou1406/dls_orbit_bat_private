@@ -67,6 +67,7 @@ eval_task       = args_cli.eval_task
 result_folder   = args_cli.result_folder
 num_trajectory  = args_cli.num_trajectory
 model_name      = args_cli.model_name
+num_envs        = args_cli.num_envs
 
 task_name               = f"model-{model_name}-eval-{eval_task}"
 result_folder_path      = f'eval/{args_cli.result_folder}'
@@ -103,6 +104,7 @@ if True :
     if 'RL' in args_cli.model_name :
         controller = mdp.modelBaseController
         optimizerCfg=None
+        decimation = 4
 
     elif 'IL' in args_cli.model_name:
         controller = mdp.samplingController
@@ -112,7 +114,10 @@ if True :
             discretization_time=0.02,
             parametrization_p='first',
             parametrization_F='cubic_spline'
-            ),
+            )
+        num_envs = 1
+        num_trajectory = 100
+        decimation = 2
 
     elif 'NO_WS' in args_cli.model_name:
         controller = mdp.samplingController
@@ -122,7 +127,11 @@ if True :
             discretization_time=0.02,
             parametrization_p='first',
             parametrization_F='cubic_spline'
-            ),
+            )
+        num_envs = 1
+        num_trajectory = 100
+        decimation = 2
+
     
     else :
         controller = mdp.modelBaseController
@@ -348,7 +357,7 @@ class env_cfg(LocomotionModelBasedEnvCfg):
             self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/base"  
 
             self.scene.terrain.terrain_generator = ROUGH_TERRAINS_CFG # very Flat
-            # self.scene.terrain.class_type = randomTerrainImporter   
+            self.scene.terrain.class_type = randomTerrainImporter   
 
             """ ----- Commands ----- """
             self.commands.base_velocity.ranges.for_vel_b = (0.3, 0.6)
@@ -456,7 +465,7 @@ class env_cfg(LocomotionModelBasedEnvCfg):
 
         """ general simulatin settings """
         if True :
-            self.decimation = 4 #2
+            self.decimation = decimation
             self.episode_length_s = 15.0
             self.sim.dt = 0.005
             self.sim.disable_contact_processing = True
@@ -535,7 +544,7 @@ def main():
     """ LOAD THE ENVIRONMENT"""
     if True:
         # parse configuration
-        env_cfg = parse_env_cfg(task_name, use_gpu=not args_cli.cpu, num_envs=args_cli.num_envs, use_fabric=not args_cli.disable_fabric)
+        env_cfg = parse_env_cfg(task_name, use_gpu=not args_cli.cpu, num_envs=num_envs, use_fabric=not args_cli.disable_fabric)
         agent_cfg: RslRlOnPolicyRunnerCfg = cli_args.parse_rsl_rl_cfg(task_name, args_cli)
 
         # create isaac environment and wrap around environment for rsl-rl
@@ -589,13 +598,15 @@ def main():
 
     """ Run the Simulation and collect Data """
     if True :
-        cumulated_rewards   = torch.zeros((args_cli.num_envs), device=env.device)
-        trajectories_length = torch.zeros((args_cli.num_envs), device=env.device)
-        cumulated_distances = torch.zeros((args_cli.num_envs), device=env.device)
-        terrains_difficulty = torch.zeros((args_cli.num_envs), device=env.device)
-        cost_of_transports  = torch.zeros((args_cli.num_envs), device=env.device) 
-        velocity_commands_b = torch.zeros((args_cli.num_envs, 3), device=env.device)
-        robots_pos_lw       = torch.zeros((args_cli.num_envs, 3), device=env.device)
+        cumulated_rewards   = torch.zeros((num_envs), device=env.device)
+        trajectories_length = torch.zeros((num_envs), device=env.device)
+        cumulated_distances = torch.zeros((num_envs), device=env.device)
+        terrains_difficulty = torch.zeros((num_envs), device=env.device)
+        cumulated_CoTs      = torch.zeros((num_envs), device=env.device) 
+        velocity_commands_b = torch.zeros((num_envs, 3), device=env.device)
+        robots_pos_lw       = torch.zeros((num_envs, 3), device=env.device)
+
+        CoT_cfg = env.unwrapped.reward_manager.get_term_cfg('penalty_CoT')
         last_time = time.time()
 
         result_df = pd.DataFrame(columns=['cumulated_reward', 'trajectory_length', 'survived', 'commanded_speed_for', 'commanded_speed_lat', 'commanded_speed_ang', 'average_speed', 'cumulated_distance', 'CoT', 'stairs_cleared', 'terrain_difficulty'])
@@ -626,8 +637,7 @@ def main():
                 cumulated_rewards   += rew
                 trajectories_length += env.unwrapped.step_dt
 
-                # CoT_cfg = env.unwrapped.get_term_cfg('penalty_CoT')
-                # CoT = CoT_cfg.func(env.unwrapped, **CoT_cfg.params)
+                cumulated_CoTs += CoT_cfg.func(env.unwrapped, **CoT_cfg.params)
 
                 # One of the trajectory terminated
                 if dones.any():
@@ -641,7 +651,7 @@ def main():
                     commanded_speed_lat = velocity_commands_b[env_terminated_idx][..., 1].squeeze()
                     commanded_speed_ang = velocity_commands_b[env_terminated_idx][..., 2].squeeze()
                     average_speed       = cumulated_distance / trajectory_length
-                    cost_of_transport   = (cost_of_transports / trajectories_length)[env_terminated_idx].squeeze()
+                    cost_of_transport   = ((cumulated_CoTs * env.unwrapped.step_dt)/ trajectories_length)[env_terminated_idx].squeeze()
                     stairs_cleared      = (((torch.max(torch.abs(robots_pos_lw[env_terminated_idx][...,:2]), dim=-1).values - (platform_width/2) )/ step_width).clamp_min(min=0).int()).squeeze()
                     terrain_difficulty  = terrains_difficulty[env_terminated_idx].squeeze()
 
@@ -659,7 +669,7 @@ def main():
                 velocity_commands_b = env.unwrapped.command_manager.get_term('base_velocity').vel_command_b.clone().detach()
                 robots_pos_lw       = env.unwrapped.scene['robot'].data.root_pos_w - env.unwrapped.scene.env_origins
                 terrains_difficulty = env.unwrapped.scene.terrain.difficulty.clone().detach()
-                cost_of_transports  = env.unwrapped.reward_manager._episode_sums['penalty_CoT']
+                # cost_of_transports  = env.unwrapped.reward_manager._episode_sums['penalty_CoT'].clone().detach()
 
         # close the simulator
         env.close()
@@ -675,6 +685,7 @@ def main():
         result_dict['survived']           = result_df['survived'].mean(skipna=True)
         result_dict['average_speed']      = result_df['average_speed'].mean(skipna=True)
         result_dict['cumulated_distance'] = result_df['cumulated_distance'].mean(skipna=True)
+        result_dict['cost_of_transport']  = result_df['cost_of_transport'].mean(skipna=True)
         result_dict['stairs_cleared']     = result_df['stairs_cleared'].median(skipna=True)
         result_dict['terrain_difficulty'] = result_df['terrain_difficulty'].median(skipna=True)
 
