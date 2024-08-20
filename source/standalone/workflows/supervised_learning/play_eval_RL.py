@@ -91,6 +91,7 @@ if True :
     if not os.path.exists(full_result_folder_path):
         os.makedirs(full_result_folder_path)
     else :
+        print(f'Full resultd folder path : {full_result_folder_path}')
         raise KeyError('There is already an experiment setup in this directory, Please provide another folder_name')
     if os.path.isfile(full_result_folder_path +'/result.json'):
         with open(full_result_folder_path +'/result.json', 'r') as json_file:
@@ -706,6 +707,9 @@ def main():
         # Save the result_df to a pickle file
         result_df.to_pickle(full_result_folder_path + '/result_df.pkl')
 
+        print(f'Data saved succesfully in {full_result_folder_path}')
+        print(f'For task {task_name} and model {model_name}')
+
 
 
 
@@ -722,3 +726,5 @@ if __name__ == "__main__":
     main()
     # close sim app
     simulation_app.close()
+
+    print('Everything went well, closing the script')
