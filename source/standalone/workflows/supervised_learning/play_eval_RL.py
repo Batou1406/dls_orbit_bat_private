@@ -678,7 +678,7 @@ def main():
         last_time = time.time()
 
         result_df = pd.DataFrame(columns=['cumulated_reward', 'trajectory_length', 'survived', 'commanded_speed_for', 'commanded_speed_lat', 'commanded_speed_ang', 'average_speed', 'cumulated_distance', 'cost_of_transport', 'stairs_cleared', 'terrain_difficulty'])
-        gait_df   = pd.DataFrame(columns=['leg_frequency_FL', 'leg_frequency_FR', 'leg_frequency_RL', 'leg_frequency_RR' 'duty_cycle_FL', 'duty_cycle_FR', 'duty_cycle_RL', 'duty_cycle_RR', 'phase_offset_FR', 'phase_offset_RL', 'phase_offset_RR'])
+        gait_df   = pd.DataFrame(columns=['leg_frequency_FL', 'leg_frequency_FR', 'leg_frequency_RL', 'leg_frequency_RR', 'duty_cycle_FL', 'duty_cycle_FR', 'duty_cycle_RL', 'duty_cycle_RR', 'phase_offset_FR', 'phase_offset_RL', 'phase_offset_RR'])
 
         # reset environment
         obs, _ = env.get_observations()
