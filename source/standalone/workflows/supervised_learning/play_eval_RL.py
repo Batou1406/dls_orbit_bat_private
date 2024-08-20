@@ -672,7 +672,7 @@ def main():
         robots_pos_lw       = torch.zeros((num_envs, 3), device=env.device)
         gait_params_f       = torch.zeros((num_envs, 4), device=env.device)
         gait_params_d       = torch.zeros((num_envs, 4), device=env.device)
-        gait_params_offset  = torch.zeros((num_envs, 4), device=env.device)
+        gait_params_offset  = torch.zeros((num_envs, 3), device=env.device)
 
         CoT_cfg = env.unwrapped.reward_manager.get_term_cfg('penalty_CoT')
         last_time = time.time()
@@ -756,8 +756,6 @@ def main():
                 gait_params_f      += env.unwrapped.action_manager.get_term('model_base_variable').f_star
                 gait_params_d      += env.unwrapped.action_manager.get_term('model_base_variable').d_star
                 offset             = env.unwrapped.action_manager.get_term('model_base_variable').controller.phase
-
-                breakpoint()
                 gait_params_offset += (offset[:,1:] - offset[:,0:1]) % 1.0
 
 
