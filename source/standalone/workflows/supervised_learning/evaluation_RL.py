@@ -26,7 +26,7 @@ args_dict = {
     '--model_name': 'alo'
 }
 
-eval_task_list = ['stair_test', 'base_test', 'speed_test','survival_test']
+eval_task_list = ['omnidirectionnal_test', 'stair_test', 'base_test', 'speed_test','survival_test']
 
 list_of_policy_folder = [f"{model_folder}/{name}" for name in os.listdir(f"model/{model_folder}") if os.path.isdir(f"model/{model_folder}/{name}")]
 list_of_policy_name   = [f"{name}" for name in os.listdir(f"model/{model_folder}") if os.path.isdir(f"model/{model_folder}/{name}")]

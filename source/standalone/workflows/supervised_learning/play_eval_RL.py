@@ -191,7 +191,7 @@ class env_cfg(LocomotionModelBasedEnvCfg):
                     'External Torque'  : False,
                     'External Force'   : False,
                     'Random joint pos' : False,
-                    'Push Robot'       : True}
+                    'Push Robot'       : False}
 
             # --- startup
             if Event['Base Mass'] : 
@@ -424,6 +424,70 @@ class env_cfg(LocomotionModelBasedEnvCfg):
             if not Event['Push Robot'] :
                 self.events.push_robot = None    
 
+        if eval_task == 'omnidirectionnal_test' :
+            """ ----- Scene Settings ----- """
+            self.scene.robot = UNITREE_ALIENGO_SELF_COLLISION_TORQUE_CONTROL_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+            self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/base"  
+
+            self.scene.terrain.terrain_generator = COBBLESTONE_FLAT_CFG # very Flat
+            self.scene.terrain.class_type = randomTerrainImporter   
+
+            """ ----- Commands ----- """
+            self.commands.base_velocity.ranges.for_vel_b = (-1.0, 2.0)
+            self.commands.base_velocity.ranges.lat_vel_b = (-1.2, 1.2)
+            self.commands.base_velocity.ranges.ang_vel_b = (-0.5, 0.5)
+            self.commands.base_velocity.ranges.initial_heading_err = (-0.0, 0.0)      
+            self.commands.base_velocity.resampling_time_range = (10000.0,10000.0)
+
+            """ ----- Observation ----- """
+            self.observations.policy.enable_corruption = False
+
+            """ ----- Curriculum ----- """
+            Terrain_curriculum = False
+            Speed_curriculum = False
+
+            if not Terrain_curriculum : 
+                self.curriculum.terrain_levels = None                                                                  
+
+            if not Speed_curriculum :
+                self.curriculum.speed_levels = None
+
+            """ ----- Event randomization ----- """
+            Event = {'Base Mass'        : False, 
+                    'External Torque'  : False,
+                    'External Force'   : False,
+                    'Random joint pos' : False,
+                    'Push Robot'       : False}
+
+            # --- startup
+            if Event['Base Mass'] : 
+                self.events.add_base_mass.params["mass_distribution_params"] = (-3.0, 3.0) #(0.0, 0.0)                                    # Default was 0
+
+            # --- Reset
+            if Event['External Force'] :
+                self.events.base_external_force_torque.params["force_range"]  = (-10.0, 10.0) # (0.0, 0.0)                  # Default was 0
+            if Event['External Torque'] :
+                self.events.base_external_force_torque.params["torque_range"] = (-1.0, 1.0) # (0.0, 0.0)                    # Default was 0
+
+            self.events.reset_base.params = {
+                "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},                                   # Some randomization improve training speed
+                "velocity_range": {                                                                                         # Default was ±0.5
+                    "x": (0.0, 0.0),
+                    "y": (0.0, 0.0),
+                    "z": (0.0, 0.0),
+                    "roll": (0.0, 0.0),
+                    "pitch": (0.0, 0.0),
+                    "yaw": (0.0, 0.0),
+                },
+            }
+
+            if Event["Random joint pos"] :
+                self.events.reset_robot_joints.params["position_range"] = (0.8, 1.2)                                        # default was (1.0, 1.0)
+            
+            # --- Interval
+            if not Event['Push Robot'] :
+                self.events.push_robot = None                                                                               # Default was activated
+
 
         """ Rewards - Same for every task """
         if True : 
@@ -606,11 +670,15 @@ def main():
         cumulated_CoTs      = torch.zeros((num_envs), device=env.device) 
         velocity_commands_b = torch.zeros((num_envs, 3), device=env.device)
         robots_pos_lw       = torch.zeros((num_envs, 3), device=env.device)
+        gait_params_f       = torch.zeros((num_envs, 4), device=env.device)
+        gait_params_d       = torch.zeros((num_envs, 4), device=env.device)
+        gait_params_offset  = torch.zeros((num_envs, 4), device=env.device)
 
         CoT_cfg = env.unwrapped.reward_manager.get_term_cfg('penalty_CoT')
         last_time = time.time()
 
         result_df = pd.DataFrame(columns=['cumulated_reward', 'trajectory_length', 'survived', 'commanded_speed_for', 'commanded_speed_lat', 'commanded_speed_ang', 'average_speed', 'cumulated_distance', 'cost_of_transport', 'stairs_cleared', 'terrain_difficulty'])
+        gait_df   = pd.DataFrame(columns=['leg_frequency_FL', 'leg_frequency_FR', 'leg_frequency_RL', 'leg_frequency_RR' 'duty_cycle_FL', 'duty_cycle_FR', 'duty_cycle_RL', 'duty_cycle_RR', 'phase_offset_FR', 'phase_offset_RL', 'phase_offset_RR'])
 
         # reset environment
         obs, _ = env.get_observations()
@@ -656,14 +724,27 @@ def main():
                     stairs_cleared      = (((torch.max(torch.abs(robots_pos_lw[env_terminated_idx][...,:2]), dim=-1).values - (platform_width/2) )/ step_width).clamp_min(min=0).int()).squeeze()
                     terrain_difficulty  = terrains_difficulty[env_terminated_idx].squeeze()
 
+                    gait_param_f        = ((gait_params_f * env.unwrapped.step_dt)/ trajectories_length)[env_terminated_idx].squeeze()
+                    gait_param_d        = ((gait_params_d * env.unwrapped.step_dt)/ trajectories_length)[env_terminated_idx].squeeze()
+                    gait_param_offset   = ((gait_params_offset * env.unwrapped.step_dt)/ trajectories_length)[env_terminated_idx].squeeze()
+
                     # Append the new result to the existing DataFrame
                     tensor_list = [cumulated_reward, trajectory_length, survived, commanded_speed_for, commanded_speed_lat, commanded_speed_ang, average_speed, cumulated_distance, cost_of_transport, stairs_cleared, terrain_difficulty]
                     new_result_df = pd.DataFrame([tensor.cpu().numpy() for tensor in tensor_list]).T
                     result_df = pd.concat([result_df, new_result_df.set_axis(result_df.columns, axis=1)], ignore_index=True)
 
+                    tensor_list = [gait_param_f[...,0], gait_param_f[...,1], gait_param_f[...,2], gait_param_f[...,3], gait_param_d[...,0], gait_param_d[...,1], gait_param_d[...,2], gait_param_d[...,3], gait_param_offset[...,0], gait_param_offset[...,1], gait_param_offset[...,2]]
+                    new_gait_df = pd.DataFrame([tensor.cpu().numpy() for tensor in tensor_list]).T
+                    gait_df = pd.concat([gait_df, new_gait_df.set_axis(gait_df.columns, axis=1)], ignore_index=True)
+
                     #reset cumulated variable
                     cumulated_rewards[env_terminated_idx] = 0.0
                     trajectories_length[env_terminated_idx] = 0.0
+
+                    gait_params_f[env_terminated_idx] = 0.0
+                    gait_params_d[env_terminated_idx] = 0.0
+                    gait_params_offset[env_terminated_idx] = 0.0
+
 
                 # Value reseted by env, must be kept
                 cumulated_distances = env.unwrapped.command_manager.get_term('base_velocity').metrics['cumulative_distance'].clone().detach()
@@ -671,6 +752,12 @@ def main():
                 robots_pos_lw       = env.unwrapped.scene['robot'].data.root_pos_w - env.unwrapped.scene.env_origins
                 terrains_difficulty = env.unwrapped.scene.terrain.difficulty.clone().detach()
                 # cost_of_transports  = env.unwrapped.reward_manager._episode_sums['penalty_CoT'].clone().detach()
+
+                gait_params_f      += env.unwrapped.action_manager.get_term('model_base_variable').f_star
+                gait_params_d      += env.unwrapped.action_manager.get_term('model_base_variable').d_star
+                offset             = env.unwrapped.action_manager.get_term('model_base_variable').controller.phase
+                gait_params_offset += (offset[:,1:] - offset[:,0]) % 1.0
+
 
         # close the simulator
         env.close()
@@ -706,6 +793,7 @@ def main():
 
         # Save the result_df to a pickle file
         result_df.to_pickle(full_result_folder_path + '/result_df.pkl')
+        gait_df.to_pickle(full_result_folder_path + '/gait_df.pkl')
 
         print(f'Data saved succesfully in {full_result_folder_path}')
         print(f'For task {task_name} and model {model_name}')
