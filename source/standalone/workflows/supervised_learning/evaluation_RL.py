@@ -55,8 +55,10 @@ for t in range(len(eval_task_list)):
                                     args_list.append(str(value))
 
                             # Run the experiment
-                            subprocess.run(['python3', './source/standalone/workflows/supervised_learning/play_eval_RL.py'] + args_list)
+                            result = subprocess.run(['python3', './source/standalone/workflows/supervised_learning/play_eval_RL.py'] + args_list)
 
-
+                            if result.returncode != 0:
+                                print('something went wrong')
+                                breakpoint()
 
 
