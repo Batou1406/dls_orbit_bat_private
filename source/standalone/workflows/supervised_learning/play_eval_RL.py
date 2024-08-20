@@ -724,9 +724,9 @@ def main():
                     stairs_cleared      = (((torch.max(torch.abs(robots_pos_lw[env_terminated_idx][...,:2]), dim=-1).values - (platform_width/2) )/ step_width).clamp_min(min=0).int()).squeeze()
                     terrain_difficulty  = terrains_difficulty[env_terminated_idx].squeeze()
 
-                    gait_param_f        = ((gait_params_f * env.unwrapped.step_dt)/ trajectories_length)[env_terminated_idx].squeeze()
-                    gait_param_d        = ((gait_params_d * env.unwrapped.step_dt)/ trajectories_length)[env_terminated_idx].squeeze()
-                    gait_param_offset   = ((gait_params_offset * env.unwrapped.step_dt)/ trajectories_length)[env_terminated_idx].squeeze()
+                    gait_param_f        = ((gait_params_f * env.unwrapped.step_dt)/ trajectories_length.unsqueeze(-1))[env_terminated_idx].squeeze()
+                    gait_param_d        = ((gait_params_d * env.unwrapped.step_dt)/ trajectories_length.unsqueeze(-1))[env_terminated_idx].squeeze()
+                    gait_param_offset   = ((gait_params_offset * env.unwrapped.step_dt)/ trajectories_length.unsqueeze(-1))[env_terminated_idx].squeeze()
 
                     # Append the new result to the existing DataFrame
                     tensor_list = [cumulated_reward, trajectory_length, survived, commanded_speed_for, commanded_speed_lat, commanded_speed_ang, average_speed, cumulated_distance, cost_of_transport, stairs_cleared, terrain_difficulty]
