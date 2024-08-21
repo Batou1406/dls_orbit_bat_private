@@ -37,7 +37,8 @@ print('Different policy :', list_of_policy_folder)
 
 iter=0
 for t in range(len(eval_task_list)):
-                    for j in range(len(['fast', 'medium', 'slow'])):
+    for k in range(len(['fast', 'medium', 'slow'])):
+        for j in range(len(['frequency_optimization', 'no_frequency_optimization'])):
                         for i in range(len(list_of_policy_folder)):
 
                             iter+=1
@@ -48,6 +49,7 @@ for t in range(len(eval_task_list)):
                             args_dict['--model_name'] = list_of_policy_name[i]
 
                             args_dict['--speed'] = ['fast', 'medium', 'slow'][j]
+                            args_dict['--f_opt'] = ['frequency_optimization', 'no_frequency_optimization'][k]
 
                             print(args_dict)
 

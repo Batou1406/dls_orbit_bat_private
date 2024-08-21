@@ -20,6 +20,7 @@ if True:
     parser.add_argument("--eval_task",            type=str, default=None, help="Task to try the controller")
     parser.add_argument("--model_name",           type=str, default=None, help="Name of the model for naming the results")
     parser.add_argument("--speed",                type=str, default=None, help="debug variable")
+    parser.add_argument("--f_opt",                type=str, default=None, help="debug variable")
 
     cli_args.add_rsl_rl_args(parser)
     AppLauncher.add_app_launcher_args(parser)
@@ -84,7 +85,7 @@ if args_cli.speed is not None:
         speed = 0.5
     if args_cli.speed == 'slow':
         speed = 0.1
-    task_name = f"{task_name}-{args_cli.speed}"
+    task_name = f"{task_name}-{args_cli.speed}-{args_cli.f_opt}"
     full_result_folder_path = f'eval/{args_cli.result_folder}/{task_name}'
 
 """ Create Full result directory """
@@ -118,46 +119,58 @@ if True :
         optimizerCfg=None
         decimation = 4
 
+        if args_cli.speed is not None : 
+            controller = mdp.samplingTrainer
+            optimizerCfg=mdp.ModelBaseActionCfg.OptimizerCfg(
+                multipolicy=1,
+                prevision_horizon=1,
+                discretization_time=0.02,
+                parametrization_p='discrete',
+                parametrization_F='discrete'
+                )
+            decimation = 2
+
     elif 'IL' in args_cli.model_name:
+        if args_cli.f_opt == 'frequency_optimization':
+            f_opt = True
+        else :
+            f_opt = False
+
         controller = mdp.samplingController
         optimizerCfg=mdp.ModelBaseActionCfg.OptimizerCfg(
             multipolicy=1,
             prevision_horizon=10,
             discretization_time=0.02,
             parametrization_p='first',
-            parametrization_F='cubic_spline'
+            parametrization_F='cubic_spline',
+            optimize_f=f_opt
             )
         num_envs = 1
-        num_trajectory = 100
+        num_trajectory = 400
         decimation = 2
 
     elif 'NO_WS' in args_cli.model_name:
+        if args_cli.f_opt == 'frequency_optimization':
+            f_opt = True
+        else :
+            f_opt = False
+
         controller = mdp.samplingController
         optimizerCfg=mdp.ModelBaseActionCfg.OptimizerCfg(
             multipolicy=1,
             prevision_horizon=10,
             discretization_time=0.02,
             parametrization_p='first',
-            parametrization_F='cubic_spline'
+            parametrization_F='cubic_spline',
+            optimize_f=f_opt
             )
         num_envs = 1
-        num_trajectory = 100
+        num_trajectory = 400
         decimation = 2
     
     else :
         controller = mdp.modelBaseController
         optimizerCfg=None
-        
-    if args_cli.speed is not None : 
-        controller = mdp.samplingTrainer
-        optimizerCfg=mdp.ModelBaseActionCfg.OptimizerCfg(
-            multipolicy=1,
-            prevision_horizon=1,
-            discretization_time=0.02,
-            parametrization_p='discrete',
-            parametrization_F='discrete'
-            )
-        decimation = 2
 
 
 @configclass
