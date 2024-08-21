@@ -818,10 +818,10 @@ def main():
                     gait_param_offset   = ((gait_params_offset * env.unwrapped.step_dt)/ trajectories_length.unsqueeze(-1))[env_terminated_idx].squeeze()
 
 
-                    sampling_init_cost_mean = (torch.sum(sampling_init_costs, dim=-1)) / ((sampling_init_costs != 0).float().sum(dim=-1))[env_terminated_idx].squeeze()
+                    sampling_init_cost_mean = ((torch.sum(sampling_init_costs, dim=-1)) / ((sampling_init_costs != 0).float().sum(dim=-1)))[env_terminated_idx].squeeze()
                     sorted_cost, _ = torch.sort(sampling_init_costs, dim=1)
                     non_zero_mask_sorted = (sorted_cost != 0)
-                    counts = non_zero_mask_sorted.sum(dim=1, keepdim=True)
+                    counts = non_zero_mask_sorted.sum(dim=-1, keepdim=True)
                     half_counts = (counts + 1) // 2  # Find the midpoint
                     sampling_init_cost_median = torch.gather(sorted_cost, 1, half_counts - 1)[env_terminated_idx].squeeze()
 
@@ -871,14 +871,14 @@ def main():
         result_dict['eval_name'] = task_name
         result_dict['number_eval_steps'] = num_trajectory
 
-        result_dict['cumulated_reward']   = result_df['cumulated_reward'].mean(skipna=True)
-        result_dict['trajectory_length']  = result_df['trajectory_length'].mean(skipna=True)
-        result_dict['survived']           = result_df['survived'].mean(skipna=True)
-        result_dict['average_speed']      = result_df['average_speed'].mean(skipna=True)
-        result_dict['cumulated_distance'] = result_df['cumulated_distance'].mean(skipna=True)
-        result_dict['cost_of_transport']  = result_df['cost_of_transport'].mean(skipna=True)
-        result_dict['stairs_cleared']     = result_df['stairs_cleared'].median(skipna=True)
-        result_dict['terrain_difficulty'] = result_df['terrain_difficulty'].median(skipna=True)
+        result_dict['cumulated_reward']   = result_df['cumulated_reward'].mean(skipna=True).tolist()
+        result_dict['trajectory_length']  = result_df['trajectory_length'].mean(skipna=True).tolist()
+        result_dict['survived']           = result_df['survived'].mean(skipna=True).tolist()
+        result_dict['average_speed']      = result_df['average_speed'].mean(skipna=True).tolist()
+        result_dict['cumulated_distance'] = result_df['cumulated_distance'].mean(skipna=True).tolist()
+        result_dict['cost_of_transport']  = result_df['cost_of_transport'].mean(skipna=True).tolist()
+        result_dict['stairs_cleared']     = result_df['stairs_cleared'].median(skipna=True).tolist()
+        result_dict['terrain_difficulty'] = result_df['terrain_difficulty'].median(skipna=True).tolist()
 
 
         # Add result dict into info dict
