@@ -85,6 +85,7 @@ if args_cli.speed is not None:
     if args_cli.speed == 'slow':
         speed = 0.1
     task_name = f"{task_name}-{args_cli.speed}"
+    full_result_folder_path = f'eval/{args_cli.result_folder}/{task_name}'
 
 """ Create Full result directory """
 if True :
