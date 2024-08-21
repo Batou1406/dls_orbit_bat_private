@@ -19,15 +19,15 @@ result_folder = args.result_folder
 args_dict = {
     '--num_envs': num_envs,
     '--headless': None,
-    # '--num_trajectory': '20000',
-    '--num_trajectory': '50000',
+    '--num_trajectory': '20000',
+    # '--num_trajectory': '50000',
     '--multipolicies_folder': 'test_eval',
     '--result_folder': result_folder,
     '--eval_task':'eval_task',
     '--model_name': 'alo'
 }
 
-eval_task_list = ['omnidirectionnal_test']#, 'stair_test', 'base_test', 'speed_test','survival_test']
+eval_task_list = ['debug'] #'omnidirectionnal_test', 'stair_test', 'base_test', 'speed_test','survival_test']
 
 list_of_policy_folder = [f"{model_folder}/{name}" for name in os.listdir(f"model/{model_folder}") if os.path.isdir(f"model/{model_folder}/{name}")]
 list_of_policy_name   = [f"{name}" for name in os.listdir(f"model/{model_folder}") if os.path.isdir(f"model/{model_folder}/{name}")]
@@ -37,6 +37,7 @@ print('Different policy :', list_of_policy_folder)
 
 iter=0
 for t in range(len(eval_task_list)):
+                    for j in range(len(['fast', 'medium', 'slow'])):
                         for i in range(len(list_of_policy_folder)):
 
                             iter+=1
@@ -45,6 +46,8 @@ for t in range(len(eval_task_list)):
                             args_dict['--multipolicies_folder'] = list_of_policy_folder[i]         
                             args_dict['--eval_task'] = eval_task_list[t]
                             args_dict['--model_name'] = list_of_policy_name[i]
+
+                            args_dict['--speed'] = ['fast', 'medium', 'slow'][j]
 
                             print(args_dict)
 

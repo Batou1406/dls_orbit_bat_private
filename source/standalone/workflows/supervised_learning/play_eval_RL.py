@@ -18,7 +18,8 @@ if True:
     parser.add_argument("--result_folder",        type=str, default=None, help="Where to save the results in ./eval/result_folder")
     parser.add_argument("--num_trajectory",       type=int, default=None, help="Number of step to generate the data")
     parser.add_argument("--eval_task",            type=str, default=None, help="Task to try the controller")
-    parser.add_argument("--model_name",            type=str, default=None, help="Name of the model for naming the results")
+    parser.add_argument("--model_name",           type=str, default=None, help="Name of the model for naming the results")
+    parser.add_argument("--speed",                type=str, default=None, help="debug variable")
 
     cli_args.add_rsl_rl_args(parser)
     AppLauncher.add_app_launcher_args(parser)
@@ -76,6 +77,15 @@ platform_width          = 2.5
 step_width              = 0.3
 max_stairs              = 13
 
+if args_cli.speed is not None:
+    if args_cli.speed == 'fast':
+        speed = 1.5
+    if args_cli.speed == 'medium':
+        speed = 0.5
+    if args_cli.speed == 'slow':
+        speed = 0.1
+    task_name = f"{task_name}-{args_cli.speed}"
+
 """ Create Full result directory """
 if True :
     # Open result directory and load info_dict, or create the dir and dict if necessary
@@ -132,12 +142,22 @@ if True :
         num_envs = 1
         num_trajectory = 100
         decimation = 2
-
     
     else :
         controller = mdp.modelBaseController
         optimizerCfg=None
         
+    if args_cli.speed is not None : 
+        controller = mdp.samplingTrainer
+        optimizerCfg=mdp.ModelBaseActionCfg.OptimizerCfg(
+            multipolicy=1,
+            prevision_horizon=1,
+            discretization_time=0.02,
+            parametrization_p='discrete',
+            parametrization_F='discrete'
+            )
+        decimation = 2
+
 
 @configclass
 class ActionsCfg:
@@ -488,6 +508,72 @@ class env_cfg(LocomotionModelBasedEnvCfg):
             if not Event['Push Robot'] :
                 self.events.push_robot = None                                                                               # Default was activated
 
+        if eval_task == 'debug' :
+            """ ----- Scene Settings ----- """
+            self.scene.robot = UNITREE_ALIENGO_SELF_COLLISION_TORQUE_CONTROL_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+            self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/base"  
+
+            self.scene.terrain.terrain_generator = COBBLESTONE_FLAT_CFG # very Flat
+            self.scene.terrain.class_type = randomTerrainImporter   
+
+            """ ----- Commands ----- """
+            self.commands.base_velocity.ranges.for_vel_b = (speed, speed)
+            self.commands.base_velocity.ranges.lat_vel_b = (-0.1, 0.1)
+            self.commands.base_velocity.ranges.ang_vel_b = (-0.5, 0.5)
+            self.commands.base_velocity.ranges.initial_heading_err = (-0.0, 0.0)     
+            self.commands.base_velocity.resampling_time_range = (10000.0,10000.0)
+
+            """ ----- Observation ----- """
+            self.observations.policy.enable_corruption = False
+
+            """ ----- Curriculum ----- """
+            Terrain_curriculum = False
+            Speed_curriculum = False
+
+            if not Terrain_curriculum : 
+                self.curriculum.terrain_levels = None                                                                  
+
+            if not Speed_curriculum :
+                self.curriculum.speed_levels = None
+
+            """ ----- Event randomization ----- """
+            Event = {'Base Mass'        : False, 
+                    'External Torque'  : False,
+                    'External Force'   : False,
+                    'Random joint pos' : False,
+                    'Push Robot'       : False}
+
+            # --- startup
+            if Event['Base Mass'] : 
+                self.events.add_base_mass.params["mass_distribution_params"] = (-3.0, 3.0) #(0.0, 0.0)                                    # Default was 0
+
+            # --- Reset
+            if Event['External Force'] :
+                self.events.base_external_force_torque.params["force_range"]  = (-10.0, 10.0) # (0.0, 0.0)                  # Default was 0
+            if Event['External Torque'] :
+                self.events.base_external_force_torque.params["torque_range"] = (-1.0, 1.0) # (0.0, 0.0)                    # Default was 0
+
+            self.events.reset_base.params = {
+                "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},                                   # Some randomization improve training speed
+                "velocity_range": {                                                                                         # Default was ±0.5
+                    "x": (0.0, 0.0),
+                    "y": (0.0, 0.0),
+                    "z": (0.0, 0.0),
+                    "roll": (0.0, 0.0),
+                    "pitch": (0.0, 0.0),
+                    "yaw": (0.0, 0.0),
+                },
+            }
+
+            if Event["Random joint pos"] :
+                self.events.reset_robot_joints.params["position_range"] = (0.8, 1.2)                                        # default was (1.0, 1.0)
+            
+            # --- Interval
+            if not Event['Push Robot'] :
+                self.events.push_robot = None                                                                               # Default was activated
+
+
+
 
         """ Rewards - Same for every task """
         if True : 
@@ -673,11 +759,12 @@ def main():
         gait_params_f       = torch.zeros((num_envs, 4), device=env.device)
         gait_params_d       = torch.zeros((num_envs, 4), device=env.device)
         gait_params_offset  = torch.zeros((num_envs, 3), device=env.device)
+        sampling_init_costs = torch.zeros((num_envs), device=env.device) 
 
         CoT_cfg = env.unwrapped.reward_manager.get_term_cfg('penalty_CoT')
         last_time = time.time()
 
-        result_df = pd.DataFrame(columns=['cumulated_reward', 'trajectory_length', 'survived', 'commanded_speed_for', 'commanded_speed_lat', 'commanded_speed_ang', 'average_speed', 'cumulated_distance', 'cost_of_transport', 'stairs_cleared', 'terrain_difficulty'])
+        result_df = pd.DataFrame(columns=['cumulated_reward', 'trajectory_length', 'survived', 'commanded_speed_for', 'commanded_speed_lat', 'commanded_speed_ang', 'average_speed', 'cumulated_distance', 'cost_of_transport', 'stairs_cleared', 'terrain_difficulty', 'sampling_init_cost'])
         gait_df   = pd.DataFrame(columns=['leg_frequency_FL', 'leg_frequency_FR', 'leg_frequency_RL', 'leg_frequency_RR', 'duty_cycle_FL', 'duty_cycle_FR', 'duty_cycle_RL', 'duty_cycle_RR', 'phase_offset_FR', 'phase_offset_RL', 'phase_offset_RR'])
 
         # reset environment
@@ -728,8 +815,10 @@ def main():
                     gait_param_d        = ((gait_params_d * env.unwrapped.step_dt)/ trajectories_length.unsqueeze(-1))[env_terminated_idx].squeeze()
                     gait_param_offset   = ((gait_params_offset * env.unwrapped.step_dt)/ trajectories_length.unsqueeze(-1))[env_terminated_idx].squeeze()
 
+                    sampling_init_cost = env.unwrapped.action_manager.get_term('model_base_variable').controller.samplingOptimizer.initial_cost[env_terminated_idx].squeeze()
+
                     # Append the new result to the existing DataFrame
-                    tensor_list = [cumulated_reward, trajectory_length, survived, commanded_speed_for, commanded_speed_lat, commanded_speed_ang, average_speed, cumulated_distance, cost_of_transport, stairs_cleared, terrain_difficulty]
+                    tensor_list = [cumulated_reward, trajectory_length, survived, commanded_speed_for, commanded_speed_lat, commanded_speed_ang, average_speed, cumulated_distance, cost_of_transport, stairs_cleared, terrain_difficulty, sampling_init_cost]
                     new_result_df = pd.DataFrame([tensor.cpu().numpy() for tensor in tensor_list]).T
                     result_df = pd.concat([result_df, new_result_df.set_axis(result_df.columns, axis=1)], ignore_index=True)
 

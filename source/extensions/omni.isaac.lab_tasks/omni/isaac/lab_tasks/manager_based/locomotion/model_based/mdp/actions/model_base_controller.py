@@ -1976,8 +1976,8 @@ class SamplingBatchedTrainer():
         ref_state_vector = torch.cat([vector[...,0].view(self._env.num_envs, -1) for vector in batched_reference_seq_state.values()], dim=1)            # Shape: (batch, state_dim)
         state_error = state_vector - ref_state_vector                                                                       # shape (num_samples, state_dim)
         state_cost  = torch.sum(self.Q_vec.unsqueeze(0) * (state_error ** 2), dim=1)                                        # Shape (num_samples)
-        self.initial_cost = state_cost[0]
-
+        # self.initial_cost = state_cost[0]
+        self.initial_cost = state_cost
 
         self.step_cost = self.step_cost*0.0
 
