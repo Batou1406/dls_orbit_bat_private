@@ -760,12 +760,13 @@ def main():
         gait_params_f       = torch.zeros((num_envs, 4), device=env.device)
         gait_params_d       = torch.zeros((num_envs, 4), device=env.device)
         gait_params_offset  = torch.zeros((num_envs, 3), device=env.device)
-        sampling_init_costs = torch.zeros((num_envs), device=env.device) 
+        sampling_init_costs = torch.zeros((num_envs, 1501), device=env.device) 
+        costs_indices       = torch.zeros((num_envs), device=env.device, dtype=torch.long)
 
         CoT_cfg = env.unwrapped.reward_manager.get_term_cfg('penalty_CoT')
         last_time = time.time()
 
-        result_df = pd.DataFrame(columns=['cumulated_reward', 'trajectory_length', 'survived', 'commanded_speed_for', 'commanded_speed_lat', 'commanded_speed_ang', 'average_speed', 'cumulated_distance', 'cost_of_transport', 'stairs_cleared', 'terrain_difficulty', 'sampling_init_cost'])
+        result_df = pd.DataFrame(columns=['cumulated_reward', 'trajectory_length', 'survived', 'commanded_speed_for', 'commanded_speed_lat', 'commanded_speed_ang', 'average_speed', 'cumulated_distance', 'cost_of_transport', 'stairs_cleared', 'terrain_difficulty', 'sampling_init_cost_mean', 'sampling_init_cost_median'])
         gait_df   = pd.DataFrame(columns=['leg_frequency_FL', 'leg_frequency_FR', 'leg_frequency_RL', 'leg_frequency_RR', 'duty_cycle_FL', 'duty_cycle_FR', 'duty_cycle_RL', 'duty_cycle_RR', 'phase_offset_FR', 'phase_offset_RL', 'phase_offset_RR'])
 
         # reset environment
@@ -816,10 +817,16 @@ def main():
                     gait_param_d        = ((gait_params_d * env.unwrapped.step_dt)/ trajectories_length.unsqueeze(-1))[env_terminated_idx].squeeze()
                     gait_param_offset   = ((gait_params_offset * env.unwrapped.step_dt)/ trajectories_length.unsqueeze(-1))[env_terminated_idx].squeeze()
 
-                    sampling_init_cost = env.unwrapped.action_manager.get_term('model_base_variable').controller.samplingOptimizer.initial_cost[env_terminated_idx].squeeze()
+
+                    sampling_init_cost_mean = (torch.sum(sampling_init_costs, dim=-1)) / ((sampling_init_costs != 0).float().sum(dim=-1))[env_terminated_idx].squeeze()
+                    sorted_cost, _ = torch.sort(sampling_init_costs, dim=1)
+                    non_zero_mask_sorted = (sorted_cost != 0)
+                    counts = non_zero_mask_sorted.sum(dim=1, keepdim=True)
+                    half_counts = (counts + 1) // 2  # Find the midpoint
+                    sampling_init_cost_median = torch.gather(sorted_cost, 1, half_counts - 1)[env_terminated_idx].squeeze()
 
                     # Append the new result to the existing DataFrame
-                    tensor_list = [cumulated_reward, trajectory_length, survived, commanded_speed_for, commanded_speed_lat, commanded_speed_ang, average_speed, cumulated_distance, cost_of_transport, stairs_cleared, terrain_difficulty, sampling_init_cost]
+                    tensor_list = [cumulated_reward, trajectory_length, survived, commanded_speed_for, commanded_speed_lat, commanded_speed_ang, average_speed, cumulated_distance, cost_of_transport, stairs_cleared, terrain_difficulty, sampling_init_cost_mean , sampling_init_cost_median]
                     new_result_df = pd.DataFrame([tensor.cpu().numpy() for tensor in tensor_list]).T
                     result_df = pd.concat([result_df, new_result_df.set_axis(result_df.columns, axis=1)], ignore_index=True)
 
@@ -835,6 +842,9 @@ def main():
                     gait_params_d[env_terminated_idx] = 0.0
                     gait_params_offset[env_terminated_idx] = 0.0
 
+                    sampling_init_costs[env_terminated_idx] = 0.0
+                    costs_indices[env_terminated_idx] = 0
+
 
                 # Value reseted by env, must be kept
                 cumulated_distances = env.unwrapped.command_manager.get_term('base_velocity').metrics['cumulative_distance'].clone().detach()
@@ -847,6 +857,9 @@ def main():
                 gait_params_d      += env.unwrapped.action_manager.get_term('model_base_variable').d_star
                 offset             = env.unwrapped.action_manager.get_term('model_base_variable').controller.phase
                 gait_params_offset += (offset[:,1:] - offset[:,0:1]) % 1.0
+
+                sampling_init_costs[torch.arange(env.num_envs), costs_indices] = env.unwrapped.action_manager.get_term('model_base_variable').controller.samplingOptimizer.initial_cost
+                costs_indices += 1
 
 
         # close the simulator
