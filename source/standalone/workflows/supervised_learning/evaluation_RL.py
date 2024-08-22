@@ -35,10 +35,12 @@ list_of_policy_name   = [f"{name}" for name in os.listdir(f"model/{model_folder}
 print('Path to policy : ', f"model/{model_folder}")
 print('Different policy :', list_of_policy_folder)
 
+speed_list = ['slow'] #['fast', 'medium', 'slow']
+freq_list = ['frequency_optimization', 'no_frequency_optimization']
 iter=0
 for t in range(len(eval_task_list)):
-    for k in range(len(['fast', 'medium', 'slow'])):
-        for j in range(len(['frequency_optimization', 'no_frequency_optimization'])):
+    for k in range(len(speed_list)):
+        for j in range(len(freq_list)):
                         for i in range(len(list_of_policy_folder)):
 
                             iter+=1
@@ -48,8 +50,8 @@ for t in range(len(eval_task_list)):
                             args_dict['--eval_task'] = eval_task_list[t]
                             args_dict['--model_name'] = list_of_policy_name[i]
 
-                            args_dict['--speed'] = ['fast', 'medium', 'slow'][j]
-                            args_dict['--f_opt'] = ['frequency_optimization', 'no_frequency_optimization'][k]
+                            args_dict['--speed'] = speed_list[k]
+                            args_dict['--f_opt'] = freq_list[j]
 
                             print(args_dict)
 
