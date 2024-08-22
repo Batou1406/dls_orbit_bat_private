@@ -19,7 +19,7 @@ result_folder = args.result_folder
 args_dict = {
     '--num_envs': num_envs,
     '--headless': None,
-    '--num_trajectory': '20000',
+    '--num_trajectory': '10000',
     # '--num_trajectory': '50000',
     '--multipolicies_folder': 'test_eval',
     '--result_folder': result_folder,
@@ -35,8 +35,8 @@ list_of_policy_name   = [f"{name}" for name in os.listdir(f"model/{model_folder}
 print('Path to policy : ', f"model/{model_folder}")
 print('Different policy :', list_of_policy_folder)
 
-speed_list = ['slow'] #['fast', 'medium', 'slow']
-freq_list = ['frequency_optimization', 'no_frequency_optimization']
+speed_list = ['fast', 'medium'] #['fast', 'medium', 'slow']
+freq_list = ['no_frequency_optimization', 'frequency_optimization']
 iter=0
 for t in range(len(eval_task_list)):
     for k in range(len(speed_list)):
@@ -52,6 +52,8 @@ for t in range(len(eval_task_list)):
 
                             args_dict['--speed'] = speed_list[k]
                             args_dict['--f_opt'] = freq_list[j]
+
+                            if 'RL' in list_of_policy_folder[i] and freq_list[j] == 'frequency_optimization': continue
 
                             print(args_dict)
 

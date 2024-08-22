@@ -143,10 +143,12 @@ if True :
             discretization_time=0.02,
             parametrization_p='first',
             parametrization_F='cubic_spline',
-            optimize_f=f_opt
+            optimize_f=f_opt,
+            propotion_previous_solution = 0.0,
+            debug_apply_action = None
             )
         num_envs = 1
-        num_trajectory = 400
+        num_trajectory = 10
         decimation = 2
 
     elif 'NO_WS' in args_cli.model_name:
@@ -162,10 +164,12 @@ if True :
             discretization_time=0.02,
             parametrization_p='first',
             parametrization_F='cubic_spline',
-            optimize_f=f_opt
+            optimize_f=f_opt,
+            propotion_previous_solution = 1.0,
+            debug_apply_action = 'trot'
             )
         num_envs = 1
-        num_trajectory = 400
+        num_trajectory = 10
         decimation = 2
     
     else :
