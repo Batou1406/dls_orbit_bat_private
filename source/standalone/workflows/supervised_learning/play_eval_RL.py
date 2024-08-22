@@ -148,7 +148,7 @@ if True :
             debug_apply_action = None
             )
         num_envs = 1
-        num_trajectory = 10
+        num_trajectory = 100
         decimation = 2
 
     elif 'NO_WS' in args_cli.model_name:
@@ -169,7 +169,7 @@ if True :
             debug_apply_action = 'trot'
             )
         num_envs = 1
-        num_trajectory = 10
+        num_trajectory = 100
         decimation = 2
     
     else :
@@ -780,11 +780,16 @@ def main():
         sampling_init_costs = torch.zeros((num_envs, 1501), device=env.device) 
         costs_indices       = torch.zeros((num_envs), device=env.device, dtype=torch.long)
 
+        all_sampling_costs  = torch.zeros((num_envs), 1501*num_trajectory, device=env.device)
+        all_sampling_iter = 0
+
         CoT_cfg = env.unwrapped.reward_manager.get_term_cfg('penalty_CoT')
         last_time = time.time()
 
         result_df = pd.DataFrame(columns=['cumulated_reward', 'trajectory_length', 'survived', 'commanded_speed_for', 'commanded_speed_lat', 'commanded_speed_ang', 'average_speed', 'cumulated_distance', 'cost_of_transport', 'stairs_cleared', 'terrain_difficulty', 'sampling_init_cost_mean', 'sampling_init_cost_median'])
         gait_df   = pd.DataFrame(columns=['leg_frequency_FL', 'leg_frequency_FR', 'leg_frequency_RL', 'leg_frequency_RR', 'duty_cycle_FL', 'duty_cycle_FR', 'duty_cycle_RL', 'duty_cycle_RR', 'phase_offset_FR', 'phase_offset_RL', 'phase_offset_RR'])
+
+        vel_ramp=0
 
         # reset environment
         obs, _ = env.get_observations()
@@ -862,6 +867,11 @@ def main():
                     sampling_init_costs[env_terminated_idx] = 0.0
                     costs_indices[env_terminated_idx] = 0
 
+                    # Make the ramp in velocity if num_envs == 1 (ie. sampling controller)
+                    if env.num_envs == 1:
+                        env.unwrapped.command_manager.get_term('base_velocity').vel_command_b[0,0] = speed/2
+                        vel_ramp=0
+
 
                 # Value reseted by env, must be kept
                 cumulated_distances = env.unwrapped.command_manager.get_term('base_velocity').metrics['cumulative_distance'].clone().detach()
@@ -877,6 +887,13 @@ def main():
 
                 sampling_init_costs[torch.arange(env.num_envs), costs_indices] = env.unwrapped.action_manager.get_term('model_base_variable').controller.samplingOptimizer.initial_cost
                 costs_indices += 1
+
+                all_sampling_costs[:, all_sampling_iter] = env.unwrapped.action_manager.get_term('model_base_variable').controller.samplingOptimizer.initial_cost
+                all_sampling_iter += 1
+
+                vel_ramp+=1
+                if (vel_ramp==100) and (env.num_envs == 1): #ie. after 1 sec
+                    env.unwrapped.command_manager.get_term('base_velocity').vel_command_b[0,0] = speed
 
 
         # close the simulator
@@ -914,6 +931,7 @@ def main():
         # Save the result_df to a pickle file
         result_df.to_pickle(full_result_folder_path + '/result_df.pkl')
         gait_df.to_pickle(full_result_folder_path + '/gait_df.pkl')
+        torch.save(all_sampling_costs[:, :all_sampling_iter], full_result_folder_path +'/all_sampling_costs.pt')
 
         print(f'Data saved succesfully in {full_result_folder_path}')
         print(f'For task {task_name} and model {model_name}')

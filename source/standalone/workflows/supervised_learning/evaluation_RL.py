@@ -19,7 +19,7 @@ result_folder = args.result_folder
 args_dict = {
     '--num_envs': num_envs,
     '--headless': None,
-    '--num_trajectory': '10000',
+    '--num_trajectory': '8192',
     # '--num_trajectory': '50000',
     '--multipolicies_folder': 'test_eval',
     '--result_folder': result_folder,
@@ -35,7 +35,7 @@ list_of_policy_name   = [f"{name}" for name in os.listdir(f"model/{model_folder}
 print('Path to policy : ', f"model/{model_folder}")
 print('Different policy :', list_of_policy_folder)
 
-speed_list = ['fast', 'medium'] #['fast', 'medium', 'slow']
+speed_list =['fast', 'medium', 'slow']
 freq_list = ['no_frequency_optimization', 'frequency_optimization']
 iter=0
 for t in range(len(eval_task_list)):
