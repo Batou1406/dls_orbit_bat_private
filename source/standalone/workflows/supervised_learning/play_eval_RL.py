@@ -780,7 +780,7 @@ def main():
         sampling_init_costs = torch.zeros((num_envs, 1501), device=env.device) 
         costs_indices       = torch.zeros((num_envs), device=env.device, dtype=torch.long)
 
-        all_sampling_costs  = torch.zeros((num_envs), 1501*num_trajectory, device=env.device)
+        all_sampling_costs  = torch.zeros(1501*num_trajectory, device=env.device)
         all_sampling_iter = 0
 
         CoT_cfg = env.unwrapped.reward_manager.get_term_cfg('penalty_CoT')
@@ -888,8 +888,10 @@ def main():
                 sampling_init_costs[torch.arange(env.num_envs), costs_indices] = env.unwrapped.action_manager.get_term('model_base_variable').controller.samplingOptimizer.initial_cost
                 costs_indices += 1
 
-                all_sampling_costs[:, all_sampling_iter] = env.unwrapped.action_manager.get_term('model_base_variable').controller.samplingOptimizer.initial_cost
-                all_sampling_iter += 1
+                all_sampling_costs[all_sampling_iter:all_sampling_iter+env.num_envs] = env.unwrapped.action_manager.get_term('model_base_variable').controller.samplingOptimizer.initial_cost.reshape(env.num_envs)
+                all_sampling_iter += env.num_envs
+                if all_sampling_iter > 1500*num_trajectory:
+                    all_sampling_iter -= env.num_envs
 
                 vel_ramp+=1
                 if (vel_ramp==100) and (env.num_envs == 1): #ie. after 1 sec
