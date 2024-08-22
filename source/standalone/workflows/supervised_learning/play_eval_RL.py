@@ -933,7 +933,7 @@ def main():
         # Save the result_df to a pickle file
         result_df.to_pickle(full_result_folder_path + '/result_df.pkl')
         gait_df.to_pickle(full_result_folder_path + '/gait_df.pkl')
-        torch.save(all_sampling_costs[:, :all_sampling_iter], full_result_folder_path +'/all_sampling_costs.pt')
+        torch.save(all_sampling_costs[:all_sampling_iter], full_result_folder_path +'/all_sampling_costs.pt')
 
         print(f'Data saved succesfully in {full_result_folder_path}')
         print(f'For task {task_name} and model {model_name}')
