@@ -148,7 +148,7 @@ if True :
             debug_apply_action = None
             )
         num_envs = 1
-        num_trajectory = 100
+        num_trajectory = 150
         decimation = 2
 
     elif 'NO_WS' in args_cli.model_name:
@@ -169,7 +169,7 @@ if True :
             debug_apply_action = 'trot'
             )
         num_envs = 1
-        num_trajectory = 100
+        num_trajectory = 150
         decimation = 2
     
     else :
