@@ -59,7 +59,8 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
 
         """ ----- Observation ----- """
         # To add or not noise on the observations
-        self.observations.policy.enable_corruption = True
+        self.observations.policy.enable_corruption = False
+        # self.observations.policy.enable_corruption = True # 23/09
 
 
         """ ----- Curriculum ----- """
@@ -82,10 +83,10 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
 
 
         """ ----- Event randomization ----- """
-        Event = {'Base Mass'        : True, 
+        Event = {'Base Mass'        : False, #True 23/09
                  'External Torque'  : False,
                  'External Force'   : False,
-                 'Random joint pos' : True,
+                 'Random joint pos' : True, #True 23/09
                  'Push Robot'       : False,
                  'Friction'         : False,}
 
@@ -129,7 +130,7 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
 
 
         """ ----- rewards ----- """
-        training = 'play_eval' # 'normal' or 'with_sampling' or 'with_sampling_and_normal or 'play_eval'
+        training = 'normal' # 'normal' or 'with_sampling' or 'with_sampling_and_normal or 'play_eval'
 
         if training == 'normal' :
             # -- task
@@ -142,7 +143,7 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
             self.rewards.track_robot_height_exp.params['target_height'] = 0.35 # 21/09 0.40
 
             # -- Additionnal penalties : Need a negative weight
-            self.rewards.penalty_lin_vel_z_l2.weight         = -0.5  # 21/09
+            self.rewards.penalty_lin_vel_z_l2.weight         = -0.5  # -2.5 21/09
             self.rewards.penalty_ang_vel_xy_l2.weight        = -0.025 #-0.2 # 21/09 -0.15
             self.rewards.penalty_dof_torques_l2              = None  #-0.00005 #-0.0001
             self.rewards.penalty_dof_acc_l2                  = None  #-1.0e-07
