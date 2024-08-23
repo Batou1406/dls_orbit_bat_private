@@ -136,6 +136,7 @@ if True :
         else :
             f_opt = False
 
+        print('\n\n SETTING UP THE IL SAMPLING CONTROLLER \n\n')
         controller = mdp.samplingController
         optimizerCfg=mdp.ModelBaseActionCfg.OptimizerCfg(
             multipolicy=1,
@@ -148,7 +149,7 @@ if True :
             debug_apply_action = None
             )
         num_envs = 1
-        num_trajectory = 150
+        num_trajectory = 20
         decimation = 2
 
     elif 'NO_WS' in args_cli.model_name:
@@ -157,6 +158,7 @@ if True :
         else :
             f_opt = False
 
+        print('\n\n SETTING UP THE NO_WS SAMPLING CONTROLLER \n\n')
         controller = mdp.samplingController
         optimizerCfg=mdp.ModelBaseActionCfg.OptimizerCfg(
             multipolicy=1,
@@ -169,7 +171,7 @@ if True :
             debug_apply_action = 'trot'
             )
         num_envs = 1
-        num_trajectory = 150
+        num_trajectory = 20
         decimation = 2
     
     else :
@@ -868,9 +870,9 @@ def main():
                     costs_indices[env_terminated_idx] = 0
 
                     # Make the ramp in velocity if num_envs == 1 (ie. sampling controller)
-                    # if env.num_envs == 1:
-                    #     env.unwrapped.command_manager.get_term('base_velocity').vel_command_b[0,0] = speed/2
-                    #     vel_ramp=0
+                    if env.num_envs == 1:
+                        env.unwrapped.command_manager.get_term('base_velocity').vel_command_b[0,0] = 0
+                        vel_ramp=0
 
 
                 # Value reseted by env, must be kept
@@ -893,9 +895,14 @@ def main():
                 if all_sampling_iter > 1500*num_trajectory:
                     all_sampling_iter -= env.num_envs
 
-                # vel_ramp+=1
+                vel_ramp+=1
                 # if (vel_ramp==150) and (env.num_envs == 1): #ie. after 1 sec
+                #     env.unwrapped.command_manager.get_term('base_velocity').vel_command_b[0,0] = 2*speed/3
+                # if (vel_ramp==300) and (env.num_envs == 1): #ie. after 1 sec
                 #     env.unwrapped.command_manager.get_term('base_velocity').vel_command_b[0,0] = speed
+                if (vel_ramp =< 300) and (env.num_envs == 1):
+                    env.unwrapped.command_manager.get_term('base_velocity').vel_command_b[0,0] = vel_ramp*speed/300
+                    print(f'ramping the velocity : {env.unwrapped.command_manager.get_term('base_velocity').vel_command_b[0,0]:.3f}-{env.unwrapped.command_manager.get_term('base_velocity').vel_command_b[0,1]:.3f}-{env.unwrapped.command_manager.get_term('base_velocity').vel_command_b[0,2]:.3f}')
 
 
         # close the simulator
