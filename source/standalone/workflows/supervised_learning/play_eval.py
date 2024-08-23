@@ -149,8 +149,8 @@ class ActionsCfg:
         controller=mdp.samplingController,
         # controller=mdp.samplingTrainer,
         optimizerCfg=mdp.ModelBaseActionCfg.OptimizerCfg(
-            # multipolicy=1,
-            multipolicy=info_dict['multipolicy'],
+            multipolicy=1,
+            # multipolicy=info_dict['multipolicy'],
             prevision_horizon=info_dict['prediction_horizon_step'],
             discretization_time=float(info_dict['prediction_horizon_time'][0:4]),
             parametrization_p=info_dict['p_typeAction'],
