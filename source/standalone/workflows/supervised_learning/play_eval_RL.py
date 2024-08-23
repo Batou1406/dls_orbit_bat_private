@@ -146,7 +146,7 @@ if True :
             parametrization_F='cubic_spline',
             optimize_f=f_opt,
             propotion_previous_solution = 0.0,
-            debug_apply_action = None
+            debug_apply_action = 'trot' #None
             )
         num_envs = 1
         num_trajectory = 20
