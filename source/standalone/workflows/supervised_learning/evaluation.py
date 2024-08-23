@@ -19,7 +19,8 @@ args_dict = {
     '--num_envs': '1',
     '--headless': None,  # For flags or options without values
     # '--num_steps': '30000',
-    '--num_steps': '40000',
+    # '--num_steps': '40000',
+    '--num_steps': '20000',
     '--multipolicies_folder': 'test_eval',
     '--experiment_folder': result_folder,
     '--num_samples': 0,
@@ -35,17 +36,19 @@ controller_list = ['samplingController', 'samplingController_no_warm_start']
 # num_samples_list = [4000, 10000, 25000]
 num_samples_list = [10000]
 
-# f_list = ['frequency_optimization', 'no_opt']
+f_list = ['frequency_optimization', 'no_opt']
 # d_list = ['duty_cycle_optimization', 'no_opt']
 # speed_list = ['fast', 'medium', 'slow']
+speed_list = ['fast', 'medium']
 
-f_list = ['no_opt']
+# f_list = ['no_opt']
 d_list = ['no_opt']
-speed_list = ['fast']
+# speed_list = ['fast']
 
-task_list = ['climb_task', 'base_task','eval_task', 'speed_task', 'rough_task']
+# task_list = ['climb_task', 'base_task','eval_task', 'speed_task', 'rough_task']
+task_list = ['eval_task']
 
-only_one_no_warm_start_per_task_list = ['no' for alo in range(len(task_list))]
+# only_one_no_warm_start_per_task_list = ['no' for alo in range(len(task_list))]
 
 list_of_policy_folder = [f"{model_folder}/{name}" for name in os.listdir(f"model/{model_folder}") if os.path.isdir(f"model/{model_folder}/{name}")]
 
@@ -61,12 +64,12 @@ for t in range(len(task_list)):
                     for j in range(len(num_samples_list)):
                         for i in range(len(list_of_policy_folder)):
 
-                            # To do only once per task the no warm start 
-                            if controller_list[k] == 'samplingController_no_warm_start':
-                                if only_one_no_warm_start_per_task_list[t] == 'already_one_no_warm_start' :
-                                    continue 
-                                else :
-                                    only_one_no_warm_start_per_task_list[t] = 'already_one_no_warm_start'
+                            # # To do only once per task the no warm start 
+                            # if controller_list[k] == 'samplingController_no_warm_start':
+                            #     if only_one_no_warm_start_per_task_list[t] == 'already_one_no_warm_start' :
+                            #         continue 
+                            #     else :
+                            #         only_one_no_warm_start_per_task_list[t] = 'already_one_no_warm_start'
 
                             iter+=1
                             print(f"\nEvaluation {iter} / {len(task_list)*len(list_of_policy_folder)*len(num_samples_list)*len(controller_list)*len(d_list)*len(f_list)*len(speed_list)} - Policy {list_of_policy_folder[i]}")

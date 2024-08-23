@@ -191,19 +191,19 @@ class env_cfg(environment_cfg):
             self.scene.terrain.class_type = randomTerrainImporter   
 
             """ ----- Commands ----- """
-            self.commands.base_velocity.ranges.for_vel_b = (0.3, 0.6)
-            self.commands.base_velocity.ranges.lat_vel_b = (-0.2, 0.2)
-            self.commands.base_velocity.ranges.ang_vel_b = (-0.5, 0.5)
-            self.commands.base_velocity.ranges.initial_heading_err = (-0.0, 0.0)  
-            # self.commands.base_velocity.ranges.for_vel_b = (speed, speed)
-            # self.commands.base_velocity.ranges.lat_vel_b = (-0.1, 0.1)
+            # self.commands.base_velocity.ranges.for_vel_b = (0.3, 0.6)
+            # self.commands.base_velocity.ranges.lat_vel_b = (-0.2, 0.2)
             # self.commands.base_velocity.ranges.ang_vel_b = (-0.5, 0.5)
             # self.commands.base_velocity.ranges.initial_heading_err = (-0.0, 0.0)  
+            self.commands.base_velocity.ranges.for_vel_b = (speed, speed)
+            self.commands.base_velocity.ranges.lat_vel_b = (-0.1, 0.1)
+            self.commands.base_velocity.ranges.ang_vel_b = (-0.5, 0.5)
+            self.commands.base_velocity.ranges.initial_heading_err = (-0.0, 0.0)  
             # self.commands.base_velocity.ranges.for_vel_b = (0.0, 0.0)
             # self.commands.base_velocity.ranges.lat_vel_b = (-0.0, -0.0)
             # self.commands.base_velocity.ranges.ang_vel_b = (-0., 0.)
             # self.commands.base_velocity.ranges.initial_heading_err = (-0.0, 0.0)    
-            self.commands.base_velocity.resampling_time_range = (7.5, 7.5)
+            # self.commands.base_velocity.resampling_time_range = (7.5, 7.5)
 
             """ ----- Observation ----- """
             # To add or not noise on the observations
