@@ -21,6 +21,7 @@ if True:
     parser.add_argument("--model_name",           type=str, default=None, help="Name of the model for naming the results")
     parser.add_argument("--speed",                type=str, default=None, help="debug variable")
     parser.add_argument("--f_opt",                type=str, default=None, help="debug variable")
+    parser.add_argument("--d_opt",                type=str, default=None, help="debug variable")
 
     cli_args.add_rsl_rl_args(parser)
     AppLauncher.add_app_launcher_args(parser)
@@ -85,7 +86,7 @@ if args_cli.speed is not None:
         speed = 0.5
     if args_cli.speed == 'slow':
         speed = 0.1
-    task_name = f"{task_name}-{args_cli.speed}-{args_cli.f_opt}"
+    task_name = f"{task_name}-{args_cli.speed}-{args_cli.f_opt}-{args_cli.d_opt}"
     full_result_folder_path = f'eval/{args_cli.result_folder}/{task_name}'
 
 """ Create Full result directory """
@@ -136,6 +137,11 @@ if True :
         else :
             f_opt = False
 
+        if args_cli.d_opt == 'duty_cycle_optimization':
+            d_opt = True
+        else :
+            d_opt = False
+
         print('\n\n SETTING UP THE IL SAMPLING CONTROLLER \n\n')
         controller = mdp.samplingController
         optimizerCfg=mdp.ModelBaseActionCfg.OptimizerCfg(
@@ -145,11 +151,12 @@ if True :
             parametrization_p='first',
             parametrization_F='cubic_spline',
             optimize_f=f_opt,
+            optimize_d=d_opt,
             propotion_previous_solution = 0.0,
             debug_apply_action = None
             )
         num_envs = 1
-        num_trajectory = 20
+        num_trajectory = 40
         decimation = 2
 
     elif 'NO_WS' in args_cli.model_name:
@@ -157,6 +164,11 @@ if True :
             f_opt = True
         else :
             f_opt = False
+
+        if args_cli.d_opt == 'duty_cycle_optimization':
+            d_opt = True
+        else :
+            d_opt = False
 
         print('\n\n SETTING UP THE NO_WS SAMPLING CONTROLLER \n\n')
         controller = mdp.samplingController
@@ -167,11 +179,12 @@ if True :
             parametrization_p='first',
             parametrization_F='cubic_spline',
             optimize_f=f_opt,
+            optimize_d=d_opt,
             propotion_previous_solution = 1.0,
             debug_apply_action = 'trot'
             )
         num_envs = 1
-        num_trajectory = 20
+        num_trajectory = 40
         decimation = 2
     
     else :
@@ -538,10 +551,10 @@ class env_cfg(LocomotionModelBasedEnvCfg):
 
             """ ----- Commands ----- """
             self.commands.base_velocity.ranges.for_vel_b = (speed, speed)
-            self.commands.base_velocity.ranges.lat_vel_b = (-0.0, 0.0)
-            self.commands.base_velocity.ranges.ang_vel_b = (-0.0, 0.0)
-            # self.commands.base_velocity.ranges.lat_vel_b = (-0.1, 0.1)
-            # self.commands.base_velocity.ranges.ang_vel_b = (-0.5, 0.5)
+            # self.commands.base_velocity.ranges.lat_vel_b = (-0.0, 0.0)
+            # self.commands.base_velocity.ranges.ang_vel_b = (-0.0, 0.0)
+            self.commands.base_velocity.ranges.lat_vel_b = (-0.1, 0.1)
+            self.commands.base_velocity.ranges.ang_vel_b = (-0.5, 0.5)
             self.commands.base_velocity.ranges.initial_heading_err = (-0.0, 0.0)     
             self.commands.base_velocity.resampling_time_range = (10000.0,10000.0)
 

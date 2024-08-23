@@ -1059,7 +1059,7 @@ class ModelBaseAction(ActionTerm):
             delta_p_h = torch.zeros_like(delta_p_h) # shape (batch_size, num_legs, 2, p_param)
 
         elif gait == 'trot':
-            f = 2.5 * torch.ones_like(f)
+            f = 1.4 * torch.ones_like(f)
             d = 0.65 * torch.ones_like(d)
             delta_p_h = torch.zeros_like(delta_p_h) # shape (batch_size, num_legs, 2, p_param)
             
