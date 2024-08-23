@@ -608,8 +608,6 @@ class env_cfg(LocomotionModelBasedEnvCfg):
                 self.events.push_robot = None                                                                               # Default was activated
 
 
-
-
         """ Rewards - Same for every task """
         if True : 
             self.rewards.track_lin_vel_xy_exp.weight         = 1.5
