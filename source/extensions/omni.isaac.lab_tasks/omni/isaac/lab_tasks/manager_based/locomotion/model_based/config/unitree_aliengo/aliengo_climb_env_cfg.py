@@ -26,15 +26,15 @@ class UnitreeAliengoClimbEnvCfg(LocomotionModelBasedEnvCfg):
 
         # --- Select the Climb terrain -> Must be done before super().__post_init__() otherwise it won't load the terrain properly
         self.scene.terrain.terrain_generator = STAIRS_TERRAINS_CFG
-        # self.scene.terrain.class_type = TerrainImporterUniformDifficulty
-        self.scene.terrain.class_type = randomTerrainImporter  # -> for DAgger
+        self.scene.terrain.class_type = TerrainImporterUniformDifficulty
+        # self.scene.terrain.class_type = randomTerrainImporter  # -> for DAgger
 
         self.curriculum.terrain_levels = CurrTerm(func=mdp.climb_terrain_curriculum)
 
 
         """ ----- Reward and Event Curriculum ----- """
-        # frequency_variation_curriculum = True
-        frequency_variation_curriculum = False # -> for Dagger
+        frequency_variation_curriculum = True
+        # frequency_variation_curriculum = False # -> for Dagger
 
         if frequency_variation_curriculum :
             num_iter_activate = 800
