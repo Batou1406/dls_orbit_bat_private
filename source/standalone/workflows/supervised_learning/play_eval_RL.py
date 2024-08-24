@@ -131,6 +131,8 @@ if True :
             )
         if args_cli.speed is not None :
             decimation = 2
+        else :
+            decimation = 4
 
     elif 'IL' in args_cli.model_name:
         if args_cli.f_opt == 'frequency_optimization':
