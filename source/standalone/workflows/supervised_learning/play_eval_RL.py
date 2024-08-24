@@ -116,19 +116,20 @@ if True :
 if True :
     print(args_cli.model_name)
     if 'RL' in args_cli.model_name :
-        controller = mdp.modelBaseController
-        optimizerCfg=None
-        decimation = 4
+        # controller = mdp.modelBaseController
+        # optimizerCfg=None
+        # decimation = 4
 
-        if args_cli.speed is not None : 
-            controller = mdp.samplingTrainer
-            optimizerCfg=mdp.ModelBaseActionCfg.OptimizerCfg(
-                multipolicy=1,
-                prevision_horizon=1,
-                discretization_time=0.02,
-                parametrization_p='discrete',
-                parametrization_F='discrete'
-                )
+        # if args_cli.speed is not None : 
+        controller = mdp.samplingTrainer
+        optimizerCfg=mdp.ModelBaseActionCfg.OptimizerCfg(
+            multipolicy=1,
+            prevision_horizon=1,
+            discretization_time=0.02,
+            parametrization_p='discrete',
+            parametrization_F='discrete'
+            )
+        if args_cli.speed is not None :
             decimation = 2
 
     elif 'IL' in args_cli.model_name:
