@@ -882,10 +882,10 @@ def main():
                     sampling_init_costs[env_terminated_idx] = 0.0
                     costs_indices[env_terminated_idx] = 0
 
-                    # Make the ramp in velocity if num_envs == 1 (ie. sampling controller)
-                    if env.num_envs == 1:
-                        env.unwrapped.command_manager.get_term('base_velocity').vel_command_b[0,0] = 0
-                        vel_ramp=0
+                    # # Make the ramp in velocity if num_envs == 1 (ie. sampling controller)
+                    # if env.num_envs == 1:
+                    #     env.unwrapped.command_manager.get_term('base_velocity').vel_command_b[0,0] = 0
+                    #     vel_ramp=0
 
 
                 # Value reseted by env, must be kept
@@ -908,14 +908,9 @@ def main():
                 if all_sampling_iter > 1500*num_trajectory:
                     all_sampling_iter -= env.num_envs
 
-                vel_ramp+=1
-                # if (vel_ramp==150) and (env.num_envs == 1): #ie. after 1 sec
-                #     env.unwrapped.command_manager.get_term('base_velocity').vel_command_b[0,0] = 2*speed/3
-                # if (vel_ramp==300) and (env.num_envs == 1): #ie. after 1 sec
-                #     env.unwrapped.command_manager.get_term('base_velocity').vel_command_b[0,0] = speed
-                if (vel_ramp <= 300) and (env.num_envs == 1):
-                    env.unwrapped.command_manager.get_term('base_velocity').vel_command_b[0,0] = vel_ramp*speed/300
-                    # print(f"ramping the velocity : {env.unwrapped.command_manager.get_term('base_velocity').vel_command_b[0,0]:.2f}-{env.unwrapped.command_manager.get_term('base_velocity').vel_command_b[0,1]:.2f}-{env.unwrapped.command_manager.get_term('base_velocity').vel_command_b[0,2]:.2f}")
+                # vel_ramp+=1
+                # if (vel_ramp <= 300) and (env.num_envs == 1):
+                #     env.unwrapped.command_manager.get_term('base_velocity').vel_command_b[0,0] = vel_ramp*speed/300
 
 
         # close the simulator
