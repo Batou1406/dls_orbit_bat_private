@@ -138,9 +138,10 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
             self.rewards.track_lin_vel_xy_exp.params['std']  = math.sqrt(0.16)        
             self.rewards.track_soft_vel_xy_exp               = None
             self.rewards.track_ang_vel_z_exp.weight          = 0.75
-            self.rewards.track_robot_height_exp.weight       = 0.2 #0.1
-            self.rewards.track_robot_height_exp.params['height_bound'] = (-0.015,0.03) # 21/09 0.0.15
-            self.rewards.track_robot_height_exp.params['target_height'] = 0.35 # 21/09 0.40
+            self.rewards.track_robot_height_exp              = None
+            # self.rewards.track_robot_height_exp.weight       = 0.2 #0.1
+            # self.rewards.track_robot_height_exp.params['height_bound'] = (-0.015,0.03) # 21/09 0.0.15
+            # self.rewards.track_robot_height_exp.params['target_height'] = 0.35 # 21/09 0.40
 
             # -- Additionnal penalties : Need a negative weight
             self.rewards.penalty_lin_vel_z_l2.weight         = -1.0  # -2.5 21/09
