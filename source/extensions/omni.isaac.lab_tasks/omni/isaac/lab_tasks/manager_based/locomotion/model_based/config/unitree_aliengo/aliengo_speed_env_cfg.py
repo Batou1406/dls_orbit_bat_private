@@ -154,7 +154,7 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
             self.rewards.dof_pos_limits                      = None     #-2.0
             self.rewards.penalty_friction.weight             = -0.3
             self.rewards.penalty_stance_foot_vel             = None     #-1.0
-            self.rewards.penalty_CoT.weight                  = -0.12    #-0.4#-0.002 # 21/09 -0.5
+            self.rewards.penalty_CoT.weight                  = -0.8    #-0.4#-0.002 # 21/09 -0.5
             self.rewards.penalty_close_feet                  = None     #-0.01
             self.rewards.penalize_foot_trac_err              = None
             self.rewards.penalty_constraint_violation        = None
