@@ -178,7 +178,7 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
             self.curriculum.penalty_frequency_variation_curr    = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_frequency_variation",  "weight": 0.2,  "num_steps": (num_iter_activate*24)})
             self.curriculum.penatly_duty_cycle_variation_curr   = CurrTerm(func=modify_reward_weight, params={"term_name": "penatly_duty_cycle_variation", "weight": 0.7,  "num_steps": (num_iter_activate*24)}) # 24/09 1.0
             self.curriculum.penalty_step_variation_curr         = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_step_variation",       "weight": 1.0,  "num_steps": (num_iter_activate*24)})
-            self.curriculum.penatly_force_variation_curr        = CurrTerm(func=modify_reward_weight, params={"term_name": "penatly_force_variation",      "weight": 2.5e-4, "num_steps": (num_iter_activate*24)}) # 21/09 2e-5
+            self.curriculum.penatly_force_variation_curr        = CurrTerm(func=modify_reward_weight, params={"term_name": "penatly_force_variation",      "weight": 3e-4, "num_steps": (num_iter_activate*24)}) # 21/09 2e-5
 
 
         if training == 'with_sampling' :
