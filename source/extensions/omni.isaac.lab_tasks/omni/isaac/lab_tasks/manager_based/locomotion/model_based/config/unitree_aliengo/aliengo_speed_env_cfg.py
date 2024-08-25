@@ -130,7 +130,7 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
 
 
         """ ----- rewards ----- """
-        training = 'normal' # 'normal' or 'with_sampling' or 'with_sampling_and_normal or 'play_eval'
+        training = 'base' # 'normal' or 'with_sampling' or 'with_sampling_and_normal or 'play_eval'
 
         if training == 'normal' :
             # -- task
@@ -204,8 +204,8 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
             self.rewards.penalty_constraint_violation        = None
 
             # -- Model based penalty : Positive weight -> penalty is already negative
-            self.rewards.penalty_leg_frequency               = None
-            self.rewards.penalty_leg_duty_cycle              = None
+            self.rewards.penalty_leg_frequency.weight        = 0.0
+            self.rewards.penalty_leg_duty_cycle.weight       = 0.0
             self.rewards.penalty_large_force                 = None
             self.rewards.penalty_large_step                  = None
             # self.rewards.penalty_large_step.weight                  = 0.0
@@ -213,6 +213,14 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
             self.rewards.penatly_duty_cycle_variation.weight = 1.0 #2.5
             self.rewards.penalty_step_variation.weight       = 1.0 #2.5
             self.rewards.penatly_force_variation.weight      = 2.5e-5 #1e-4
+
+            self.rewards.penalty_leg_frequency.params   = {"action_name": "model_base_variable", "bound": (0.6,2.2)}
+            self.curriculum.penalty_leg_frequency_curr  = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_leg_frequency", "weight": 1.0, "num_steps": (1000*24)})
+            self.rewards.penalty_leg_duty_cycle.params  = params={"action_name": "model_base_variable", "bound": (0.35,0.7)}
+            self.curriculum.penalty_leg_duty_cycle_curr = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_leg_duty_cycle", "weight": 1.0, "num_steps": (1000*24)})
+
+            self.rewards.reward_is_alive.weight         = 0.5
+            self.curriculum.penalty_leg_frequency_curr  = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_leg_frequency", "weight": 0.0, "num_steps": (400*24)})
 
         if training == 'with_sampling' :
             # -- task
