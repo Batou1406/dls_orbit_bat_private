@@ -181,6 +181,39 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
             self.curriculum.penatly_force_variation_curr        = CurrTerm(func=modify_reward_weight, params={"term_name": "penatly_force_variation",      "weight": 3e-4, "num_steps": (num_iter_activate*24)}) # 21/09 2e-5
 
 
+        if training == 'base': 
+            self.rewards.track_lin_vel_xy_exp.weight         = 1.5
+            self.rewards.track_soft_vel_xy_exp               = None
+            self.rewards.track_ang_vel_z_exp.weight          = 0.75
+            self.rewards.track_robot_height_exp              = None
+
+            # -- Additionnal penalties : Need a negative weight
+            self.rewards.penalty_lin_vel_z_l2.weight         = -0.5
+            self.rewards.penalty_ang_vel_xy_l2.weight        = -0.025
+            self.rewards.penalty_dof_torques_l2              = None
+            self.rewards.penalty_dof_acc_l2                  = None
+            self.rewards.penalty_action_rate_l2              = None
+            self.rewards.undesired_contacts                  = None
+            self.rewards.flat_orientation_l2.weight          = -1.0
+            self.rewards.dof_pos_limits.weight               = -3.0
+            self.rewards.penalty_friction                    = None
+            self.rewards.penalty_stance_foot_vel             = None
+            self.rewards.penalty_CoT.weight                  = -0.08
+            self.rewards.penalty_close_feet                  = None
+            self.rewards.penalize_foot_trac_err              = None
+            self.rewards.penalty_constraint_violation        = None
+
+            # -- Model based penalty : Positive weight -> penalty is already negative
+            self.rewards.penalty_leg_frequency               = None
+            self.rewards.penalty_leg_duty_cycle              = None
+            self.rewards.penalty_large_force                 = None
+            self.rewards.penalty_large_step                  = None
+            # self.rewards.penalty_large_step.weight                  = 0.0
+            self.rewards.penalty_frequency_variation.weight  = 0.5 #1.0
+            self.rewards.penatly_duty_cycle_variation.weight = 1.0 #2.5
+            self.rewards.penalty_step_variation.weight       = 1.0 #2.5
+            self.rewards.penatly_force_variation.weight      = 2.5e-5 #1e-4
+
         if training == 'with_sampling' :
             # -- task
             self.rewards.track_lin_vel_xy_exp                = None
