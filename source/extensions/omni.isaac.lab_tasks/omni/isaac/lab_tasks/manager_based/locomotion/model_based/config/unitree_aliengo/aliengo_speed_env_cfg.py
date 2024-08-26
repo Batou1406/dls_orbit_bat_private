@@ -15,6 +15,7 @@ from omni.isaac.lab_assets.unitree import UNITREE_ALIENGO_CFG, UNITREE_GO2_CFG, 
 from omni.isaac.lab_assets.anymal import ANYMAL_C_CFG  # isort: skip
 
 from omni.isaac.lab.terrains.config.speed import SPEED_TERRAINS_CFG
+from omni.isaac.lab.terrains.config.niceFlat import COBBLESTONE_FLAT_CFG
 from omni.isaac.lab_tasks.manager_based.locomotion.model_based.mdp import CurriculumNormalVelocityCommandCfg, modify_reward_weight
 
 from omni.isaac.lab.managers import CurriculumTermCfg as CurrTerm
@@ -24,7 +25,8 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
     def __post_init__(self):
 
         # --- Select the speed terrain -> Must be done before super().__post_init__() otherwise it won't load the terrain properly
-        self.scene.terrain.terrain_generator = SPEED_TERRAINS_CFG
+        # self.scene.terrain.terrain_generator = SPEED_TERRAINS_CFG
+        self.scene.terrain.terrain_generator = COBBLESTONE_FLAT_CFG
 
         # --- Initialsie the large step
         Large_step_curriculum = False 
@@ -198,7 +200,7 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
             self.rewards.dof_pos_limits.weight               = -3.0
             self.rewards.penalty_friction                    = None
             self.rewards.penalty_stance_foot_vel             = None
-            self.rewards.penalty_CoT.weight                  = -0.08
+            self.rewards.penalty_CoT.weight                  = -0.1
             self.rewards.penalty_close_feet                  = None
             self.rewards.penalize_foot_trac_err              = None
             self.rewards.penalty_constraint_violation        = None
@@ -214,13 +216,13 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
             self.rewards.penalty_step_variation.weight       = 1.0 #2.5
             self.rewards.penatly_force_variation.weight      = 2.5e-5 #1e-4
 
-            self.rewards.penalty_leg_frequency.params   = {"action_name": "model_base_variable", "bound": (0.6,2.2)}
+            self.rewards.penalty_leg_frequency.params   = {"action_name": "model_base_variable", "bound": (0.6,2.0)}
             self.curriculum.penalty_leg_frequency_curr  = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_leg_frequency", "weight": 1.0, "num_steps": (1000*24)})
             self.rewards.penalty_leg_duty_cycle.params  = params={"action_name": "model_base_variable", "bound": (0.35,0.7)}
             self.curriculum.penalty_leg_duty_cycle_curr = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_leg_duty_cycle", "weight": 1.0, "num_steps": (1000*24)})
 
-            self.rewards.reward_is_alive.weight         = 0.5
-            self.curriculum.penalty_leg_frequency_curr  = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_leg_frequency", "weight": 0.0, "num_steps": (400*24)})
+            self.rewards.reward_is_alive.weight         = 0.7
+            self.curriculum.penalty_leg_frequency_curr  = CurrTerm(func=modify_reward_weight, params={"term_name": "reward_is_alive", "weight": 0.0, "num_steps": (500*24)})
 
         if training == 'with_sampling' :
             # -- task
