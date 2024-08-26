@@ -159,7 +159,35 @@ if True :
             debug_apply_action = None
             )
         num_envs = 1
-        num_trajectory = 20
+        num_trajectory = 30
+        decimation = 2
+
+    elif 'MULTIPOLICY' in args_cli.model_name:
+        if args_cli.f_opt == 'frequency_optimization':
+            f_opt = True
+        else :
+            f_opt = False
+
+        if args_cli.d_opt == 'duty_cycle_optimization':
+            d_opt = True
+        else :
+            d_opt = False
+
+        print('\n\n SETTING UP THE IL SAMPLING CONTROLLER \n\n')
+        controller = mdp.samplingController
+        optimizerCfg=mdp.ModelBaseActionCfg.OptimizerCfg(
+            multipolicy=2,
+            prevision_horizon=10,
+            discretization_time=0.02,
+            parametrization_p='first',
+            parametrization_F='cubic_spline',
+            optimize_f=f_opt,
+            optimize_d=d_opt,
+            propotion_previous_solution = 0.0,
+            debug_apply_action = None
+            )
+        num_envs = 1
+        num_trajectory = 30
         decimation = 2
 
     elif 'NO_WS' in args_cli.model_name:
@@ -187,7 +215,7 @@ if True :
             debug_apply_action = 'trot'
             )
         num_envs = 1
-        num_trajectory = 20
+        num_trajectory = 30
         decimation = 2
     
     else :
