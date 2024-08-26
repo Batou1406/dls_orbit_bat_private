@@ -222,7 +222,7 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
             self.curriculum.penalty_leg_duty_cycle_curr = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_leg_duty_cycle", "weight": 1.0, "num_steps": (1000*24)})
 
             self.rewards.reward_is_alive.weight         = 0.7
-            self.curriculum.penalty_leg_frequency_curr  = CurrTerm(func=modify_reward_weight, params={"term_name": "reward_is_alive", "weight": 0.0, "num_steps": (500*24)})
+            self.curriculum.reward_is_alive_curr  = CurrTerm(func=modify_reward_weight, params={"term_name": "reward_is_alive", "weight": 0.0, "num_steps": (500*24)})
 
         if training == 'with_sampling' :
             # -- task
