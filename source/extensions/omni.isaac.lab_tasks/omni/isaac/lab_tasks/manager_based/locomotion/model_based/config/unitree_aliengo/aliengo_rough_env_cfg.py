@@ -28,11 +28,11 @@ class UnitreeAliengoRoughEnvCfg(LocomotionModelBasedEnvCfg):
 
         """ ----- Scene Settings ----- """
         # --- Select the robot : Unitree Aliengo
-        # self.scene.robot = UNITREE_ALIENGO_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+        self.scene.robot = UNITREE_ALIENGO_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
         # self.scene.robot = UNITREE_GO2_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
         # self.scene.robot = ANYMAL_C_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
         # self.scene.robot = UNITREE_ALIENGO_TORQUE_CONTROL_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")    
-        self.scene.robot = UNITREE_ALIENGO_SELF_COLLISION_TORQUE_CONTROL_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")                 
+        # self.scene.robot = UNITREE_ALIENGO_SELF_COLLISION_TORQUE_CONTROL_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")                 
 
         # --- Select the prime path of the height sensor
         self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/base"                                               # Unnecessary : already default 
@@ -121,7 +121,7 @@ class UnitreeAliengoRoughEnvCfg(LocomotionModelBasedEnvCfg):
 
 
         """ ----- rewards ----- """
-        training = 'play_eval' # 'normal' or 'play_eval'
+        training = 'model_free' # 'normal' or 'play_eval'
 
         if training == 'normal' :
             # -- task
@@ -155,6 +155,43 @@ class UnitreeAliengoRoughEnvCfg(LocomotionModelBasedEnvCfg):
             self.rewards.penatly_duty_cycle_variation.weight = 1.0    #2.5
             self.rewards.penalty_step_variation.weight       = 1.0    #2.5
             self.rewards.penatly_force_variation.weight      = 1.7e-4 #1e-4 #modified from 2.5e-5 to 1.7e-4 after changed from F_lw variation to F_raw
+
+            # -- Additionnal Reward : Need a positive weight
+            self.rewards.reward_is_alive.weight              = 0.25 #None
+            self.rewards.penalty_failed                      = None
+
+        if training == 'model_free' :
+            # -- task
+            self.rewards.track_lin_vel_xy_exp.weight         = 1.5
+            self.rewards.track_soft_vel_xy_exp               = None
+            self.rewards.track_ang_vel_z_exp.weight          = 0.75
+            self.rewards.track_robot_height_exp.weight       = 0.2  #None
+
+            # -- Additionnal penalties : Need a negative weight
+            self.rewards.penalty_lin_vel_z_l2.weight         = -2.0
+            self.rewards.penalty_ang_vel_xy_l2.weight        = -0.05
+            self.rewards.penalty_dof_torques_l2.weight       = -0.000005 #-0.00001
+            self.rewards.penalty_dof_acc_l2                  = None
+            self.rewards.penalty_action_rate_l2              = None
+            self.rewards.undesired_contacts                  = None
+            self.rewards.flat_orientation_l2.weight          = -1.0
+            self.rewards.dof_pos_limits.weight               = -3.0  #None
+            self.rewards.penalty_friction.weight             = -0.1
+            self.rewards.penalty_stance_foot_vel             = None
+            self.rewards.penalty_CoT.weight                  = -0.04 #None
+            self.rewards.penalty_close_feet                  = None
+            self.rewards.penalize_foot_trac_err              = None
+            self.rewards.penalty_constraint_violation        = None
+
+            # -- Model based penalty : Positive weight -> penalty is already negative
+            self.rewards.penalty_leg_frequency        = None    #None
+            self.rewards.penalty_leg_duty_cycle       = None
+            self.rewards.penalty_large_force          = None
+            self.rewards.penalty_large_step           = None
+            self.rewards.penalty_frequency_variation  = None    #1.0
+            self.rewards.penatly_duty_cycle_variation = None    #2.5
+            self.rewards.penalty_step_variation       = None    #2.5
+            self.rewards.penatly_force_variation      = None #1e-4 #modified from 2.5e-5 to 1.7e-4 after changed from F_lw variation to F_raw
 
             # -- Additionnal Reward : Need a positive weight
             self.rewards.reward_is_alive.weight              = 0.25 #None
