@@ -863,7 +863,7 @@ def main():
                 cumulated_rewards   += rew
                 trajectories_length += env.unwrapped.step_dt
 
-                cumulated_CoTs += CoT_cfg.func(env.unwrapped, **CoT_cfg.params)
+                # cumulated_CoTs += CoT_cfg.func(env.unwrapped, **CoT_cfg.params)
 
                 # One of the trajectory terminated
                 if dones.any():
@@ -877,7 +877,8 @@ def main():
                     commanded_speed_lat = velocity_commands_b[env_terminated_idx][..., 1].squeeze()
                     commanded_speed_ang = velocity_commands_b[env_terminated_idx][..., 2].squeeze()
                     average_speed       = cumulated_distance / trajectory_length
-                    cost_of_transport   = ((cumulated_CoTs * env.unwrapped.step_dt)/ trajectories_length)[env_terminated_idx].squeeze()
+                    # cost_of_transport   = ((cumulated_CoTs * env.unwrapped.step_dt)/ trajectories_length)[env_terminated_idx].squeeze()
+                    cost_of_transport   = (cumulated_CoTs)[env_terminated_idx].squeeze() #only last CoT
                     stairs_cleared      = (((torch.max(torch.abs(robots_pos_lw[env_terminated_idx][...,:2]), dim=-1).values - (platform_width/2) )/ step_width).clamp_min(min=0).int()).squeeze()
                     terrain_difficulty  = terrains_difficulty[env_terminated_idx].squeeze()
 
@@ -925,6 +926,8 @@ def main():
                 robots_pos_lw       = env.unwrapped.scene['robot'].data.root_pos_w - env.unwrapped.scene.env_origins
                 terrains_difficulty = env.unwrapped.scene.terrain.difficulty.clone().detach()
                 # cost_of_transports  = env.unwrapped.reward_manager._episode_sums['penalty_CoT'].clone().detach()
+
+                cumulated_CoTs = CoT_cfg.func(env.unwrapped, **CoT_cfg.params).clone().detach() #Only last CoT
 
                 gait_params_f      += env.unwrapped.action_manager.get_term('model_base_variable').f_star
                 gait_params_d      += env.unwrapped.action_manager.get_term('model_base_variable').d_star
