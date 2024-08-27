@@ -20,7 +20,7 @@ args_dict = {
     '--num_envs': num_envs,
     '--headless': None,
     # '--num_trajectory': '8192',
-    '--num_trajectory': '24000',
+    '--num_trajectory': '50000',
     '--multipolicies_folder': 'test_eval',
     '--result_folder': result_folder,
     '--eval_task':'eval_task',
@@ -28,7 +28,7 @@ args_dict = {
 }
 
 # eval_task_list = ['debug','omnidirectionnal_test', 'stair_test', 'base_test', 'speed_test','survival_test']
-eval_task_list = ['speed_test', 'survival_test', 'base_test']
+eval_task_list = ['speed_test']#, 'survival_test', 'base_test']
 
 list_of_policy_folder = [f"{model_folder}/{name}" for name in os.listdir(f"model/{model_folder}") if os.path.isdir(f"model/{model_folder}/{name}")]
 list_of_policy_name   = [f"{name}" for name in os.listdir(f"model/{model_folder}") if os.path.isdir(f"model/{model_folder}/{name}")]
