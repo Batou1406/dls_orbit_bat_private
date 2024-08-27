@@ -25,8 +25,8 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
     def __post_init__(self):
 
         # --- Select the speed terrain -> Must be done before super().__post_init__() otherwise it won't load the terrain properly
-        # self.scene.terrain.terrain_generator = SPEED_TERRAINS_CFG
-        self.scene.terrain.terrain_generator = COBBLESTONE_FLAT_CFG
+        self.scene.terrain.terrain_generator = SPEED_TERRAINS_CFG
+        # self.scene.terrain.terrain_generator = COBBLESTONE_FLAT_CFG
 
         # --- Initialsie the large step
         Large_step_curriculum = False 
@@ -61,8 +61,8 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
 
         """ ----- Observation ----- """
         # To add or not noise on the observations
-        self.observations.policy.enable_corruption = False
-        # self.observations.policy.enable_corruption = True # 23/09
+        # self.observations.policy.enable_corruption = False
+        self.observations.policy.enable_corruption = True # 23/09
 
 
         """ ----- Curriculum ----- """
@@ -85,7 +85,7 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
 
 
         """ ----- Event randomization ----- """
-        Event = {'Base Mass'        : False, #True 23/09
+        Event = {'Base Mass'        : True, #True 23/09
                  'External Torque'  : False,
                  'External Force'   : False,
                  'Random joint pos' : True, #True 23/09
@@ -190,7 +190,7 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
             self.rewards.track_robot_height_exp              = None
 
             # -- Additionnal penalties : Need a negative weight
-            self.rewards.penalty_lin_vel_z_l2.weight         = -0.5
+            self.rewards.penalty_lin_vel_z_l2.weight         = -0.25   #Good weight -0.5
             self.rewards.penalty_ang_vel_xy_l2.weight        = -0.025
             self.rewards.penalty_dof_torques_l2              = None
             self.rewards.penalty_dof_acc_l2                  = None
