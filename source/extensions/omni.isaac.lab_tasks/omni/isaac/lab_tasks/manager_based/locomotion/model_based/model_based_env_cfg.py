@@ -179,16 +179,16 @@ class ActionsCfg:
     """Action specifications for the MDP.
     - Robot joint position - dim=12
     """
-    # model_base_variable = mdp.ModelBaseActionCfg(
-    #     asset_name="robot",
-    #     joint_names=[".*"], 
-    #     # controller=mdp.samplingController,
-    #     # optimizerCfg=mdp.ModelBaseActionCfg.OptimizerCfg(),
-    #     controller=mdp.modelBaseController,
-    #     # controller=mdp.samplingTrainer,
-    #     )
+    model_base_variable = mdp.ModelBaseActionCfg(
+        asset_name="robot",
+        joint_names=[".*"], 
+        # controller=mdp.samplingController,
+        # optimizerCfg=mdp.ModelBaseActionCfg.OptimizerCfg(),
+        controller=mdp.modelBaseController,
+        # controller=mdp.samplingTrainer,
+        )
     
-    model_base_variable = mdp.JointPositionActionCfg(asset_name="robot", joint_names=[".*"], scale=0.5, use_default_offset=True)
+    # joint_pos = mdp.JointPositionActionCfg(asset_name="robot", joint_names=[".*"], scale=0.5, use_default_offset=True)
 
 
 @configclass
@@ -225,8 +225,8 @@ class ObservationsCfg:
         joint_vel = ObsTerm(func=mdp.joint_vel_rel, noise=Unoise(n_min=-1.5, n_max=1.5))
 
         # ---- Policy Memory ----
-        actions = ObsTerm(func=mdp.last_action)
-        # actions = ObsTerm(func=mdp.last_model_base_action,  params={"action_name": "model_base_variable" })
+        # actions = ObsTerm(func=mdp.last_action)
+        actions = ObsTerm(func=mdp.last_model_base_action,  params={"action_name": "model_base_variable" })
 
         # ---- Policy Commands ----
         velocity_commands = ObsTerm(func=mdp.generated_commands, params={"command_name": "base_velocity"})
@@ -240,8 +240,8 @@ class ObservationsCfg:
         )
         
         # ---- Model-Base internal variable ----
-        # leg_phase = ObsTerm(func=mdp.leg_phase, params={"action_name": "model_base_variable"})
-        # leg_in_contact = ObsTerm(func=mdp.leg_contact, params={"action_name": "model_base_variable"})
+        leg_phase = ObsTerm(func=mdp.leg_phase, params={"action_name": "model_base_variable"})
+        leg_in_contact = ObsTerm(func=mdp.leg_contact, params={"action_name": "model_base_variable"})
 
         def __post_init__(self):
             # Enable the noise if specified in the ObsTerm
@@ -350,8 +350,7 @@ class RewardsCfg:
     track_lin_vel_xy_exp    = RewTerm(func=mdp.track_lin_vel_xy_exp, weight=1.5, params={"command_name": "base_velocity", "std": math.sqrt(0.25)})
     track_soft_vel_xy_exp   = RewTerm(func=mdp.soft_track_lin_vel_xy_exp, weight=1.5, params={"command_name": "base_velocity", "std": math.sqrt(0.1)})
     track_ang_vel_z_exp     = RewTerm(func=mdp.track_ang_vel_z_exp, weight=0.75, params={"command_name": "base_velocity", "std": math.sqrt(0.25)})
-    # track_robot_height_exp  = RewTerm(func=mdp.track_proprioceptive_height_exp, weight=0.2, params={"target_height": 0.35, "std": 0.1}) #0.38
-    track_robot_height_exp  = RewTerm(func=mdp.track_proprioceptive_height_exp, weight=0.2, params={"target_height": 0.35, "std": 0.1, "method":"Sensor","sensorCfg": SceneEntityCfg("contact_forces", body_names=".*foot")}) #0.38
+    track_robot_height_exp  = RewTerm(func=mdp.track_proprioceptive_height_exp, weight=0.2, params={"target_height": 0.35, "std": 0.1}) #0.38
 
     # -- Additionnal penalties : Need a negative weight
     penalty_lin_vel_z_l2    = RewTerm(func=mdp.lin_vel_z_l2, weight=-2.0)
