@@ -212,11 +212,10 @@ class UnitreeAliengoClimbEnvCfg(LocomotionModelBasedEnvCfg):
 
             # Curriculum update
             self.rewards.penalty_leg_frequency.params  = {"action_name": "model_base_variable", "bound": (0.6,2.0)}
-            self.curriculum.penalty_leg_frequency_curr = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_leg_frequency", "weight": 1.0, "num_steps": (400*24)})
+            self.curriculum.penalty_leg_frequency_curr = CurrTerm(func=mdp.modify_reward_weight, params={"term_name": "penalty_leg_frequency", "weight": 1.0, "num_steps": (400*24)})
             self.rewards.penalty_leg_duty_cycle.params  = params={"action_name": "model_base_variable", "bound": (0.35,0.7)}
-            self.curriculum.penalty_leg_duty_cycle_curr = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_leg_duty_cycle", "weight": 1.0, "num_steps": (400*24)})
-            self.rewards.penalty_large_step.params  = {"action_name": "model_base_variable", "bound_x": (0.08,-0.06), "bound_y": (0.06,-0.06)}
-            self.curriculum.penalty_large_step_curr = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_large_step", "weight": 1.0, "num_steps": (400*24)})
+            self.curriculum.penalty_leg_duty_cycle_curr = CurrTerm(func=mdp.modify_reward_weight, params={"term_name": "penalty_leg_duty_cycle", "weight": 1.0, "num_steps": (400*24)})
+
 
         """ ----- terminations ----- """
         # Augment the limit angle before reset
