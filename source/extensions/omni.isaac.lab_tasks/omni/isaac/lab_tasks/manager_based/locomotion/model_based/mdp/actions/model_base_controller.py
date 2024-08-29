@@ -795,7 +795,7 @@ class SamplingOptimizer():
         # self.F_best[:,:,2,:] = 50.0
 
         # For plotting
-        self.live_plot = False
+        self.live_plot = True
         self.robot_height_list = [0.0]
         self.robot_height_ref_list = [0.0]
         self.cost_list = [0.0]
@@ -1683,7 +1683,7 @@ class SamplingBatchedTrainer():
         self.F_best[:,:,2,:] = 0.0
 
         # For plotting
-        self.live_plot = False
+        self.live_plot = True
         self.robot_height_list = [0.0]
         self.robot_height_ref_list = [0.0]
         self.cost_list = [0.0]
