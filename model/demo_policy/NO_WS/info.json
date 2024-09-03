@@ -1,0 +1,77 @@
+{
+    "p_typeAction": "first",
+    "F_typeAction": "spline",
+    "num_datapoints": 800000,
+    "Input_size": 259,
+    "Output_size": 64,
+    "prediction_horizon_step": 10,
+    "prediction_horizon_time": "0.02[s]",
+    "num_envs": 4096,
+    "Activation function": {
+        "type": "exp",
+        "param": 0.6
+    },
+    "minibatach size": 64,
+    "datapoints_generated_per_iter": 80000,
+    "tot_epoch": 30,
+    "dataset_max_size": 800000,
+    "p_param": 1,
+    "F_param": 4,
+    "model": {
+        "model_name": "Model",
+        "layers": [
+            {
+                "name": "lin1",
+                "type": "Linear",
+                "parameters": {
+                    "weight": [
+                        512,
+                        259
+                    ],
+                    "bias": [
+                        512
+                    ]
+                }
+            },
+            {
+                "name": "lin2",
+                "type": "Linear",
+                "parameters": {
+                    "weight": [
+                        256,
+                        512
+                    ],
+                    "bias": [
+                        256
+                    ]
+                }
+            },
+            {
+                "name": "lin3",
+                "type": "Linear",
+                "parameters": {
+                    "weight": [
+                        128,
+                        256
+                    ],
+                    "bias": [
+                        128
+                    ]
+                }
+            },
+            {
+                "name": "lin4",
+                "type": "Linear",
+                "parameters": {
+                    "weight": [
+                        64,
+                        128
+                    ],
+                    "bias": [
+                        64
+                    ]
+                }
+            }
+        ]
+    }
+}

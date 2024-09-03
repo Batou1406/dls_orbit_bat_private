@@ -66,3 +66,4 @@ eval/*
 
 # Keep examples
 !eval/demo_evaluation_all_baseline_all_test
+!model/demo_policy
