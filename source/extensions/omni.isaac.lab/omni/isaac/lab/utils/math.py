@@ -1293,3 +1293,4 @@ def sample_cylinder(
     xyz[..., 2].uniform_(h_min, h_max)
     # return positions
     return xyz
+

@@ -152,6 +152,18 @@ class BatManagerBasedRLEnvWindow(BaseEnvWindow):
                 self.ui_window_elements["num iter"] = omni.isaac.ui.ui_utils.int_builder(**num_iter_cfg)
                 self.ui_window_elements["num iter"].add_value_changed_fn(self._update_num_iter)
 
+                # Create a slider to change the robot mass
+                robot_mass_cfg = {
+                    "label": "Robot Mass",
+                    "type": "button",
+                    "default_val": self.modelBaseAction.robot_mass,
+                    "min": 10.0,
+                    "max": 30.0,
+                    "tooltip": "Proportion of the samples sampled from previous best sample",
+                }
+                self.ui_window_elements["robot mass"] = omni.isaac.ui.ui_utils.float_builder(**robot_mass_cfg)
+                self.ui_window_elements["robot mass"].add_value_changed_fn(self._update_probot_mass)
+
                 # Create a button to enable or not the optimizer
                 with omni.ui.HStack():
                     omni.ui.Label(
@@ -173,7 +185,7 @@ class BatManagerBasedRLEnvWindow(BaseEnvWindow):
                     "label": "Debug Gait",
                     "type": "dropdown",
                     "default_val": 0,
-                    "items": [name.replace("_", " ").title() for name in ['None', 'full stance', 'trot']], # TODO hardcoded for now... Do better
+                    "items": [name.replace("_", " ").title() for name in ['None', 'full_stance', 'trot']], # TODO hardcoded for now... Do better
                     "tooltip": "Disable RL action (f,d,p) and apply a static gait",
                     "on_clicked_fn": self._set_debug_gait,
                 }
@@ -254,7 +266,7 @@ class BatManagerBasedRLEnvWindow(BaseEnvWindow):
                     omni.isaac.ui.ui_utils.add_line_rect_flourish()
 
                 # create a Dropdown menu to select the sampling law
-                viewer_follow_cfg = {
+                sampling_law_cfg = {
                     "label": "Sampling Law",
                     "type": "dropdown",
                     "default_val": {'normal':0, 'uniform':1}[self.modelBaseAction.cfg.optimizerCfg.sampling_law],
@@ -262,7 +274,7 @@ class BatManagerBasedRLEnvWindow(BaseEnvWindow):
                     "tooltip": "The sampling to generate samples from",
                     "on_clicked_fn": self._set_sampling_law,
                 }
-                self.ui_window_elements["viewer_follow"] = omni.isaac.ui.ui_utils.dropdown_builder(**viewer_follow_cfg)
+                self.ui_window_elements["sampling_law"] = omni.isaac.ui.ui_utils.dropdown_builder(**sampling_law_cfg)
 
                 # Create a button to enable or not sample clipping
                 with omni.ui.HStack():
@@ -280,7 +292,7 @@ class BatManagerBasedRLEnvWindow(BaseEnvWindow):
                     )
                     omni.isaac.ui.ui_utils.add_line_rect_flourish()                
 
-                # Create a slider to chnage the leg frequency standard variation in the sampling law
+                # Create a slider to change the leg frequency standard variation in the sampling law
                 f_std_cfg = {
                     "label": "f std [Hz]",
                     "type": "button",
@@ -293,7 +305,7 @@ class BatManagerBasedRLEnvWindow(BaseEnvWindow):
                 self.ui_window_elements["f std"] = omni.isaac.ui.ui_utils.float_builder(**f_std_cfg)
                 self.ui_window_elements["f std"].add_value_changed_fn(self._update_f_std)
 
-                # Create a slider to chnage the leg duty cycle standard variation in the sampling law
+                # Create a slider to change the leg duty cycle standard variation in the sampling law
                 d_std_cfg = {
                     "label": "d std",
                     "type": "button",
@@ -306,7 +318,7 @@ class BatManagerBasedRLEnvWindow(BaseEnvWindow):
                 self.ui_window_elements["d std"] = omni.isaac.ui.ui_utils.float_builder(**d_std_cfg)
                 self.ui_window_elements["d std"].add_value_changed_fn(self._update_d_std)
 
-                # Create a slider to chnage the foot touch down position standard variation in the sampling law
+                # Create a slider to change the foot touch down position standard variation in the sampling law
                 p_std_cfg = {
                     "label": "p std [m]",
                     "type": "button",
@@ -319,7 +331,7 @@ class BatManagerBasedRLEnvWindow(BaseEnvWindow):
                 self.ui_window_elements["p std"] = omni.isaac.ui.ui_utils.float_builder(**p_std_cfg)
                 self.ui_window_elements["p std"].add_value_changed_fn(self._update_p_std)
 
-                # Create a slider to chnage the ground reaction forces standard variation in the sampling law
+                # Create a slider to change the ground reaction forces standard variation in the sampling law
                 F_std_cfg = {
                     "label": "F std [N]",
                     "type": "button",
@@ -330,6 +342,18 @@ class BatManagerBasedRLEnvWindow(BaseEnvWindow):
                 }
                 self.ui_window_elements["F std"] = omni.isaac.ui.ui_utils.float_builder(**F_std_cfg)
                 self.ui_window_elements["F std"].add_value_changed_fn(self._update_F_std)
+
+                # Create a slider to change the ground reaction forces standard variation for the first and last element of the spline in the sampling law
+                F_spline_std_cfg = {
+                    "label": "scale F std [N]",
+                    "type": "button",
+                    "default_val": float(self.modelBaseAction.controller.samplingOptimizer.spline_std_F),
+                    "min": 0.0,
+                    "max": 30.0,
+                    "tooltip": "Set the standard deviation scaling factor for the spline parameters of the GRF in the sampling law",
+                }
+                self.ui_window_elements["F std"] = omni.isaac.ui.ui_utils.float_builder(**F_spline_std_cfg)
+                self.ui_window_elements["F std"].add_value_changed_fn(self._update_F_spline_std)
 
 
     def _build_plotting_frame(self):
@@ -402,6 +426,9 @@ class BatManagerBasedRLEnvWindow(BaseEnvWindow):
     def _update_proportion_best(self, model: omni.ui.SimpleFloatModel):
         self.modelBaseAction.controller.samplingOptimizer.propotion_previous_solution = model.as_float
 
+    def _update_probot_mass(self, model: omni.ui.SimpleFloatModel):
+        self.modelBaseAction.controller.samplingOptimizer.robot_mass = model.as_float
+
     def _update_f_std(self, model: omni.ui.SimpleFloatModel):
         self.modelBaseAction.controller.samplingOptimizer.std_f = (model.as_float)*torch.ones_like(self.modelBaseAction.controller.samplingOptimizer.std_f)
 
@@ -414,13 +441,17 @@ class BatManagerBasedRLEnvWindow(BaseEnvWindow):
     def _update_F_std(self, model: omni.ui.SimpleFloatModel):
         self.modelBaseAction.controller.samplingOptimizer.std_F = (model.as_float)*torch.ones_like(self.modelBaseAction.controller.samplingOptimizer.std_F)
 
+    def _update_F_spline_std(self, model: omni.ui.SimpleFloatModel):
+        self.modelBaseAction.controller.samplingOptimizer.spline_std_F = (model.as_float)
+
+
     def _update_num_iter(self, model: omni.ui.SimpleIntModel):
         self.modelBaseAction.controller.samplingOptimizer.num_optimizer_iterations = model.as_int
 
     def _set_debug_gait(self, value: str): 
         # value is modified and comes with a capital letter first
         if   value == 'None'        : self.modelBaseAction.debug_apply_action_status = None
-        if   value == 'Full Stance' : self.modelBaseAction.debug_apply_action_status = 'full stance'
+        if   value == 'Full Stance' : self.modelBaseAction.debug_apply_action_status = 'full_stance'
         if   value == 'Trot'        : self.modelBaseAction.debug_apply_action_status = 'trot'
 
     def _set_velocity_fn(self, model: omni.ui.SimpleFloatModel):

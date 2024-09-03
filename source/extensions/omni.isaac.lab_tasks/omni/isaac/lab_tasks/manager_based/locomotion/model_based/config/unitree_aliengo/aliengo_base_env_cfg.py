@@ -15,16 +15,29 @@ from omni.isaac.lab_tasks.manager_based.locomotion.model_based.model_based_env_c
 from omni.isaac.lab_assets.unitree import UNITREE_ALIENGO_CFG, UNITREE_GO2_CFG, UNITREE_ALIENGO_TORQUE_CONTROL_CFG, UNITREE_ALIENGO_SELF_COLLISION_TORQUE_CONTROL_CFG  # isort: skip
 from omni.isaac.lab_assets.anymal import ANYMAL_C_CFG  # isort: skip
 
-from omni.isaac.lab.terrains.config.niceFlat import COBBLESTONE_ROAD_CFG
+from omni.isaac.lab.terrains.config.niceFlat import COBBLESTONE_ROAD_CFG, COBBLESTONE_FLAT_CFG
+from omni.isaac.lab.terrains.config.climb import STAIRS_TERRAINS_CFG
+from omni.isaac.lab.terrains.config.speed import SPEED_TERRAINS_CFG
+from omni.isaac.lab.terrains.config.rough import ROUGH_TERRAINS_CFG
+
+from omni.isaac.lab_tasks.manager_based.locomotion.model_based.mdp import modify_reward_weight
+from omni.isaac.lab.managers import CurriculumTermCfg as CurrTerm
+
+from omni.isaac.lab.terrains import randomTerrainImporter
 
 @configclass
 class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
     def __post_init__(self):
 
-        self.scene.terrain.terrain_generator = COBBLESTONE_ROAD_CFG
+        self.scene.terrain.terrain_generator = COBBLESTONE_FLAT_CFG # very Flat
+        # self.scene.terrain.terrain_generator = COBBLESTONE_ROAD_CFG # Flat
+        # self.scene.terrain.terrain_generator = STAIRS_TERRAINS_CFG
+        # self.scene.terrain.terrain_generator = SPEED_TERRAINS_CFG
+        # self.scene.terrain.terrain_generator = ROUGH_TERRAINS_CFG
+        
 
-        # post init of parent
-        super().__post_init__()
+        # --- Change the standard curriculum, must be done before super().__post_init__()
+        self.scene.terrain.class_type = randomTerrainImporter
 
         """ ----- Scene Settings ----- """
         # --- Select the robot : Unitree Aliengo
@@ -39,14 +52,14 @@ class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
 
 
         """ ----- Commands ----- """
-        # self.commands.base_velocity.ranges.for_vel_b = (-1.0, 1.0)
-        # self.commands.base_velocity.ranges.lat_vel_b = (-1.0, 1.0)
-        # self.commands.base_velocity.ranges.ang_vel_b = (-1.0, 1.0)
-        # self.commands.base_velocity.ranges.initial_heading_err = (-math.pi, math.pi)
-        self.commands.base_velocity.ranges.for_vel_b = (-0.0, 0.0)
-        self.commands.base_velocity.ranges.lat_vel_b = (-0.0, 0.0)
-        self.commands.base_velocity.ranges.ang_vel_b = (-0.0, 0.0)
-        self.commands.base_velocity.ranges.initial_heading_err = (-0.0, 0.0)
+        self.commands.base_velocity.ranges.for_vel_b = (-1.0, 1.0)
+        self.commands.base_velocity.ranges.lat_vel_b = (-1.0, 1.0)
+        self.commands.base_velocity.ranges.ang_vel_b = (-1.0, 1.0)
+        self.commands.base_velocity.ranges.initial_heading_err = (-math.pi, math.pi)
+        # self.commands.base_velocity.ranges.for_vel_b = (-0.0, 0.0)
+        # self.commands.base_velocity.ranges.lat_vel_b = (-0.0, 0.0)
+        # self.commands.base_velocity.ranges.ang_vel_b = (-0.0, 0.0)
+        # self.commands.base_velocity.ranges.initial_heading_err = (-0.0, 0.0)
 
 
         """ ----- Observation ----- """
@@ -60,9 +73,11 @@ class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
 
         if Terrain_curriculum : 
             # --- scale down the terrains because the robot is small
-            self.scene.terrain.terrain_generator.sub_terrains["boxes"].grid_height_range = (0.025, 0.1)
-            self.scene.terrain.terrain_generator.sub_terrains["random_rough"].noise_range = (0.01, 0.06)
-            self.scene.terrain.terrain_generator.sub_terrains["random_rough"].noise_step = 0.01
+            try :
+                self.scene.terrain.terrain_generator.sub_terrains["boxes"].grid_height_range = (0.025, 0.1)
+                self.scene.terrain.terrain_generator.sub_terrains["random_rough"].noise_range = (0.01, 0.06)
+                self.scene.terrain.terrain_generator.sub_terrains["random_rough"].noise_step = 0.01
+            except : pass
         else :
             self.curriculum.terrain_levels = None                                                                       # By default activated
             # self.scene.terrain.terrain_type = 'plane'
@@ -114,40 +129,103 @@ class UnitreeAliengoBaseEnvCfg(LocomotionModelBasedEnvCfg):
 
 
         """ ----- rewards ----- """
-        # -- task
-        self.rewards.track_lin_vel_xy_exp.weight         = 1.5
-        self.rewards.track_soft_vel_xy_exp               = None
-        self.rewards.track_ang_vel_z_exp.weight          = 0.75
-        self.rewards.track_robot_height_exp.weight       = 0.2
+        training = 'play_eval' # 'normal' or 'with_sampling' or 'play_eval'
 
-        # -- Additionnal penalties : Need a negative weight
-        self.rewards.penalty_lin_vel_z_l2.weight         = -2.0
-        self.rewards.penalty_ang_vel_xy_l2.weight        = -0.05
-        self.rewards.penalty_dof_torques_l2              = None
-        self.rewards.penalty_dof_acc_l2                  = None
-        self.rewards.penalty_action_rate_l2              = None
-        self.rewards.undesired_contacts                  = None
-        self.rewards.flat_orientation_l2.weight          = -1.0
-        self.rewards.dof_pos_limits.weight               = -3.0
-        self.rewards.penalty_friction                    = None
-        self.rewards.penalty_stance_foot_vel             = None
-        self.rewards.penalty_CoT.weight                  = -0.04
-        self.rewards.penalty_close_feet                  = None
+        if training == 'normal' :
+            # -- task
+            self.rewards.track_lin_vel_xy_exp.weight         = 1.5
+            self.rewards.track_soft_vel_xy_exp               = None
+            self.rewards.track_ang_vel_z_exp.weight          = 0.75
+            self.rewards.track_robot_height_exp.weight       = 0.2
 
-        # -- Model based penalty : Positive weight -> penalty is already negative
-        self.rewards.penalty_leg_frequency               = None
-        self.rewards.penalty_leg_duty_cycle              = None
-        self.rewards.penalty_large_force.weight          = 0.1
-        self.rewards.penalty_large_step                  = None
-        self.rewards.penalty_frequency_variation.weight  = 0.5 #1.0
-        self.rewards.penatly_duty_cycle_variation.weight = 1.0 #2.5
-        self.rewards.penalty_step_variation.weight       = 1.0 #2.5
-        self.rewards.penatly_force_variation.weight      = 2.5e-5 #1e-4
+            # -- Additionnal penalties : Need a negative weight
+            self.rewards.penalty_lin_vel_z_l2.weight         = -2.0
+            self.rewards.penalty_ang_vel_xy_l2.weight        = -0.05
+            self.rewards.penalty_dof_torques_l2              = None
+            self.rewards.penalty_dof_acc_l2                  = None
+            self.rewards.penalty_action_rate_l2              = None
+            self.rewards.undesired_contacts                  = None
+            self.rewards.flat_orientation_l2.weight          = -1.0
+            self.rewards.dof_pos_limits.weight               = -3.0
+            self.rewards.penalty_friction                    = None
+            self.rewards.penalty_stance_foot_vel             = None
+            self.rewards.penalty_CoT.weight                  = -0.04
+            self.rewards.penalty_close_feet                  = None
+            self.rewards.penalize_foot_trac_err              = None
+            self.rewards.penalty_constraint_violation        = None
 
-        # -- Additionnal Reward : Need a positive weight
-        self.rewards.reward_is_alive                     = None #0.25
-        self.rewards.penalty_failed                      = None
+            # -- Model based penalty : Positive weight -> penalty is already negative
+            self.rewards.penalty_leg_frequency.weight        = 0.0
+            self.rewards.penalty_leg_duty_cycle.weight       = 0.0
+            self.rewards.penalty_large_force                 = None
+            self.rewards.penalty_large_step                  = None
+            # self.rewards.penalty_large_step.weight                  = 0.0
+            self.rewards.penalty_frequency_variation.weight  = 0.5 #1.0
+            self.rewards.penatly_duty_cycle_variation.weight = 1.0 #2.5
+            self.rewards.penalty_step_variation.weight       = 1.0 #2.5
+            self.rewards.penatly_force_variation.weight      = 2.5e-5 #1e-4
+
+            # Curriculum update
+            # self.rewards.penalty_leg_frequency.params  = {"action_name": "model_base_variable", "bound": (0.6,2.0)}
+            # self.curriculum.penalty_leg_frequency_curr = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_leg_frequency", "weight": 1.0, "num_steps": (400*24)})
+            # self.rewards.penalty_leg_duty_cycle.params  = params={"action_name": "model_base_variable", "bound": (0.35,0.7)}
+            # self.curriculum.penalty_leg_duty_cycle_curr = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_leg_duty_cycle", "weight": 1.0, "num_steps": (400*24)})
+            # self.rewards.penalty_large_step.params  = {"action_name": "model_base_variable", "bound_x": (0.08,-0.06), "bound_y": (0.06,-0.06)}
+            # self.curriculum.penalty_large_step_curr = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_large_step", "weight": 1.0, "num_steps": (400*24)})
+
+            self.rewards.penalty_sampling_rollout            = None
+
+            # -- Additionnal Reward : Need a positive weight
+            self.rewards.reward_is_alive                     = None #0.25
+            self.rewards.penalty_failed                      = None
+
+        if training == 'with_sampling' :
+            # -- task
+            self.rewards.track_lin_vel_xy_exp                = None
+            self.rewards.track_soft_vel_xy_exp               = None
+            self.rewards.track_ang_vel_z_exp                 = None
+            self.rewards.track_robot_height_exp              = None
+
+            # -- Additionnal penalties : Need a negative weight
+            self.rewards.penalty_lin_vel_z_l2                = None
+            self.rewards.penalty_ang_vel_xy_l2               = None
+            self.rewards.penalty_dof_torques_l2              = None
+            self.rewards.penalty_dof_acc_l2                  = None
+            self.rewards.penalty_action_rate_l2              = None
+            self.rewards.undesired_contacts                  = None
+            self.rewards.flat_orientation_l2                 = None
+            self.rewards.dof_pos_limits.weight               = -3.0
+            self.rewards.penalty_friction                    = None
+            self.rewards.penalty_stance_foot_vel             = None
+            self.rewards.penalty_CoT.weight                  = -0.04
+            self.rewards.penalty_close_feet                  = None
+            self.rewards.penalize_foot_trac_err              = None
+            self.rewards.penalty_constraint_violation        = None
+
+            # -- Model based penalty : Positive weight -> penalty is already negative
+            self.rewards.penalty_leg_frequency.weight        = 0.0
+            self.rewards.penalty_leg_duty_cycle.weight       = 0.0
+            self.rewards.penalty_large_force                 = None
+            self.rewards.penalty_large_step                  = None
+            self.rewards.penalty_frequency_variation.weight  = 0.5 #1.0
+            self.rewards.penatly_duty_cycle_variation.weight = 1.0 #2.5
+            self.rewards.penalty_step_variation.weight       = 0.2 #2.5
+            self.rewards.penatly_force_variation.weight      = 1e-5 #1e-4
+            self.rewards.penalty_leg_frequency.params  = {"action_name": "model_base_variable", "bound": (0.6,2.0)}
+            self.curriculum.penalty_leg_frequency_curr = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_leg_frequency", "weight": 0.1, "num_steps": (400*24)})
+            self.rewards.penalty_leg_duty_cycle.params  = params={"action_name": "model_base_variable", "bound": (0.35,0.7)}
+            self.curriculum.penalty_leg_duty_cycle_curr = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_leg_duty_cycle", "weight": 0.1, "num_steps": (400*24)})
+
+            self.rewards.penalty_sampling_rollout.weight     = -0.5
+            # self.curriculum.penalty_sampling_rollout_curr = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_sampling_rollout", "weight": -2.5e-2, "num_steps": (1000*24)})
+
+            # -- Additionnal Reward : Need a positive weight
+            self.rewards.reward_is_alive.weight              = 1.5 #0.25
+            self.rewards.penalty_failed                      = None
 
 
         """ ----- terminations ----- """
+
+        # post init of parent
+        super().__post_init__()
  

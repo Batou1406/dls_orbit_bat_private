@@ -182,9 +182,10 @@ class ActionsCfg:
     model_base_variable = mdp.ModelBaseActionCfg(
         asset_name="robot",
         joint_names=[".*"], 
-        controller=mdp.samplingController,
-        optimizerCfg=mdp.ModelBaseActionCfg.OptimizerCfg(),
-        # controller=mdp.modelBaseController,
+        # controller=mdp.samplingController,
+        # optimizerCfg=mdp.ModelBaseActionCfg.OptimizerCfg(),
+        controller=mdp.modelBaseController,
+        # controller=mdp.samplingTrainer,
         )
     
     # joint_pos = mdp.JointPositionActionCfg(asset_name="robot", joint_names=[".*"], scale=0.5, use_default_offset=True)
@@ -349,7 +350,7 @@ class RewardsCfg:
     track_lin_vel_xy_exp    = RewTerm(func=mdp.track_lin_vel_xy_exp, weight=1.5, params={"command_name": "base_velocity", "std": math.sqrt(0.25)})
     track_soft_vel_xy_exp   = RewTerm(func=mdp.soft_track_lin_vel_xy_exp, weight=1.5, params={"command_name": "base_velocity", "std": math.sqrt(0.1)})
     track_ang_vel_z_exp     = RewTerm(func=mdp.track_ang_vel_z_exp, weight=0.75, params={"command_name": "base_velocity", "std": math.sqrt(0.25)})
-    track_robot_height_exp  = RewTerm(func=mdp.track_proprioceptive_height_exp, weight=0.1, params={"target_height": 0.38, "std": 0.1}) #0.38
+    track_robot_height_exp  = RewTerm(func=mdp.track_proprioceptive_height_exp, weight=0.2, params={"target_height": 0.35, "std": 0.1}) #0.38
 
     # -- Additionnal penalties : Need a negative weight
     penalty_lin_vel_z_l2    = RewTerm(func=mdp.lin_vel_z_l2, weight=-2.0)
@@ -374,6 +375,8 @@ class RewardsCfg:
     penalty_stance_foot_vel = RewTerm(func=mdp.penalize_foot_in_contact_displacement_l2, weight=-1.0)
     penalty_CoT             = RewTerm(func=mdp.penalize_cost_of_transport, weight=-0.1)
     penalty_close_feet      = RewTerm(func=mdp.penalize_close_feet, weight=-1e-3, params={"threshold": 0.05})
+    penalize_foot_trac_err  = RewTerm(func=mdp.penalize_foot_trajectory_tracking_error, weight=-0.01)
+    penalty_constraint_violation = RewTerm(func=mdp.penalize_constraint_violation,    weight=-0.03)
 
 
     # -- Model based penalty : Positive weight -> penalty is already negative
@@ -389,6 +392,8 @@ class RewardsCfg:
     # -- Additionnal Reward : Need a positive weight
     reward_is_alive        = RewTerm(func=mdp.is_alive, weight=0.25)
     penalty_failed         = RewTerm(func=mdp.is_terminated, weight=1.0)
+    
+    penalty_sampling_rollout     = RewTerm(func=mdp.penalize_sampling_controller_cost,weight=-0.0) #-1e-7
 
 
 @configclass
@@ -456,7 +461,7 @@ class LocomotionModelBasedEnvCfg(ManagerBasedRLEnvCfg):
     def __post_init__(self):
         """Post initialization."""
         # general settings
-        self.decimation = 2
+        self.decimation = 4 #2
         self.episode_length_s = 15.0
         # simulation settings
         self.sim.dt = 0.005
@@ -482,11 +487,11 @@ class LocomotionModelBasedEnvCfg(ManagerBasedRLEnvCfg):
         self.viewer.eye             = (1.5, 1.5, 0.9)
         self.viewer.lookat          = (0.0, 0.0, 0.0)
         self.viewer.cam_prim_path   = "/OmniverseKit_Persp"
-        self.viewer.resolution      = (1280, 720)     # 720p
+        # self.viewer.resolution      = (1280, 720)     # 720p
         # self.viewer.resolution      = (1920, 1080)    # 1080p
         # self.viewer.resolution      = (2560, 1440)      # 2k
         # self.viewer.resolution      = (3840, 2160)      # 4k
-        # self.viewer.resolution      = (1024, 1024)      # Square
+        self.viewer.resolution      = (1024, 1024)      # Square
         # self.viewer.resolution      = (2048, 2048)      # 2K Square
         self.viewer.origin_type     = "asset_root"
         self.viewer.env_index       = 0

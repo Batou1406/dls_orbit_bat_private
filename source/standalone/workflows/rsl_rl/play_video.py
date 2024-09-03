@@ -120,8 +120,8 @@ def main():
     video_kwargs = {
         "video_folder": "videos",
         "name_prefix" : args_cli.task,
-        "step_trigger": lambda step: step == 81,
-        "video_length": 600,
+        "step_trigger": lambda step: step == 11,
+        "video_length": 20,
     }
     env = gym.wrappers.RecordVideo(env, **video_kwargs)
 

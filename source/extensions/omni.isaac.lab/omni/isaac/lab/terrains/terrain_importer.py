@@ -415,3 +415,24 @@ class TerrainImporterUniformDifficulty(TerrainImporter):
 
         # update the env origins
         self.env_origins[env_ids] = self.terrain_origins[self.terrain_levels[env_ids], self.terrain_types[env_ids]]
+
+
+class randomTerrainImporter(TerrainImporter):
+    def __init__(self, cfg: TerrainImporterCfg):
+        super().__init__(cfg)
+
+        self.difficulty = torch.zeros(self.cfg.num_envs, device=self.device)
+
+    def update_env_origins(self, env_ids: torch.Tensor, move_up: torch.Tensor, move_down: torch.Tensor):
+        """Update the environment origins based on the terrain levels."""
+        # check if grid-like spawning
+        if self.terrain_origins is None:
+            return
+        
+        num_rows, num_cols = self.terrain_origins.shape[:2]
+
+        self.terrain_levels[env_ids] = torch.randint_like(self.terrain_levels[env_ids], self.max_terrain_level)
+        self.terrain_types[env_ids]  = torch.randint_like(self.terrain_levels[env_ids], num_cols)
+
+        # update the env origins
+        self.env_origins[env_ids] = self.terrain_origins[self.terrain_levels[env_ids], self.terrain_types[env_ids]]

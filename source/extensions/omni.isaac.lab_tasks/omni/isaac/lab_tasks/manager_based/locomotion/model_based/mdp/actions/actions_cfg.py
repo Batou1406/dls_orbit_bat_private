@@ -43,6 +43,9 @@ class ModelBaseActionCfg(ActionTermCfg):
     """Model base controller that compute u: output torques from z: latent variable
     can be of type 'modelBaseController' or 'samplingController' """ 
 
+    mu : float = 0.5
+    """ Coefficient of friction imposed for the friction cone constraints """
+
     @configclass
     class OptimizerCfg:
         """ Config class for the optimizer """
@@ -50,26 +53,29 @@ class ModelBaseActionCfg(ActionTermCfg):
         optimizerType:str = 'sampling'
         """ Different type of optimizer. For now, only 'sampling' is implemented """
 
-        prevision_horizon: int = 5 # 15
+        multipolicy:int = 1
+        """ Number of different policy provied to warm start the sampling controller."""
+
+        prevision_horizon: int = 10 #5 #15 # 15
         """ Prevision horizon for predictive optimization (in number of time steps) """
 
-        discretization_time: float = 0.02 # 0.04
+        discretization_time: float = 0.02 #0.02 # 0.04
         """ Duration of a time step in seconds for the predicitve optimization """
 
-        num_samples: int = 5000
+        num_samples: int = 10000
         """ Number of samples used if the optimizerType is 'sampling' """
 
-        parametrization_F: Literal['discrete', 'cubic spline'] = 'cubic spline'
-        """ Define how F, Ground Reaction Forces, are encoded : can be 'discrete' or 'cubic spline', this modify F_param """
+        parametrization_p: Literal['discrete', 'cubic_spline', 'from_discrete_fit_spline', 'from_single_expand_discrete', 'first'] = 'discrete'
+        """ Define how p, foot touch down position, are encoded : can be 'discrete', 'cubic_spline' or from_discrete_fit_spline, this modify p_param  """
 
-        parametrization_p: Literal['discrete', 'cubic spline'] = 'cubic spline'
-        """ Define how p, foot touch down position, are encoded : can be 'discrete' or 'cubic spline', this modify p_param  """
+        parametrization_F: Literal['discrete', 'cubic_spline', 'from_discrete_fit_spline', 'from_single_expand_discrete'] = 'discrete'
+        """ Define how F, Ground Reaction Forces, are encoded : can be 'discrete', 'cubic_spline' or 'from_discrete_fit_spline', this modify F_param """
 
-        height_ref: float = 0.38
+        height_ref: float = 0.35 #0.35 #0.38
         """ Height reference for the optimization, defined as mean distance between legs in contact and base """
 
-        mu : float = 0.4
-        """ Coefficient of friction imposed for the friction cone constraints """
+        # mu : float = 0.5
+        # """ Coefficient of friction imposed for the friction cone constraints """
 
         optimize_f: bool = False
         """ If enabled, leg frequency will be optimized"""
@@ -83,7 +89,7 @@ class ModelBaseActionCfg(ActionTermCfg):
         optimize_F: bool = True
         """ If enabled, Ground Reaction Forces will be optimized"""
 
-        propotion_previous_solution: float = 1.0
+        propotion_previous_solution: float = 0.0
         """ Proportion of the previous solution that will be used to generate samples"""
 
         num_optimizer_iterations: int = 1
@@ -95,7 +101,7 @@ class ModelBaseActionCfg(ActionTermCfg):
         clip_sample: bool = False 
         """ Wether to clip or not the samples to a range of the standard deviation """
 
-        debug_apply_action: Literal[None, 'full stance', 'trot'] = 'trot' #None
+        debug_apply_action: Literal[None, 'full_stance', 'trot'] = None #'trot' #None
         """ Wether to deactivate f,d,and p from RL and change that with another static gait"""
 
     optimizerCfg: OptimizerCfg | None = None
@@ -108,7 +114,7 @@ class ModelBaseActionCfg(ActionTermCfg):
         step_height: float = 0.05
         """ Default step height : used by the swing trajectory generator to determine the apex height in the middle of the trajectory  """
 
-        foot_offset: float = 0.015
+        foot_offset: float = 0.028
         """ Offset between the foot position (as returned in body view by the simulator) and the ground when in contact. """
 
     footTrajectoryCfg: FootTrajectoryCfg = FootTrajectoryCfg()
@@ -118,7 +124,7 @@ class ModelBaseActionCfg(ActionTermCfg):
     class SwingControllerCfg:
         """ Config class for swing foot trajectory controller hyperparameters
         """
-        swing_ctrl_pos_gain_fb: float = 5000.0
+        swing_ctrl_pos_gain_fb: float = 10000.0 #5000.0
         """ Position gain feedback for swing trajectory tracking in [0, +inf] """
 
         swing_ctrl_vel_gain_fb: float = 100.0
@@ -174,20 +180,21 @@ class ModelBaseActionCfg(ActionTermCfg):
         std_n_x_p = -0.01    # [m] 
         std_p_y_p = +0.01    # [m]
         std_n_y_p = -0.01    # [m]
-        max_x_p = +0.36      # [m]
-        min_x_p = -0.24      # [m]
-        max_y_p = +0.20      # [m]
-        min_y_p = -0.20      # [m]
+        max_x_p = +0.15 #+0.36      # [m]
+        min_x_p = -0.10 #-0.24      # [m]
+        max_y_p = +0.10 #+0.20      # [m]
+        min_y_p = -0.10 #-0.20      # [m]
 
         # Ground Reaction Forces : clipped to (min, max), not clipped if set to None
-        std_xy_F = (10 / 2)  # [N]
-        max_xy_F = None      # [N]
-        min_xy_F = None      # [N]
+        # mean and std are scale by mass*gravity
+        std_xy_F = 0.025     # [% of gravity]   # 5  
+        max_xy_F = None      # [% of gravity]
+        min_xy_F = None      # [% of gravity]
 
-        mean_z_F = (200 / 2) # [N] : 200/2 ~= 20[kg_aliengo] * 9.81 [m/s²] / 2 [leg in contact]
-        std_z_F = mean_z_F/5   # [N]
-        max_z_F = None       # [N]
-        min_z_F = 0          # [N]
+        mean_z_F = 0.0       # [% of gravity]   # 100 
+        std_z_F  = 0.1       # [% of gravity]   # 20
+        max_z_F  = None      # [% of gravity]
+        min_z_F  = None      # [% of gravity]   # 0
 
 
     actionNormalizationCfg = ActionNormalizationCfg()

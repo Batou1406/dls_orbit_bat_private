@@ -15,7 +15,7 @@ from omni.isaac.lab_assets.unitree import UNITREE_ALIENGO_CFG, UNITREE_GO2_CFG, 
 from omni.isaac.lab_assets.anymal import ANYMAL_C_CFG  # isort: skip
 
 from omni.isaac.lab.terrains.config.climb import STAIRS_TERRAINS_CFG
-from omni.isaac.lab.terrains import TerrainImporterUniformDifficulty
+from omni.isaac.lab.terrains import TerrainImporterUniformDifficulty, randomTerrainImporter
 
 from omni.isaac.lab.managers import CurriculumTermCfg as CurrTerm
 import omni.isaac.lab_tasks.manager_based.locomotion.model_based.mdp as mdp
@@ -27,12 +27,14 @@ class UnitreeAliengoClimbEnvCfg(LocomotionModelBasedEnvCfg):
         # --- Select the Climb terrain -> Must be done before super().__post_init__() otherwise it won't load the terrain properly
         self.scene.terrain.terrain_generator = STAIRS_TERRAINS_CFG
         self.scene.terrain.class_type = TerrainImporterUniformDifficulty
+        # self.scene.terrain.class_type = randomTerrainImporter  # -> for DAgger
 
         self.curriculum.terrain_levels = CurrTerm(func=mdp.climb_terrain_curriculum)
 
 
         """ ----- Reward and Event Curriculum ----- """
         frequency_variation_curriculum = True
+        # frequency_variation_curriculum = False # -> for Dagger
 
         if frequency_variation_curriculum :
             num_iter_activate = 800
@@ -59,7 +61,7 @@ class UnitreeAliengoClimbEnvCfg(LocomotionModelBasedEnvCfg):
 
 
         """ ----- Commands ----- """
-        self.commands.base_velocity.ranges.for_vel_b = ( 0.3, 0.5)
+        self.commands.base_velocity.ranges.for_vel_b = ( 0.4, 0.6) #(0.3, 0.5) until 21/09
         self.commands.base_velocity.ranges.lat_vel_b = (-0.1, 0.1)
         self.commands.base_velocity.ranges.ang_vel_b = (-0.0, 0.0)
         self.commands.base_velocity.ranges.initial_heading_err = (0.0, 0.0)
@@ -126,47 +128,93 @@ class UnitreeAliengoClimbEnvCfg(LocomotionModelBasedEnvCfg):
 
 
         """ ----- rewards ----- """
-        # -- task
-        self.rewards.track_lin_vel_xy_exp                = None
-        self.rewards.track_soft_vel_xy_exp.weight        = 1.5
-        self.rewards.track_ang_vel_z_exp.weight          = 0.75
-        self.rewards.track_robot_height_exp              = None 
+        training = 'base_policy' # 'normal' or 'play_eval'
 
-        # -- Additionnal penalties : Need a negative weight
-        self.rewards.penalty_lin_vel_z_l2.weight         = -2.0 #-2.0
-        self.rewards.penalty_ang_vel_xy_l2.weight        = -0.05 #-0.10 #-0.05
-        self.rewards.penalty_dof_torques_l2.weight       = -0.00005 # -0.0001 None
-        self.rewards.penalty_dof_acc_l2                  = None # -1.0e-07 TODO test
-        self.rewards.penalty_action_rate_l2              = None
-        self.rewards.undesired_contacts.weight           = -1.0
-        self.rewards.flat_orientation_l2                 = None
-        self.rewards.dof_pos_limits.weight               = -1.0 # None # -2.0 
-        self.rewards.penalty_friction                    = None #-0.25
-        self.rewards.penalty_stance_foot_vel.weight      = -0.3#-0.4 #-0.2
-        self.rewards.penalty_CoT                         = None
-        self.rewards.penalty_close_feet                  = None
+        if training == 'normal' :
+            # -- task
+            self.rewards.track_lin_vel_xy_exp                = None
+            self.rewards.track_soft_vel_xy_exp.weight        = 1.5
+            self.rewards.track_ang_vel_z_exp.weight          = 0.75
+            self.rewards.track_robot_height_exp              = None 
 
-        # -- Model based penalty : Positive weight -> penalty is already negative
-        self.rewards.penalty_leg_frequency.weight        = 1.0
-        self.rewards.penalty_leg_duty_cycle              = None
-        self.rewards.penalty_large_force                 = None
-        self.rewards.penalty_large_step                  = None
-        self.rewards.penalty_frequency_variation.weight  = 0.0 #1.0
-        self.rewards.penatly_duty_cycle_variation.weight = 0.0 #2.5
-        self.rewards.penalty_step_variation.weight       = 0.0 #2.5
-        self.rewards.penatly_force_variation.weight      = 0.0 #1e-4 #4e-5
-        # self.rewards.penalty_leg_frequency               = None
-        # self.rewards.penalty_leg_duty_cycle              = None
-        # self.rewards.penalty_large_force                 = None
-        # self.rewards.penalty_large_step                  = None
-        # self.rewards.penalty_frequency_variation         = None
-        # self.rewards.penatly_duty_cycle_variation        = None
-        # self.rewards.penalty_step_variation              = None
-        # self.rewards.penatly_force_variation             = None #4e-5
+            # -- Additionnal penalties : Need a negative weight
+            self.rewards.penalty_lin_vel_z_l2.weight         = -2.0 #-2.0
+            self.rewards.penalty_ang_vel_xy_l2.weight        = -0.05 #-0.10 #-0.05
+            self.rewards.penalty_dof_torques_l2.weight       = -0.00005 # -0.0001 None
+            self.rewards.penalty_dof_acc_l2                  = None # -1.0e-07 TODO test
+            self.rewards.penalty_action_rate_l2              = None
+            self.rewards.undesired_contacts.weight           = -1.0
+            self.rewards.flat_orientation_l2                 = None
+            self.rewards.dof_pos_limits.weight               = -1.0 # None # -2.0 
+            self.rewards.penalty_friction                    = None #-0.25
+            self.rewards.penalty_stance_foot_vel.weight      = -0.3#-0.4 #-0.2
+            self.rewards.penalty_CoT                         = None
+            self.rewards.penalty_close_feet                  = None
+            self.rewards.penalize_foot_trac_err.weight       = -1.0
+            self.rewards.penalty_constraint_violation        = None
 
-        # -- Additionnal Reward : Need a positive weight
-        self.rewards.reward_is_alive                     = None
-        self.rewards.penalty_failed                      = None
+            # -- Model based penalty : Positive weight -> penalty is already negative
+            self.rewards.penalty_leg_frequency.weight        = 1.0
+            self.rewards.penalty_leg_duty_cycle              = None
+            self.rewards.penalty_large_force                 = None
+            self.rewards.penalty_large_step                  = None
+            self.rewards.penalty_frequency_variation.weight  = 0.0 #1.0
+            self.rewards.penatly_duty_cycle_variation.weight = 0.0 #2.5
+            self.rewards.penalty_step_variation.weight       = 0.0 #2.5
+            self.rewards.penatly_force_variation.weight      = 0.0 #1e-4 #4e-5
+            # self.rewards.penalty_leg_frequency               = None
+            # self.rewards.penalty_leg_duty_cycle              = None
+            # self.rewards.penalty_large_force                 = None
+            # self.rewards.penalty_large_step                  = None
+            # self.rewards.penalty_frequency_variation         = None
+            # self.rewards.penatly_duty_cycle_variation        = None
+            # self.rewards.penalty_step_variation              = None
+            # self.rewards.penatly_force_variation             = None #4e-5
+
+            # -- Additionnal Reward : Need a positive weight
+            self.rewards.reward_is_alive                     = None
+            self.rewards.penalty_failed                      = None
+
+
+        if training == 'base_policy' :
+            # -- task
+            self.rewards.track_lin_vel_xy_exp.weight         = 1.5
+            self.rewards.track_soft_vel_xy_exp               = None
+            self.rewards.track_ang_vel_z_exp.weight          = 0.75
+            self.rewards.track_robot_height_exp.weight       = 0.2
+
+            # -- Additionnal penalties : Need a negative weight
+            self.rewards.penalty_lin_vel_z_l2.weight         = -2.0
+            self.rewards.penalty_ang_vel_xy_l2.weight        = -0.05
+            self.rewards.penalty_dof_torques_l2.weight       = -0.00001
+            self.rewards.penalty_dof_acc_l2                  = None
+            self.rewards.penalty_action_rate_l2              = None
+            self.rewards.undesired_contacts                  = None
+            self.rewards.flat_orientation_l2                 = None
+            self.rewards.dof_pos_limits.weight               = -3.0
+            self.rewards.penalty_friction                    = None
+            self.rewards.penalty_stance_foot_vel             = None
+            self.rewards.penalty_CoT                         = None
+            self.rewards.penalty_close_feet                  = None
+            self.rewards.penalize_foot_trac_err              = None
+            self.rewards.penalty_constraint_violation        = None
+
+            # -- Model based penalty : Positive weight -> penalty is already negative
+            self.rewards.penalty_leg_frequency.weight        = 0.0
+            self.rewards.penalty_leg_duty_cycle.weight       = 0.0
+            self.rewards.penalty_large_force                 = None
+            self.rewards.penalty_large_step                  = None
+            # self.rewards.penalty_large_step.weight                  = 0.0
+            self.rewards.penalty_frequency_variation.weight  = 0.5 #1.0
+            self.rewards.penatly_duty_cycle_variation.weight = 1.0 #2.5
+            self.rewards.penalty_step_variation.weight       = 1.0 #2.5
+            self.rewards.penatly_force_variation.weight      = 2.5e-5 #1e-4
+
+            # Curriculum update
+            self.rewards.penalty_leg_frequency.params  = {"action_name": "model_base_variable", "bound": (0.6,2.0)}
+            self.curriculum.penalty_leg_frequency_curr = CurrTerm(func=mdp.modify_reward_weight, params={"term_name": "penalty_leg_frequency", "weight": 1.0, "num_steps": (400*24)})
+            self.rewards.penalty_leg_duty_cycle.params  = params={"action_name": "model_base_variable", "bound": (0.35,0.7)}
+            self.curriculum.penalty_leg_duty_cycle_curr = CurrTerm(func=mdp.modify_reward_weight, params={"term_name": "penalty_leg_duty_cycle", "weight": 1.0, "num_steps": (400*24)})
 
 
         """ ----- terminations ----- """

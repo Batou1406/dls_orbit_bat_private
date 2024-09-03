@@ -27,7 +27,10 @@ parser.add_argument("--controller_name", type=str,  default='Isaac-Model-Based-B
 # parser.add_argument("--model_name", type=str,       default='baseTaskNoise5ActGood1/model1',   help="Name of the model to load (in /model/controller/)")
 # parser.add_argument("--model_name", type=str,       default='baseGiulio2/model1',   help="Name of the model to load (in /model/controller/)")
 # parser.add_argument("--model_name", type=str,       default='test1/modelDagger1',   help="Name of the model to load (in /model/controller/)")
-parser.add_argument("--model_name", type=str,       default='goodPolicy1/dagger50hz4Act',   help="Name of the model to load (in /model/controller/)")
+# parser.add_argument("--model_name", type=str,       default='goodPolicy1/dagger50hz4Act',   help="Name of the model to load (in /model/controller/)")
+# parser.add_argument("--model_name", type=str,       default='dagger50hz5Act/dagger50hz5Act',   help="Name of the model to load (in /model/controller/)")
+parser.add_argument("--model_name", type=str,       default='goodRoughPolicySingleAct/model_14999',   help="Name of the model to load (in /model/controller/)")
+
 
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
@@ -45,10 +48,6 @@ import gymnasium as gym
 import os
 import torch
 import torch.distributions.constraints
-
-# Jax prealoccate memory
-import os
-os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 
 from rsl_rl.runners import OnPolicyRunner
 
@@ -114,20 +113,12 @@ def main():
     # reset environment
     obs, _ = env.get_observations()
 
-    abs_list = []
     # simulate environment
     while simulation_app.is_running():
         # run everything in inference mode
         with torch.inference_mode():
             # agent stepping
             actions = policy(obs)
-
-            # abs_list.append(torch.sum(actions[0,256].abs()).cpu())
-            # if(len(abs_list)>80):
-            #     plt.plot(abs_list)
-            #     plt.yscale("log")
-            #     plt.show()
-            #     return 
 
             # env stepping
             obs, _, _, _ = env.step(actions) 

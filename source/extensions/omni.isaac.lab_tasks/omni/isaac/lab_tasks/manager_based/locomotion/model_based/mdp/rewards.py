@@ -84,7 +84,7 @@ def penalize_large_steps_L1(env: ManagerBasedRLEnv, action_name: str, bound_x: t
         - penalty (torch.Tensor): penalty term in ]-inf, 0] for leg step size outside bound of shape(batch_size)
     """
     # Shape (batch_size, num_legs, 3, number_predict step) -> (batch_size, num_legs, 2)
-    p:torch.Tensor = env.action_manager.get_term(action_name).p_norm[...,0]
+    p:torch.Tensor = env.action_manager.get_term(action_name).delta_p_h[...,0]
 
     penalty_x = -torch.sum(torch.abs(p[:,:,0]-p[:,:,0].clamp(bound_x[0], bound_x[1])), dim=1)
     penalty_y = -torch.sum(torch.abs(p[:,:,1]-p[:,:,1].clamp(bound_y[0], bound_y[1])), dim=1)
@@ -104,7 +104,7 @@ def penalize_large_Forces_L1(env: ManagerBasedRLEnv, action_name: str, bound: tu
         - penalty (torch.Tensor): penalty term in ]-inf, 0] for Forces outside bound of shape(batch_size)
     """
     #shape (batch_size, num_legs, 3, time_horizon) ->(batch_size, num_legs, 3)
-    F:torch.Tensor = env.action_manager.get_term(action_name).F_lw[...,0]
+    F:torch.Tensor = env.action_manager.get_term(action_name).F0_star_lw
 
     # Compute the norm -> shape(batch_size, num_legs)
     F = torch.linalg.vector_norm(F, dim=2)
@@ -127,6 +127,10 @@ def penalize_frequency_variation_L2(env: ManagerBasedRLEnv, action_name: str) ->
     f      = action.f.flatten(1,-1)
     f_prev = action.f_prev.flatten(1,-1)
 
+    if f.shape[0] > env.num_envs: 
+        f = f[:env.num_envs,...] 
+        f_prev = f_prev[:env.num_envs,...] 
+
     penalty = -torch.sum(torch.square(f-f_prev), dim=1)
 
     return penalty
@@ -142,6 +146,10 @@ def penalize_duty_cycle_variation_L2(env: ManagerBasedRLEnv, action_name: str) -
     d:     torch.Tensor = env.action_manager.get_term(action_name).d.flatten(1,-1)
     d_prev:torch.Tensor = env.action_manager.get_term(action_name).d_prev.flatten(1,-1)
 
+    if d.shape[0] > env.num_envs: 
+        d = d[:env.num_envs,...] 
+        d_prev = d_prev[:env.num_envs,...] 
+
     penalty = -torch.sum(torch.square(d-d_prev), dim=1)
 
     return penalty
@@ -154,8 +162,12 @@ def penalize_steps_variation_L2(env: ManagerBasedRLEnv, action_name: str) -> tor
         - penalty (torch.Tensor): penalty term in ]-inf, 0] for step variation of shape(batch_size)
     """
     # Shape (batch_size, num_legs, 3, number_predict step) -> (batch_size, num_legs * 3 * number_predict_step)
-    p:     torch.Tensor = env.action_manager.get_term(action_name).p_norm.flatten(1,-1)
-    p_prev:torch.Tensor = env.action_manager.get_term(action_name).p_norm_prev.flatten(1,-1)
+    p:     torch.Tensor = env.action_manager.get_term(action_name).delta_p_h.flatten(1,-1)
+    p_prev:torch.Tensor = env.action_manager.get_term(action_name).delta_p_h_prev.flatten(1,-1)
+
+    if p.shape[0] > env.num_envs: 
+        p = p[:env.num_envs,...] 
+        p_prev = p_prev[:env.num_envs,...] 
 
     penalty = -torch.sum(torch.square(p-p_prev), dim=1)
 
@@ -172,8 +184,14 @@ def penalize_Forces_variation_L2(env: ManagerBasedRLEnv, action_name: str) -> to
     action : ModelBaseAction = env.action_manager.get_term(action_name)
 
     # Shape (batch_size, num_legs, 3, prediction_horizon) -> (batch_size, num_legs * 3 * prediction_horizon)
-    F:     torch.Tensor = action.F_norm.flatten(1,-1)
-    F_prev:torch.Tensor = action.F_norm_prev.flatten(1,-1)
+    # F:     torch.Tensor = action.delta_F_h.flatten(1,-1)
+    # F_prev:torch.Tensor = action.delta_F_h_prev.flatten(1,-1)
+    F:     torch.Tensor = action.F_raw.flatten(1,-1)
+    F_prev:torch.Tensor = action.F_raw_prev.flatten(1,-1)
+
+    if F.shape[0] > env.num_envs: 
+        F = F[:env.num_envs,...] 
+        F_prev = F_prev[:env.num_envs,...] 
 
     penalty = -torch.sum(torch.square(F-F_prev), dim=1)
 
@@ -221,7 +239,7 @@ def penalize_foot_in_contact_displacement_l2(env: ManagerBasedRLEnv, actionName:
     p_dot_w = torch.norm(robot.data.body_lin_vel_w[:, action.foot_idx,:], dim=2)
 
     # Retrieve which foot is in contact : True if foot in contact, False in in swing, shape (batch_size, num_legs)
-    in_contact = action.c_star[:,:,0] == 1
+    in_contact = action.c0_star == 1
 
     # Sum the foot velocity for only for legs in contact : shape(batch_size)
     penalty = torch.sum(p_dot_w * in_contact, dim=1)
@@ -454,4 +472,73 @@ def penalize_close_feet(env: ManagerBasedRLEnv, assetName: str="robot", threshol
         penalty = torch.sum(foot_distances_diag < threshold,dim=1).float()
 
     return penalty
+
+
+def penalize_foot_trajectory_tracking_error(env: ManagerBasedRLEnv, assetName: str="robot", actionName: str="model_base_variable", footName: str=".*foot"): 
+    """ Penalize for error between the desired foot touch down position and the actual foot touch down position (in the xy plane only)
+
+    Args :
+        assetName        (str): Name of the 'robot' in the scene manage
+        actionName       (str): Name of the action term (ModelBasedAction) in the action manager
+        footName         (str): Regex Epression to retrieve the foot indexes in the robot 'articulation'
+
+    Returns :
+        penalty (torch.Tensor): penalty term in [0, +inf]
+    """
+    # extract the used quantities (to enable type-hinting)
+    robot: Articulation = env.scene[assetName]
+    action: ModelBaseAction = env.action_manager.get_term(actionName)
+
+    # Retrieve the foot idx
+    foot_idx = robot.find_bodies(footName)[0]
+
+   # Retrieve foot position in local world frame
+    foot_xy_pos_lw = robot.data.body_pos_w[:,foot_idx,:2] - env.scene.env_origins[:,:2].unsqueeze(1)  # shape (num_envs, num_foot, 2)
+
+    # Retrieve foot desired trajectory in local world frame
+    pt0_star_xy_lw = action.pt_star_lw[:,:,:2,0] # shape (num_envs, num_foot, 2)
+
+    # Compute the penalty for the leg in swing
+    penalty = torch.sum((~action.c0_star) * torch.sum(torch.square(foot_xy_pos_lw - pt0_star_xy_lw), dim=-1), dim=-1) # shape (num_envs, num_foot, 2) -> (num_envs, num_foot) -> (num_envs)
+
+    return penalty
+
+
+def penalize_constraint_violation(env: ManagerBasedRLEnv, actionName: str="model_base_variable"):
+    """
+    TODO
+    """
+    action: ModelBaseAction = env.action_manager.get_term(actionName)
+
+    raw_action = action.raw_actions             # shape(num_envs, 28)
+    applied_action = action.RL_applied_actions  # shape(num_envs, 28) (raw->normalized->transformed->constrained->inv_transform->inv_normalized)
+
+    return torch.sum(torch.square(raw_action - applied_action), dim=-1)
+
+
+def penalize_sampling_controller_cost(env: ManagerBasedRLEnv, actionName: str="model_base_variable"):
+    """
+    Penalize for the cost of the rollout computed by the sampling controller
+
+    Return 
+        penalty (torch.Tensor): Penalty in [0, +1e10]
+    """
+    action: ModelBaseAction = env.action_manager.get_term(actionName)
+
+    rollout_cost = action.controller.batched_cost # shape(num_envs)
+
+    # Diminish the influence of execcesivly high rollout cost (replace 1e3 by 1e5)
+    rollout_cost[rollout_cost > 1e4] = 1e4 + torch.sqrt(rollout_cost[rollout_cost > 1e4] - 1e4) # This clamp the maximal value below 5*1e3
+
+    # Scale down to avoid overflow when summed along the episode
+    rollout_cost = (rollout_cost*(1e-3)).clamp(min=0,max=200) #5
+
+    return rollout_cost
+
+
+
+
+
+
+
 
