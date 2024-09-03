@@ -80,7 +80,7 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
             # self.commands.base_velocity.initial_difficulty = 0.2
             # self.commands.base_velocity.minmum_difficulty = 0.2
             # self.commands.base_velocity.difficulty_scaling = 0.1
-            self.commands.base_velocity.initial_difficulty = 0.3
+            self.commands.base_velocity.initial_difficulty = 0.99
             self.commands.base_velocity.minmum_difficulty = 0.3
             self.commands.base_velocity.difficulty_scaling = 0.2
         else :
@@ -231,20 +231,21 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
             self.rewards.track_lin_vel_xy_exp.weight         = 1.5
             self.rewards.track_soft_vel_xy_exp               = None
             self.rewards.track_ang_vel_z_exp.weight          = 0.75
-            self.rewards.track_robot_height_exp              = None
-
+            self.rewards.track_robot_height_exp.weight       = 0.1
+            self.rewards.track_robot_height_exp.params['height_bound'] = (-0.015,0.015) 
+            self.rewards.track_robot_height_exp.params['target_height'] = 0.4
             # -- Additionnal penalties : Need a negative weight
-            self.rewards.penalty_lin_vel_z_l2.weight         = -0.1   #Good weight -0.5
+            self.rewards.penalty_lin_vel_z_l2.weight         = -0.25   #Good weight -0.5
             self.rewards.penalty_ang_vel_xy_l2.weight        = -0.025
             self.rewards.penalty_dof_torques_l2.weight       = -0.00001
             self.rewards.penalty_dof_acc_l2.weight           = -2.5e-8
             self.rewards.penalty_action_rate_l2              = None
             self.rewards.undesired_contacts                  = None
-            self.rewards.flat_orientation_l2.weight          = -0.1
+            self.rewards.flat_orientation_l2.weight          = -0.5
             self.rewards.dof_pos_limits.weight               = -3.0
             self.rewards.penalty_friction                    = None
             self.rewards.penalty_stance_foot_vel             = None
-            self.rewards.penalty_CoT.weight                  = -0.15
+            self.rewards.penalty_CoT.weight                  = -0.12
             self.rewards.penalty_close_feet                  = None
             self.rewards.penalize_foot_trac_err              = None
             self.rewards.penalty_constraint_violation        = None
@@ -254,11 +255,10 @@ class UnitreeAliengoSpeedEnvCfg(LocomotionModelBasedEnvCfg):
             self.rewards.penalty_leg_duty_cycle.weight       = 0.0
             self.rewards.penalty_large_force                 = None
             self.rewards.penalty_large_step                  = None
-            # self.rewards.penalty_large_step.weight                  = 0.0
-            self.rewards.penalty_frequency_variation.weight  = 0.5 #1.0
-            self.rewards.penatly_duty_cycle_variation.weight = 1.0 #2.5
-            self.rewards.penalty_step_variation.weight       = 1.0 #2.5
-            self.rewards.penatly_force_variation.weight      = 2.5e-5 #1e-4
+            self.rewards.penalty_frequency_variation.weight  = 0.5 
+            self.rewards.penatly_duty_cycle_variation.weight = 1.0 
+            self.rewards.penalty_step_variation.weight       = 1.0 
+            self.rewards.penatly_force_variation.weight      = 2.5e-5
 
             self.rewards.penalty_leg_frequency.params   = {"action_name": "model_base_variable", "bound": (0.6,2.0)}
             self.curriculum.penalty_leg_frequency_curr  = CurrTerm(func=modify_reward_weight, params={"term_name": "penalty_leg_frequency", "weight": 1.0, "num_steps": (1000*24)})
