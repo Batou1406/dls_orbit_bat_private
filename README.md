@@ -1,3 +1,52 @@
+# Master Thesis - Specific Documentation
+
+
+This lists the different implementations done during the course of the project. The different implementations are essentially in two folders :
+- [source/extension/.../locomotion/model_based](/source/extensions/omni.isaac.lab_tasks/omni/isaac/lab_tasks/manager_based/locomotion/model_based) : contains the controller implementation, with the RL part, the environment, the sampling controller, etc. 
+- [source/standalone/.../dls_lib](source/standalone/workflows/dls_lib) : contains the executing files that can train/play/evaluate a policy
+In the following, the implementations done will be exhaustively listed
+
+[MDP](/source/extensions/omni.isaac.lab_tasks/omni/isaac/lab_tasks/manager_based/locomotion/model_based/mdp)
+- [actions](/source/extensions/omni.isaac.lab_tasks/omni/isaac/lab_tasks/manager_based/locomotion/model_based/mdp/actions) : Folder that contains the different action term
+   - [actions_cfg.py](/source/extensions/omni.isaac.lab_tasks/omni/isaac/lab_tasks/manager_based/locomotion/model_based/mdp/actions/actions_cfg.py)
+   - [helper.py](/source/extensions/omni.isaac.lab_tasks/omni/isaac/lab_tasks/manager_based/locomotion/model_based/mdp/actions/helper.py)
+   - [model_based_actions.py](/source/extensions/omni.isaac.lab_tasks/omni/isaac/lab_tasks/manager_based/locomotion/model_based/mdp/actions/model_based_actions.py) : Action term - controlled h
+   - [model_based_controller.py](/source/extensions/omni.isaac.lab_tasks/omni/isaac/lab_tasks/manager_based/locomotion/model_based/mdp/actions/model_based_controller.py)
+- [rewards.py](/source/extensions/omni.isaac.lab_tasks/omni/isaac/lab_tasks/manager_based/locomotion/model_based/mdp/rewards.py)
+   - `penalize_large_leg_frequency_L1`
+   - `penalize_large_leg_duty_cycle_L1`
+   - `penalize_large_steps_L1`
+   - `penalize_large_Forces_L1`
+   - `penalize_frequency_variation_L2`
+   - `penalize_duty_cycle_variation_L2`
+   - `penalize_steps_variation_L2`
+   - `penalize_Forces_variation_L2`
+   - `friction_constraint`
+   - `penalize_foot_in_contact_displacement_l2`
+   - `reward_terrain_progress`
+   - `penalize_cost_of_transport`
+   - `soft_track_lin_vel_xy_exp`
+   - `track_proprioceptive_height_exp`
+   - `penalize_close_feet`
+   - `penalize_foot_trajectory_tracking_error`
+   - `penalize_constraint_violation`
+   - `penalize_sampling_controller_cost`
+- [observations.py](/source/extensions/omni.isaac.lab_tasks/omni/isaac/lab_tasks/manager_based/locomotion/model_based/mdp/observations.py)
+   - `leg_phase`
+   - `leg_contact`
+   - `last_model_base_action`
+- [terminations.py](/source/extensions/omni.isaac.lab_tasks/omni/isaac/lab_tasks/manager_based/locomotion/model_based/mdp/terminations.py)
+   - `base_height_bounded`
+- [curriculums.py](/source/extensions/omni.isaac.lab_tasks/omni/isaac/lab_tasks/manager_based/locomotion/model_based/mdp/curriculums.py)
+   - `terrain_levels_vel`
+   - `improved_terrain_levels_vel`
+   - `climb_terrain_curriculum`
+   - `speed_command_levels_walked_distance`
+   - `speed_command_levels_tracking_rewards`
+   - `speed_command_levels_fast_walked_distance`
+
+
+---
 ![Isaac Lab](docs/source/_static/isaaclab.jpg)
 
 ---
