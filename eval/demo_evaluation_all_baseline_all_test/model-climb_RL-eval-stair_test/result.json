@@ -1,0 +1,14 @@
+{
+    "model-climb_RL-eval-stair_test": {
+        "eval_name": "model-climb_RL-eval-stair_test",
+        "number_eval_steps": 20000,
+        "cumulated_reward": 22.576715702677284,
+        "trajectory_length": 11.923792113895214,
+        "survived": 0.69008099190081,
+        "average_speed": 0.2603810905891336,
+        "cumulated_distance": 3.038645577664948,
+        "cost_of_transport": 9.315812048602373,
+        "stairs_cleared": 0.0,
+        "terrain_difficulty": 5.0
+    }
+}

@@ -58,14 +58,11 @@ _build
 **/logs/*
 **/recordings/*
 
-# Bat
-**/batTuto/*
-
+# DLS related folder
 dataset/*
 model/*
+live_variable/*
+eval/*
 
-**/quadrupedpympc/*
-
-live_variable/
-
-eval/
+# Keep examples
+!eval/demo_evaluation_all_baseline_all_test

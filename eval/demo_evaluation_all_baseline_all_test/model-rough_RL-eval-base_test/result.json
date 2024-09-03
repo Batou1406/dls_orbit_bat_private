@@ -1,0 +1,86 @@
+{
+    "model-climb_RL-eval-stair_test": {
+        "eval_name": "model-climb_RL-eval-stair_test",
+        "number_eval_steps": 20000,
+        "cumulated_reward": 22.576715702677284,
+        "trajectory_length": 11.923792113895214,
+        "survived": 0.69008099190081,
+        "average_speed": 0.2603810905891336,
+        "cumulated_distance": 3.038645577664948,
+        "cost_of_transport": 9.315812048602373,
+        "stairs_cleared": 0.0,
+        "terrain_difficulty": 5.0
+    },
+    "model-base_RL-eval-stair_test": {
+        "eval_name": "model-base_RL-eval-stair_test",
+        "number_eval_steps": 20000,
+        "cumulated_reward": 8.972076162458318,
+        "trajectory_length": 4.645025625413097,
+        "survived": 0.11095007246738968,
+        "average_speed": 0.3965029433355487,
+        "cumulated_distance": 1.8153079702353225,
+        "cost_of_transport": 9.068283033600942,
+        "stairs_cleared": 0.0,
+        "terrain_difficulty": 5.0
+    },
+    "model-rough_RL-eval-stair_test": {
+        "eval_name": "model-rough_RL-eval-stair_test",
+        "number_eval_steps": 20000,
+        "cumulated_reward": 16.289557171120567,
+        "trajectory_length": 10.92304077901495,
+        "survived": 0.4632610216934919,
+        "average_speed": 0.21564902658002158,
+        "cumulated_distance": 2.3379484510296322,
+        "cost_of_transport": 10.762840020052376,
+        "stairs_cleared": 0.0,
+        "terrain_difficulty": 4.0
+    },
+    "model-speed_RL-eval-stair_test": {
+        "eval_name": "model-speed_RL-eval-stair_test",
+        "number_eval_steps": 20000,
+        "cumulated_reward": 7.487715304706397,
+        "trajectory_length": 4.499758799268253,
+        "survived": 0.09533648170011806,
+        "average_speed": 0.38522769709362176,
+        "cumulated_distance": 1.7306534271402851,
+        "cost_of_transport": 9.423755762386818,
+        "stairs_cleared": 0.0,
+        "terrain_difficulty": 5.0
+    },
+    "model-climb_RL-eval-base_test": {
+        "eval_name": "model-climb_RL-eval-base_test",
+        "number_eval_steps": 20000,
+        "cumulated_reward": 26.47204243979255,
+        "trajectory_length": 14.694138198704637,
+        "survived": 0.9530253159413222,
+        "average_speed": 0.37094999913012244,
+        "cumulated_distance": 5.454691582269416,
+        "cost_of_transport": 4.987527452841909,
+        "stairs_cleared": 12.0,
+        "terrain_difficulty": 0.0
+    },
+    "model-base_RL-eval-base_test": {
+        "eval_name": "model-base_RL-eval-base_test",
+        "number_eval_steps": 20000,
+        "cumulated_reward": 34.816052945271316,
+        "trajectory_length": 14.942224476726551,
+        "survived": 0.9911702473958334,
+        "average_speed": 0.4959428441276638,
+        "cumulated_distance": 7.409834260164644,
+        "cost_of_transport": 3.3140230108547257,
+        "stairs_cleared": 5.0,
+        "terrain_difficulty": 0.0
+    },
+    "model-rough_RL-eval-base_test": {
+        "eval_name": "model-rough_RL-eval-base_test",
+        "number_eval_steps": 20000,
+        "cumulated_reward": 28.8555912439204,
+        "trajectory_length": 14.879410027303331,
+        "survived": 0.9793319500386509,
+        "average_speed": 0.40435281211125407,
+        "cumulated_distance": 6.014493640319893,
+        "cost_of_transport": 7.588256205024069,
+        "stairs_cleared": 3.0,
+        "terrain_difficulty": 0.0
+    }
+}
