@@ -6,6 +6,34 @@ This lists the different implementations done during the course of the project. 
 - [source/standalone/.../dls_lib](source/standalone/workflows/dls_lib) : contains the executing files that can train/play/evaluate a policy
 In the following, the implementations done will be exhaustively listed
 
+## How to run
+#### Train a policy
+Policies are trained using the library [RSL_RL](https://github.com/leggedrobotics/rsl_rl), which can be shipped with the IsaacLab installation. A policy can be trained with the following line
+```
+python source/standalone/workflows/rsl_rl/train.py --task Isaac-Model-Based-Speed-Aliengo-v0  --num_envs 4096 --headless
+```
+the flag `--help` display the different arguments available. The `--task` argument refers to the task for which a policy will be trained for. A task is a gymnasium registered environment and is composed of an environment (with the observation, action, terrain configuration, reward function, etc.) and a learning algorithm (PPO) with its parameters. 
+
+The tasks are registered [here](source/extensions/omni.isaac.lab_tasks/omni/isaac/lab_tasks/manager_based/locomotion/model_based/config/unitree_aliengo/__init__.py) and the following tasks are available :
+- `Isaac-Model-Based-Base-Aliengo-v0` associated with the environment [aliengo_base_env_cfg.py](source/extensions/omni.isaac.lab_tasks/omni/isaac/lab_tasks/manager_based/locomotion/model_based/config/unitree_aliengo/aliengo_base_env_cfg.py) and the algorithm [UnitreeAliengoBasePPORunnerCfg](/source/extensions/omni.isaac.lab_tasks/omni/isaac/lab_tasks/manager_based/locomotion/model_based/config/unitree_aliengo/agents/rsl_rl_cfg.py#L15C7-L15C37)
+- `Isaac-Model-Based-Rough-Aliengo-v0` associated with the environment [aliengo_rough_env_cfg.py](source/extensions/omni.isaac.lab_tasks/omni/isaac/lab_tasks/manager_based/locomotion/model_based/config/unitree_aliengo/aliengo_rough_env_cfg.py) and the algorithm [UnitreeAliengoRoughPPORunnerCfg](source/extensions/omni.isaac.lab_tasks/omni/isaac/lab_tasks/manager_based/locomotion/model_based/config/unitree_aliengo/agents/rsl_rl_cfg.py#L45C7-L45C38) 
+- `Isaac-Model-Based-Speed-Aliengo-v0` associated with the environment [aliengo_speed_env_cfg.py](source/extensions/omni.isaac.lab_tasks/omni/isaac/lab_tasks/manager_based/locomotion/model_based/config/unitree_aliengo/aliengo_speed_env_cfg.py) and the algorithm [UnitreeAliengoSpeedPPORunnerCfg](/source/extensions/omni.isaac.lab_tasks/omni/isaac/lab_tasks/manager_based/locomotion/model_based/config/unitree_aliengo/agents/rsl_rl_cfg.py#L75) 
+- `Isaac-Model-Based-Climb-Aliengo-v0` associated with the environment [aliengo_climb_env_cfg.py](source/extensions/omni.isaac.lab_tasks/omni/isaac/lab_tasks/manager_based/locomotion/model_based/config/unitree_aliengo/aliengo_climb_env_cfg.py) and the algorithm [UnitreeAliengoClimbPPORunnerCfg](/source/extensions/omni.isaac.lab_tasks/omni/isaac/lab_tasks/manager_based/locomotion/model_based/config/unitree_aliengo/agents/rsl_rl_cfg.py#L105) 
+
+#### Play a policy 
+
+#### Run evaluations
+
+#### Train an imitation policy with DAgger
+
+#### Live plot
+```
+python3 live_plot/live_plot_all.py
+```
+When the sampling controller is running and the [live_plot flag](/source/extensions/omni.isaac.lab_tasks/omni/isaac/lab_tasks/manager_based/locomotion/model_based/mdp/actions/model_base_controller.py#L798) is set ( :warning: one flag per controller :warning: ), variables of interest are saved into a [CSV file](/live_variable) and can be displayed live by running these scripts. 
+Live plot available are : `live_plot_all.py`, `live_plot_cost.py`, `live_plot_height.py`, `live_plot_GRF.py`
+
+## Folder architecure
 [MDP](/source/extensions/omni.isaac.lab_tasks/omni/isaac/lab_tasks/manager_based/locomotion/model_based/mdp)
 - [actions](/source/extensions/omni.isaac.lab_tasks/omni/isaac/lab_tasks/manager_based/locomotion/model_based/mdp/actions) : Folder that contains the action term with f,d,p,F actions
    - [actions_cfg.py](/source/extensions/omni.isaac.lab_tasks/omni/isaac/lab_tasks/manager_based/locomotion/model_based/mdp/actions/actions_cfg.py) : Contains the config of the action term and controllers
