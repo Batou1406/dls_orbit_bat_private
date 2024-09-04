@@ -21,6 +21,9 @@ The tasks are registered [here](source/extensions/omni.isaac.lab_tasks/omni/isaa
 - `Isaac-Model-Based-Climb-Aliengo-v0` associated with the environment [aliengo_climb_env_cfg.py](source/extensions/omni.isaac.lab_tasks/omni/isaac/lab_tasks/manager_based/locomotion/model_based/config/unitree_aliengo/aliengo_climb_env_cfg.py) and the algorithm [UnitreeAliengoClimbPPORunnerCfg](/source/extensions/omni.isaac.lab_tasks/omni/isaac/lab_tasks/manager_based/locomotion/model_based/config/unitree_aliengo/agents/rsl_rl_cfg.py#L105) 
 
 #### Play a policy 
+```
+python source/standalone/workflows/rsl_rl/play.py --task Isaac-Model-Based-Speed-Aliengo-v0  --num_envs 8 --load_run test --checkpoint speed96_model_5000
+```
 
 #### Run evaluations
 
