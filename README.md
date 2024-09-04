@@ -7,11 +7,35 @@ This lists the different implementations done during the course of the project. 
 In the following, the implementations done will be exhaustively listed
 
 [MDP](/source/extensions/omni.isaac.lab_tasks/omni/isaac/lab_tasks/manager_based/locomotion/model_based/mdp)
-- [actions](/source/extensions/omni.isaac.lab_tasks/omni/isaac/lab_tasks/manager_based/locomotion/model_based/mdp/actions) : Folder that contains the different action term
-   - [actions_cfg.py](/source/extensions/omni.isaac.lab_tasks/omni/isaac/lab_tasks/manager_based/locomotion/model_based/mdp/actions/actions_cfg.py)
-   - [helper.py](/source/extensions/omni.isaac.lab_tasks/omni/isaac/lab_tasks/manager_based/locomotion/model_based/mdp/actions/helper.py)
-   - [model_based_actions.py](/source/extensions/omni.isaac.lab_tasks/omni/isaac/lab_tasks/manager_based/locomotion/model_based/mdp/actions/model_based_actions.py) : Action term - controlled h
-   - [model_based_controller.py](/source/extensions/omni.isaac.lab_tasks/omni/isaac/lab_tasks/manager_based/locomotion/model_based/mdp/actions/model_based_controller.py)
+- [actions](/source/extensions/omni.isaac.lab_tasks/omni/isaac/lab_tasks/manager_based/locomotion/model_based/mdp/actions) : Folder that contains the action term with f,d,p,F actions
+   - [actions_cfg.py](/source/extensions/omni.isaac.lab_tasks/omni/isaac/lab_tasks/manager_based/locomotion/model_based/mdp/actions/actions_cfg.py) : Contains the config of the action term and controllers
+      - `ModelBaseActionCfg`
+      - `OptimizerCfg`
+      - `FootTrajectoryCfg`
+      - `SwingControllerCfg`
+      - `HeightScanCfg`
+      - `ActionNormalizationCfg` : parameters for the scaling/normalization of the RL actions (f,d,p,F)
+   - [helper.py](/source/extensions/omni.isaac.lab_tasks/omni/isaac/lab_tasks/manager_based/locomotion/model_based/mdp/actions/helper.py) : Contains JITted function
+      - `inverse_conjugate_euler_xyz_rate_matrix`
+      - `rotation_matrix_from_w_to_b`
+      - `gait_generator` : compute the phase and contact sequence given `f` and `d`
+      - `compute_cubic_spline` : Given spline parameters, compute the action
+      - `fit_cubic` : Given a sequence of actions, fit the (least square) spline parameters
+      - `compute_discrete` : Given a sequence of discrete actions, return the discrete action
+      - `compute_unique` : Given a unique action, return the unique action 
+      - `normal_sampling`
+      - `uniform_sampling`
+      - `enforce_friction_cone_constraints_torch`
+      - `from_zero_twopi_to_minuspi_pluspi`
+   - [model_based_actions.py](/source/extensions/omni.isaac.lab_tasks/omni/isaac/lab_tasks/manager_based/locomotion/model_based/mdp/actions/model_based_actions.py) : Action term - high level control
+      - ModelBaseAction
+   - [model_based_controller.py](/source/extensions/omni.isaac.lab_tasks/omni/isaac/lab_tasks/manager_based/locomotion/model_based/mdp/actions/model_based_controller.py) : Sampling Controller, low-level controllers
+      - `baseController` : Class for inheritance - define the basis for any controllers
+      - `modelBaseController` : controller for single obs - single act. Used for RL training
+      - `samplingController`
+      - `samplingTrainer` : Compute just one rollout - To use with RL to have the cost in the reward
+      - `SamplingOptimizer` : sampling MPC
+      - `SamplingBatchedTrainer` : vectorized sampling MPC - used only with sampling trainer to compute the rollout cost
 - [rewards.py](/source/extensions/omni.isaac.lab_tasks/omni/isaac/lab_tasks/manager_based/locomotion/model_based/mdp/rewards.py)
    - `penalize_large_leg_frequency_L1`
    - `penalize_large_leg_duty_cycle_L1`
