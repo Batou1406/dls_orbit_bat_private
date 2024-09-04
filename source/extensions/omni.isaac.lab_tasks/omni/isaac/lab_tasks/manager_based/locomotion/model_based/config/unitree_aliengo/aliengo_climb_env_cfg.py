@@ -18,6 +18,7 @@ from omni.isaac.lab.terrains.config.climb import STAIRS_TERRAINS_CFG
 from omni.isaac.lab.terrains import TerrainImporterUniformDifficulty, randomTerrainImporter
 
 from omni.isaac.lab.managers import CurriculumTermCfg as CurrTerm
+from omni.isaac.lab.managers import RewardTermCfg as RewTerm
 import omni.isaac.lab_tasks.manager_based.locomotion.model_based.mdp as mdp
 
 @configclass
@@ -33,8 +34,8 @@ class UnitreeAliengoClimbEnvCfg(LocomotionModelBasedEnvCfg):
 
 
         """ ----- Reward and Event Curriculum ----- """
-        frequency_variation_curriculum = True
-        # frequency_variation_curriculum = False # -> for Dagger
+        # frequency_variation_curriculum = True
+        frequency_variation_curriculum = False # -> for Dagger
 
         if frequency_variation_curriculum :
             num_iter_activate = 800
@@ -195,7 +196,7 @@ class UnitreeAliengoClimbEnvCfg(LocomotionModelBasedEnvCfg):
             self.rewards.penalty_friction                    = None
             self.rewards.penalty_stance_foot_vel             = None
             self.rewards.penalty_CoT                         = None
-            self.rewards.penalty_close_feet                  = None
+            self.rewards.penalty_close_feet.weight           = -0.01
             self.rewards.penalize_foot_trac_err              = None
             self.rewards.penalty_constraint_violation        = None
 
@@ -210,6 +211,8 @@ class UnitreeAliengoClimbEnvCfg(LocomotionModelBasedEnvCfg):
             self.rewards.penalty_step_variation.weight       = 1.0 #2.5
             self.rewards.penatly_force_variation.weight      = 2.5e-5 #1e-4
 
+            self.rewards.penalty_negative_velocity           = RewTerm(func=mdp.penalize_negative_velocity, weight=-0.1)
+
             # Curriculum update
             self.rewards.penalty_leg_frequency.params  = {"action_name": "model_base_variable", "bound": (0.6,2.0)}
             self.curriculum.penalty_leg_frequency_curr = CurrTerm(func=mdp.modify_reward_weight, params={"term_name": "penalty_leg_frequency", "weight": 1.0, "num_steps": (400*24)})
@@ -219,6 +222,7 @@ class UnitreeAliengoClimbEnvCfg(LocomotionModelBasedEnvCfg):
 
         """ ----- terminations ----- """
         # Augment the limit angle before reset
-        self.terminations.bad_orientation.params['limit_angle'] = 70*(3.14/180)
+        # self.terminations.bad_orientation.params['limit_angle'] = 70*(3.14/180)
+        self.terminations.bad_orientation.params['limit_angle'] = 80*(3.14/180)
 
  

@@ -406,6 +406,10 @@ def track_proprioceptive_height_exp(env: ManagerBasedRLEnv, target_height: float
     # Compute the tracking error
     tracking_error = robot_height_prop - target_height
 
+    # If there are no feet in contact, set the tracing error to 0 -> TODO not defined, need to find a better way 
+    no_feet_in_contact_idx = (feet_in_contact.sum(dim=1) == 0)
+    tracking_error[no_feet_in_contact_idx] = 0
+
     # If tolerance bound are provided adjusted error with bounds
     if height_bound is not None :
         tracking_error = torch.where(
@@ -534,6 +538,16 @@ def penalize_sampling_controller_cost(env: ManagerBasedRLEnv, actionName: str="m
     rollout_cost = (rollout_cost*(1e-3)).clamp(min=0,max=200) #5
 
     return rollout_cost
+
+def penalize_negative_velocity(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")):
+    """ Penalize a robot that goes in the opposite direction as required """
+
+    v_robot_forward = env.scene[asset_cfg.name].data.root_lin_vel_b[:, 0]    # Robot's speed in xy plane                    : shape(batch_size)
+
+    penalty = (-v_robot_forward).clamp(min=0)
+
+    return penalty
+
 
 
 
