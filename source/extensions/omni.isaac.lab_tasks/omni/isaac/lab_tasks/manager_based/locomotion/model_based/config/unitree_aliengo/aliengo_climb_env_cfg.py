@@ -196,7 +196,7 @@ class UnitreeAliengoClimbEnvCfg(LocomotionModelBasedEnvCfg):
             self.rewards.penalty_friction                    = None
             self.rewards.penalty_stance_foot_vel             = None
             self.rewards.penalty_CoT                         = None
-            self.rewards.penalty_close_feet.weight           = -0.01
+            self.rewards.penalty_close_feet.weight           = -0.1
             self.rewards.penalize_foot_trac_err              = None
             self.rewards.penalty_constraint_violation        = None
 
@@ -211,7 +211,7 @@ class UnitreeAliengoClimbEnvCfg(LocomotionModelBasedEnvCfg):
             self.rewards.penalty_step_variation.weight       = 1.0 #2.5
             self.rewards.penatly_force_variation.weight      = 2.5e-5 #1e-4
 
-            self.rewards.penalty_negative_velocity           = RewTerm(func=mdp.penalize_negative_velocity, weight=-0.1)
+            self.rewards.penalty_negative_velocity           = RewTerm(func=mdp.penalize_negative_velocity, weight=-5.0)
 
             # Curriculum update
             self.rewards.penalty_leg_frequency.params  = {"action_name": "model_base_variable", "bound": (0.6,2.0)}
