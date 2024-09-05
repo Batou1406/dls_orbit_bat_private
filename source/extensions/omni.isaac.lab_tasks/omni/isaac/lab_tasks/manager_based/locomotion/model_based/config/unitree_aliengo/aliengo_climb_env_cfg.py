@@ -70,7 +70,7 @@ class UnitreeAliengoClimbEnvCfg(LocomotionModelBasedEnvCfg):
 
         """ ----- Observation ----- """
         # To add or not noise on the observations
-        self.observations.policy.enable_corruption = False
+        self.observations.policy.enable_corruption = True
 
 
         """ ----- Curriculum ----- """
@@ -196,7 +196,7 @@ class UnitreeAliengoClimbEnvCfg(LocomotionModelBasedEnvCfg):
             self.rewards.penalty_friction                    = None
             self.rewards.penalty_stance_foot_vel             = None
             self.rewards.penalty_CoT                         = None
-            self.rewards.penalty_close_feet.weight           = -1.0
+            self.rewards.penalty_close_feet.weight           = -0.8
             self.rewards.penalize_foot_trac_err              = None
             self.rewards.penalty_constraint_violation        = None
 
