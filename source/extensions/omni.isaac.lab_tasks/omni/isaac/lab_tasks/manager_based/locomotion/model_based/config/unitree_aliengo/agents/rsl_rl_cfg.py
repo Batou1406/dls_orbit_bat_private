@@ -14,7 +14,7 @@ from omni.isaac.lab_tasks.utils.wrappers.rsl_rl import (
 @configclass
 class UnitreeAliengoBasePPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
-    max_iterations = 15000
+    max_iterations = 5000
     save_interval = 250
     experiment_name = "aliengo_model_based_base"
     wandb_project = "model based"
@@ -44,7 +44,7 @@ class UnitreeAliengoBasePPORunnerCfg(RslRlOnPolicyRunnerCfg):
 @configclass
 class UnitreeAliengoRoughPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
-    max_iterations = 15000
+    max_iterations = 5000
     save_interval = 250
     experiment_name = "aliengo_model_based_rough"
     wandb_project = "model based rough"
@@ -74,7 +74,7 @@ class UnitreeAliengoRoughPPORunnerCfg(RslRlOnPolicyRunnerCfg):
 @configclass
 class UnitreeAliengoSpeedPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
-    max_iterations = 15000
+    max_iterations = 5000
     save_interval = 250
     experiment_name = "aliengo_model_based_speed"
     wandb_project = "model based speed"
@@ -104,7 +104,7 @@ class UnitreeAliengoSpeedPPORunnerCfg(RslRlOnPolicyRunnerCfg):
 @configclass
 class UnitreeAliengoClimbPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
-    max_iterations = 15000
+    max_iterations = 5000
     save_interval = 250
     experiment_name = "aliengo_model_based_climb"
     wandb_project = "model based climb"
