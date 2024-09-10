@@ -32,9 +32,14 @@ There are four  baselines available policies for the four tasks
 - `python source/standalone/workflows/rsl_rl/play.py --task Isaac-Model-Based-Climb-Aliengo-v0  --num_envs 8 --load_run climb_RL --checkpoint climb_baseline_actor_critic`
 
 #### Run evaluations
-
+A wide series of evaluations can be configured. The evaluation_RL script calls play_eval_RL, which runs the evaluations. Many different policies can be evaluated in a single script
+```bash
+python3 source/standalone/workflows/dls_lib/evaluation_RL.py
+```
 #### Train an imitation policy with DAgger
-
+```bash
+python3 source/standalone/workflows/dls_lib/train_dagger.py --task Isaac-Model-Based-Climb-Aliengo-v0 --load_run climb_RL --checkpoint climb_baseline_actor_critic.pt --num_envs 4096  --folder-name IL_climb  --epochs 30 --headless
+```
 #### Live plot
 ```
 python3 live_plot/live_plot_all.py
@@ -44,12 +49,12 @@ Live plot available are : `live_plot_all.py`, `live_plot_cost.py`, `live_plot_he
 #### Record a video
 To record a video trained with RSL_RL (single action - single observation, actor-critic network) (Policy must be in `logs/rsl_rl/folder/policy.pt`)
 ```bash
-python3 source/standalone/workflows/rsl_rl/play.py --task Isaac-Model-Based-Rough-Aliengo-v0 --num_envs 64 --load_run base_RL  --checkpoint base_baseline_actor_critic.pt
+python3 source/standalone/workflows/dls_lib/play.py --task Isaac-Model-Based-Rough-Aliengo-v0 --num_envs 64 --load_run base_RL  --checkpoint base_baseline_actor_critic.pt
 
 ```
 To record a video of other network (DAgger, etc.) (Can be any type of action, just remind to adapt the action space by [specifying the action term]([url](/source/extensions/omni.isaac.lab_tasks/omni/isaac/lab_tasks/manager_based/locomotion/model_based/model_based_env_cfg.py#L178)) and [action config](/source/extensions/omni.isaac.lab_tasks/omni/isaac/lab_tasks/manager_based/locomotion/model_based/mdp/actions/actions_cfg.py#L27)) (Policy must be in model/folder/policy.pt)
 ```bash
-python3 source/standalone/workflows/supervised_learning/play_adaptative_video.py
+python3 source/standalone/workflows/dls_lib/play_adaptative_video.py
 ```
 
 The rotation and camera change can be deactivated by commenting the corresponding lines.
