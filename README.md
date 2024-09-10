@@ -21,9 +21,15 @@ The tasks are registered [here](source/extensions/omni.isaac.lab_tasks/omni/isaa
 - `Isaac-Model-Based-Climb-Aliengo-v0` associated with the environment [aliengo_climb_env_cfg.py](source/extensions/omni.isaac.lab_tasks/omni/isaac/lab_tasks/manager_based/locomotion/model_based/config/unitree_aliengo/aliengo_climb_env_cfg.py) and the algorithm [UnitreeAliengoClimbPPORunnerCfg](/source/extensions/omni.isaac.lab_tasks/omni/isaac/lab_tasks/manager_based/locomotion/model_based/config/unitree_aliengo/agents/rsl_rl_cfg.py#L105) 
 
 #### Play a policy 
+If the policy has been trained with RSL_RL and is made of an actor-critic network. The policy must be located in `logs/rls_rl/task_name/folder/policy.pt`
 ```
-python source/standalone/workflows/rsl_rl/play.py --task Isaac-Model-Based-Speed-Aliengo-v0  --num_envs 8 --load_run test --checkpoint speed96_model_5000
+python source/standalone/workflows/rsl_rl/play.py --task Isaac-Model-Based-Speed-Aliengo-v0  --num_envs 8 --load_run folder --checkpoint policy
 ```
+There are four  baselines available policies for the four tasks
+- `python source/standalone/workflows/rsl_rl/play.py --task Isaac-Model-Based-Base-Aliengo-v0  --num_envs 8 --load_run base_RL --checkpoint base_baseline_actor_critic`
+- `python source/standalone/workflows/rsl_rl/play.py --task Isaac-Model-Based-Rough-Aliengo-v0  --num_envs 8 --load_run rough_RL --checkpoint rough_baseline_actor_critic`
+- `python source/standalone/workflows/rsl_rl/play.py --task Isaac-Model-Based-Speed-Aliengo-v0  --num_envs 8 --load_run speed_RL --checkpoint speed_baseline_actor_critic`
+- `python source/standalone/workflows/rsl_rl/play.py --task Isaac-Model-Based-Climb-Aliengo-v0  --num_envs 8 --load_run climb_RL --checkpoint climb_baseline_actor_critic`
 
 #### Run evaluations
 
