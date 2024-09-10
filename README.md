@@ -35,6 +35,18 @@ python3 live_plot/live_plot_all.py
 ```
 When the sampling controller is running and the [live_plot flag](/source/extensions/omni.isaac.lab_tasks/omni/isaac/lab_tasks/manager_based/locomotion/model_based/mdp/actions/model_base_controller.py#L798) is set ( :warning: one flag per controller :warning: ), variables of interest are saved into a [CSV file](/live_variable) and can be displayed live by running these scripts. 
 Live plot available are : `live_plot_all.py`, `live_plot_cost.py`, `live_plot_height.py`, `live_plot_GRF.py`
+#### Record a video
+To record a video trained with RSL_RL (single action - single observation, actor-critic network) (Policy must be in `logs/rsl_rl/folder/policy.pt`)
+```bash
+python3 source/standalone/workflows/rsl_rl/play.py --task Isaac-Model-Based-Rough-Aliengo-v0 --num_envs 64 --load_run base_RL  --checkpoint base_baseline_actor_critic.pt
+
+```
+To record a video of other network (DAgger, etc.) (Can be any type of action, just remind to adapt the action space by [specifying the action term]([url](/source/extensions/omni.isaac.lab_tasks/omni/isaac/lab_tasks/manager_based/locomotion/model_based/model_based_env_cfg.py#L178)) and [action config](/source/extensions/omni.isaac.lab_tasks/omni/isaac/lab_tasks/manager_based/locomotion/model_based/mdp/actions/actions_cfg.py#L27)) (Policy must be in model/folder/policy.pt)
+```bash
+python3 source/standalone/workflows/supervised_learning/play_adaptative_video.py
+```
+
+The rotation and camera change can be deactivated by commenting the corresponding lines.
 
 ## Folder architecure
 [MDP](/source/extensions/omni.isaac.lab_tasks/omni/isaac/lab_tasks/manager_based/locomotion/model_based/mdp)

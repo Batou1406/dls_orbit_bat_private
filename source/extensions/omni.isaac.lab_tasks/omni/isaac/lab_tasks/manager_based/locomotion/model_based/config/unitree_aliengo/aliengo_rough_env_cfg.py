@@ -47,18 +47,18 @@ class UnitreeAliengoRoughEnvCfg(LocomotionModelBasedEnvCfg):
 
         """ ----- Observation ----- """
         # To add or not noise on the observations
-        self.observations.policy.enable_corruption = True
+        self.observations.policy.enable_corruption = False #True
 
 
         """ ----- Curriculum ----- """
-        # Terrain_curriculum = True
-        Terrain_curriculum = False #-> For Dagger
+        Terrain_curriculum = True
+        # Terrain_curriculum = False #-> For Dagger
         Speed_curriculum = False
 
-        # For Dagger
-        self.scene.terrain.terrain_generator.sub_terrains["boxes"].grid_height_range = (0.025, 0.1)
-        self.scene.terrain.terrain_generator.sub_terrains["random_rough"].noise_range = (0.01, 0.06)
-        self.scene.terrain.terrain_generator.sub_terrains["random_rough"].noise_step = 0.01
+        # # For Dagger
+        # self.scene.terrain.terrain_generator.sub_terrains["boxes"].grid_height_range = (0.025, 0.1)
+        # self.scene.terrain.terrain_generator.sub_terrains["random_rough"].noise_range = (0.01, 0.06)
+        # self.scene.terrain.terrain_generator.sub_terrains["random_rough"].noise_step = 0.01
 
         if Terrain_curriculum : 
             # --- scale down the terrains because the robot is small
@@ -121,7 +121,7 @@ class UnitreeAliengoRoughEnvCfg(LocomotionModelBasedEnvCfg):
 
 
         """ ----- rewards ----- """
-        training = 'play_eval' # 'normal' or 'play_eval'
+        training = 'normal' # 'normal' or 'play_eval'
 
         if training == 'normal' :
             # -- task
